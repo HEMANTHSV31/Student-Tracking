@@ -999,6 +999,7 @@ export const getStudentRoadmap = async (req, res) => {
     const { course_type } = req.query;
 
     console.log('Fetching roadmap for student user:', user_id);
+    console.log('Course type requested:', course_type);
 
     // Get student info and their venue
     const [student] = await db.query(`
@@ -1017,7 +1018,10 @@ export const getStudentRoadmap = async (req, res) => {
       LIMIT 1
     `, [user_id]);
 
+    console.log('Student query result:', student.length, 'rows');
+
     if (student.length === 0) {
+      console.error('Student not found for user_id:', user_id);
       return res.status(404).json({
         success: false,
         message: 'Student not found'
@@ -1026,13 +1030,20 @@ export const getStudentRoadmap = async (req, res) => {
 
     const student_id = student[0].student_id;
     const venue_id = student[0].venue_id;
+    
+    console.log('Student ID:', student_id, 'Venue ID:', venue_id);
 
     if (!venue_id) {
+      console.log('No venue assigned for student');
       return res.status(200).json({
         success: true,
         message: 'No venue assigned yet',
         data: [],
-        venue: null,
+        venue: {
+          student_id: student_id,
+          venue_id: null,
+          venue_name: null
+        },
         skill_progression: []
       });
     }
@@ -1395,9 +1406,12 @@ export const getStudentRoadmap = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching student roadmap:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error message:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch roadmap'
+      message: 'Failed to fetch roadmap',
+      error: error.message
     });
   }
 };

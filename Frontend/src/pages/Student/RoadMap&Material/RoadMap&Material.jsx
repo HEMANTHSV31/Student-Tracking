@@ -173,28 +173,46 @@ const StudentRoadmap = () => {
 
   const fetchRoadmapData = async () => {
     setLoading(true);
+    console.log('[ROADMAP] ========== FETCH START ==========');
     try {
+      console.log('[ROADMAP] Fetching roadmap data for course:', selectedCourse);
+      console.log('[ROADMAP] API URL:', `${import.meta.env.VITE_API_URL}/roadmap/student?course_type=${selectedCourse}`);
+      
       const response = await apiGet(`/roadmap/student?course_type=${selectedCourse}`, {
         headers: { 'Cache-Control': 'no-cache' }
       });
 
+      console.log('[ROADMAP] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch roadmap data');
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.error('[ROADMAP] API error:', errorData);
+        throw new Error(errorData.message || 'Failed to fetch roadmap data');
       }
 
       const result = await response.json();
+      console.log('[ROADMAP] ========== API RESPONSE ==========');
+      console.log('[ROADMAP] Full response:', JSON.stringify(result, null, 2));
+      console.log('[ROADMAP] Success:', result.success);
+      console.log('[ROADMAP] Data array length:', result.data?.length);
+      console.log('[ROADMAP] Venue:', result.venue);
+      console.log('[ROADMAP] ========================================');
       
       // Handle venue display first - whether data exists or not
       if (result.venue && result.venue.venue_name) {
+        console.log('[ROADMAP] Setting venue name:', result.venue.venue_name);
         setVenueName(result.venue.venue_name);
       } else {
+        console.log('[ROADMAP] No venue assigned, venue object:', result.venue);
         setVenueName('No Venue Assigned');
       }
       
       if (result.success && result.data && result.data.length > 0) {
+        console.log('[ROADMAP] Processing', result.data.length, 'modules');
         const venueId = result.venue?.venue_id;
         const studentId = result.venue?.student_id;
         const backendSkillProgression = result.skill_progression || [];
+        console.log('[ROADMAP] Skill progression:', backendSkillProgression);
 
         // Transform backend data to match UI expectations
         // Use is_locked, is_completed, is_current from backend response
@@ -272,18 +290,20 @@ const StudentRoadmap = () => {
             currentSkill: currentSkill?.skill_name || null
           });
         }
-
-        setRoadmapData(finalData);
+        console.log('[ROADMAP] Final roadmap data set:', finalData.length, 'modules');
 
         if (recommendedSelectedId) {
           setSelectedNodeId(recommendedSelectedId);
+          console.log('[ROADMAP] Selected node ID:', recommendedSelectedId);
         }
       } else {
+        console.log('[ROADMAP] No modules found or empty data');
         setRoadmapData([]);
       }
     } catch (err) {
-      console.error("Error fetching roadmap:", err);
+      console.error("[ROADMAP] Error fetching roadmap:", err);
       setRoadmapData([]);
+      setVenueName('Error loading venue');
     } finally {
       setLoading(false);
     }
