@@ -1076,41 +1076,18 @@ export const getStudentRoadmap = async (req, res) => {
     `, [student_id]);
 
     // Helper function to normalize skill names for comparison
-    // Removes extra spaces, normalizes slashes
+    // Only lowercase and trim - exact matching required
     const normalizeSkillName = (name) => {
       if (!name) return '';
-      return name
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, ' ')           // Replace multiple spaces with single space
-        .replace(/\s*\/\s*/g, '/')      // Remove spaces around slashes: "HTML /CSS" -> "HTML/CSS"
-        .replace(/\s*-\s*/g, '-');      // Remove spaces around dashes
+      return name.toLowerCase().trim();
     };
 
     // Helper function to check if a student skill matches a skill order entry
-    // Uses flexible keyword-based matching to handle naming variations
+    // Uses exact case-insensitive matching
     const skillMatches = (studentSkillName, orderSkillName) => {
       const studentNorm = normalizeSkillName(studentSkillName);
       const orderNorm = normalizeSkillName(orderSkillName);
-      
-      // Direct match
-      if (studentNorm === orderNorm) return true;
-      
-      // Extract keywords from both (split by common separators)
-      const studentKeywords = studentNorm.split(/[\s\/,.-]+/).filter(k => k.length > 2);
-      const orderKeywords = orderNorm.split(/[\s\/,.-]+/).filter(k => k.length > 2);
-      
-      // Check if most keywords from orderSkill appear in studentSkill
-      // For "Git/GitHub", keywords are ["git", "github"]
-      // For "Version control-Git , Github Level 0", keywords are ["version", "control", "git", "github", "level"]
-      if (orderKeywords.length === 0) return false;
-      
-      const matchingKeywords = orderKeywords.filter(ok => 
-        studentKeywords.some(sk => sk.includes(ok) || ok.includes(sk))
-      );
-      
-      // If 50% or more of the order skill keywords match, consider it a match
-      return matchingKeywords.length >= Math.ceil(orderKeywords.length * 0.5);
+      return studentNorm === orderNorm;
     };
 
     // Create a map of student's cleared skills (normalize to lowercase)
@@ -1297,15 +1274,31 @@ export const getStudentRoadmap = async (req, res) => {
 
       module.resources = resources || [];
 
-      // Try to match module title with skill progression
+      // Helper: Extract keywords for matching (remove common words)
+      const extractKeywords = (name) => {
+        const normalized = normalizeSkillName(name);
+        return normalized
+          .split(/[\s\/,.-]+/)
+          .filter(word => word.length > 2 && !['level', 'the', 'and', 'for'].includes(word));
+      };
+
+      // Try to match module title with skill progression using keyword matching
       let moduleSkillName = null;
-      const titleNormalized = normalizeSkillName(module.title);
+      const moduleKeywords = extractKeywords(module.title);
       
       for (const skill of skillProgression) {
-        const skillNormalized = normalizeSkillName(skill.skill_name);
-        if (skill.course_type === module.course_type && 
-            (titleNormalized.includes(skillNormalized) || skillNormalized.includes(titleNormalized))) {
+        if (skill.course_type !== module.course_type) continue;
+        
+        const skillKeywords = extractKeywords(skill.skill_name);
+        
+        // Check if at least 50% of module keywords appear in skill keywords
+        const matchingKeywords = moduleKeywords.filter(mk => 
+          skillKeywords.some(sk => sk.includes(mk) || mk.includes(sk))
+        );
+        
+        if (matchingKeywords.length >= Math.ceil(moduleKeywords.length * 0.5) && matchingKeywords.length > 0) {
           moduleSkillName = skill.skill_name;
+          console.log(`Module "${module.title}" keywords [${moduleKeywords}] matched skill "${skill.skill_name}" keywords [${skillKeywords}] via [${matchingKeywords}]`);
           break;
         }
       }

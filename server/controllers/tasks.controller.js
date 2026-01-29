@@ -1091,41 +1091,18 @@ export const getStudentTasks = async (req, res) => {
     `, [student_id]);
 
     // Helper function to normalize skill names for comparison
-    // Removes extra spaces, normalizes slashes, converts to lowercase
+    // Only lowercase and trim - exact matching required
     const normalizeSkillName = (name) => {
       if (!name) return '';
-      return name
-        .toLowerCase()
-        .trim()
-        .replace(/\bjava\s+script\b/gi, 'javascript')  // "Java Script" -> "javascript"
-        .replace(/\btype\s+script\b/gi, 'typescript')  // "Type Script" -> "typescript"
-        .replace(/\s+/g, ' ')           // Replace multiple spaces with single space
-        .replace(/\s*\/\s*/g, '/')      // Remove spaces around slashes: "HTML /CSS" -> "HTML/CSS"
-        .replace(/\s*-\s*/g, '-');      // Remove spaces around dashes
+      return name.toLowerCase().trim();
     };
 
     // Helper function to check if a student skill matches a skill order entry
-    // Uses flexible keyword-based matching to handle naming variations
+    // Uses exact case-insensitive matching
     const skillMatches = (studentSkillName, orderSkillName) => {
       const studentNorm = normalizeSkillName(studentSkillName);
       const orderNorm = normalizeSkillName(orderSkillName);
-      
-      // Direct match
-      if (studentNorm === orderNorm) return true;
-      
-      // Extract keywords from both (split by common separators)
-      const studentKeywords = studentNorm.split(/[\s\/,.-]+/).filter(k => k.length > 2);
-      const orderKeywords = orderNorm.split(/[\s\/,.-]+/).filter(k => k.length > 2);
-      
-      // Check if most keywords from orderSkill appear in studentSkill
-      if (orderKeywords.length === 0) return false;
-      
-      const matchingKeywords = orderKeywords.filter(ok => 
-        studentKeywords.some(sk => sk.includes(ok) || ok.includes(sk))
-      );
-      
-      // If 50% or more of the order skill keywords match, consider it a match
-      return matchingKeywords.length >= Math.ceil(orderKeywords.length * 0.5);
+      return studentNorm === orderNorm;
     };
 
     // Create sets for cleared and ongoing skills (normalized)
