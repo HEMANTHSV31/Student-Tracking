@@ -79,7 +79,7 @@ export const getRoadmapByVenue = async (req, res) => {
     const { venue_id } = req.params;
     const user_id = req.user.user_id; // Get user_id from JWT token
 
-    console.log('Fetching roadmap for venue:', venue_id, 'user:', user_id);
+    // console.log('Fetching roadmap for venue:', venue_id, 'user:', user_id);
 
     // Get user role first
     const [user] = await db.query(`
@@ -167,7 +167,7 @@ export const getRoadmapByVenue = async (req, res) => {
     }
 
     const [modules] = await db.query(query, params);
-    console.log('Found modules:', modules.length);
+    // console.log('Found modules:', modules.length);
 
     // Get resources for each module
     for (let module of modules) {
@@ -369,7 +369,7 @@ export const createRoadmapModule = async (req, res) => {
     const { venue_id, day, title, description, status, course_type, learning_objectives, apply_to_all_venues } = req.body;
     const user_id = req.user.user_id; // Get user_id from JWT
 
-    console.log('Creating module:', { venue_id, day, title, course_type, user_id, apply_to_all_venues });
+    // console.log('Creating module:', { venue_id, day, title, course_type, user_id, apply_to_all_venues });
 
     if (!venue_id || !day || !title) {
       return res.status(400).json({
@@ -552,7 +552,7 @@ export const updateRoadmapModule = async (req, res) => {
     const { title, description, status, course_type, learning_objectives } = req.body;
     const user_id = req.user.user_id;
 
-    console.log('Updating module:', roadmap_id, { title, status, course_type });
+    // console.log('Updating module:', roadmap_id, { title, status, course_type });
 
     if (!title) {
       return res.status(400).json({
@@ -641,7 +641,7 @@ export const deleteRoadmapModule = async (req, res) => {
     const { roadmap_id } = req.params;
     const user_id = req.user.user_id;
 
-    console.log('Deleting module:', roadmap_id);
+    // console.log('Deleting module:', roadmap_id);
 
     await connection.beginTransaction();
 
@@ -719,7 +719,7 @@ export const deleteRoadmapModule = async (req, res) => {
       if (resource.file_path && fs.existsSync(resource.file_path)) {
         try {
           fs.unlinkSync(resource.file_path);
-          console.log('Deleted file:', resource.file_path);
+          // console.log('Deleted file:', resource.file_path);
         } catch (fileError) {
           console.warn('Failed to delete file:', resource.file_path, fileError.message);
         }
@@ -761,7 +761,7 @@ export const addResourceToModule = async (req, res) => {
     const file = req.file;
     const user_id = req.user.user_id;
 
-    console.log('Adding resource:', { roadmap_id, resource_name, resource_type, hasFile: !!file, existing_file_path, user_id });
+    // console.log('Adding resource:', { roadmap_id, resource_name, resource_type, hasFile: !!file, existing_file_path, user_id });
 
     if (!roadmap_id || !resource_name || !resource_type) {
       return res.status(400).json({
@@ -896,7 +896,7 @@ export const deleteResourceFromModule = async (req, res) => {
     const { resource_id } = req.params;
     const user_id = req.user.user_id;
 
-    console.log('Deleting resource:', resource_id);
+    // console.log('Deleting resource:', resource_id);
 
     // Get user role
     const [user] = await db.query(`
@@ -968,7 +968,7 @@ export const deleteResourceFromModule = async (req, res) => {
     if (filePath && fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
-        console.log('Deleted resource file:', filePath);
+        // console.log('Deleted resource file:', filePath);
       } catch (fileError) {
         console.warn('Failed to delete file:', filePath, fileError.message);
       }
@@ -998,8 +998,8 @@ export const getStudentRoadmap = async (req, res) => {
     const user_id = req.user.user_id;
     const { course_type } = req.query;
 
-    console.log('Fetching roadmap for student user:', user_id);
-    console.log('Course type requested:', course_type);
+    // console.log('Fetching roadmap for student user:', user_id);
+    // console.log('Course type requested:', course_type);
 
     // Get student info and their venue
     const [student] = await db.query(`
@@ -1018,7 +1018,7 @@ export const getStudentRoadmap = async (req, res) => {
       LIMIT 1
     `, [user_id]);
 
-    console.log('Student query result:', student.length, 'rows');
+    // console.log('Student query result:', student.length, 'rows');
 
     if (student.length === 0) {
       console.error('Student not found for user_id:', user_id);
@@ -1031,10 +1031,10 @@ export const getStudentRoadmap = async (req, res) => {
     const student_id = student[0].student_id;
     const venue_id = student[0].venue_id;
     
-    console.log('Student ID:', student_id, 'Venue ID:', venue_id);
+    // console.log('Student ID:', student_id, 'Venue ID:', venue_id);
 
     if (!venue_id) {
-      console.log('No venue assigned for student');
+      // console.log('No venue assigned for student');
       return res.status(200).json({
         success: true,
         message: 'No venue assigned yet',
@@ -1118,11 +1118,11 @@ export const getStudentRoadmap = async (req, res) => {
       }
     });
 
-    console.log('========== STUDENT ROADMAP SKILL PROGRESSION ==========');
-    console.log('Student ID:', student_id, 'Venue:', venue_id);
-    console.log('Student skills from DB:', studentSkills.map(s => ({ name: s.course_name, status: s.status })));
-    console.log('Cleared skills (normalized):', Array.from(clearedSkillsMap.keys()));
-    console.log('Skill order entries:', orderedSkills.map(s => s.skill_name));
+    // console.log('========== STUDENT ROADMAP SKILL PROGRESSION ==========');
+    // console.log('Student ID:', student_id, 'Venue:', venue_id);
+    // console.log('Student skills from DB:', studentSkills.map(s => ({ name: s.course_name, status: s.status })));
+    // console.log('Cleared skills (normalized):', Array.from(clearedSkillsMap.keys()));
+    // console.log('Skill order entries:', orderedSkills.map(s => s.skill_name));
 
     // Build skill progression with unlock status
     const skillProgression = [];
@@ -1141,17 +1141,17 @@ export const getStudentRoadmap = async (req, res) => {
         matchedSkill = clearedSkillsList.find(s => skillMatches(s.course_name, skill.skill_name));
         if (matchedSkill) {
           isCleared = true;
-          console.log(`Skill "${skill.skill_name}" MATCHED with cleared skill "${matchedSkill.course_name}" via flexible matching`);
+          // console.log(`Skill "${skill.skill_name}" MATCHED with cleared skill "${matchedSkill.course_name}" via flexible matching`);
         } else {
           matchedSkill = ongoingSkillsList.find(s => skillMatches(s.course_name, skill.skill_name));
           if (matchedSkill) {
             isOngoing = true;
-            console.log(`Skill "${skill.skill_name}" MATCHED with ongoing skill "${matchedSkill.course_name}" via flexible matching`);
+            // console.log(`Skill "${skill.skill_name}" MATCHED with ongoing skill "${matchedSkill.course_name}" via flexible matching`);
           }
         }
       }
       
-      console.log(`Skill "${skill.skill_name}" -> normalized: "${skillNameNormalized}", isCleared: ${isCleared}, isOngoing: ${isOngoing}`);
+      // console.log(`Skill "${skill.skill_name}" -> normalized: "${skillNameNormalized}", isCleared: ${isCleared}, isOngoing: ${isOngoing}`);
       
       // Initialize course progress tracker
       if (!courseProgress[skill.course_type]) {
@@ -1170,7 +1170,7 @@ export const getStudentRoadmap = async (req, res) => {
       const isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
       const isLocked = !isUnlocked;
       
-      console.log(`Skill "${skill.skill_name}": previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
+      // console.log(`Skill "${skill.skill_name}": previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
       
       // Track the first unlocked but not cleared skill as "current"
       const isCurrent = isUnlocked && !isCleared && !courseTracker.currentUnlocked;
@@ -1210,11 +1210,11 @@ export const getStudentRoadmap = async (req, res) => {
       }
     }
 
-    console.log('\n--- Skill Progression Summary ---');
+    // console.log('\n--- Skill Progression Summary ---');
     skillProgression.forEach(s => {
-      console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}${s.matched_with ? ` | Matched: "${s.matched_with}"` : ''}`);
+      // console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}${s.matched_with ? ` | Matched: "${s.matched_with}"` : ''}`);
     });
-    console.log('======================================================\n');
+    // console.log('======================================================\n');
 
     // Get all roadmap modules for the student's venue
     let modulesQuery = `
@@ -1250,7 +1250,7 @@ export const getStudentRoadmap = async (req, res) => {
 
     const [modules] = await db.query(modulesQuery, modulesParams);
 
-    console.log('Found modules for student:', modules.length);
+    // console.log('Found modules for student:', modules.length);
 
     // Create a map of cleared skills for quick lookup (using normalized names)
     const clearedSkillsNormalized = new Set();
@@ -1260,7 +1260,7 @@ export const getStudentRoadmap = async (req, res) => {
       }
     });
 
-    console.log('Cleared skills (for module matching):', Array.from(clearedSkillsNormalized));
+    // console.log('Cleared skills (for module matching):', Array.from(clearedSkillsNormalized));
 
     // Track module index per course type for sequential unlocking
     const moduleIndexByCourse = {};
@@ -1309,7 +1309,7 @@ export const getStudentRoadmap = async (req, res) => {
         
         if (matchingKeywords.length >= Math.ceil(moduleKeywords.length * 0.5) && matchingKeywords.length > 0) {
           moduleSkillName = skill.skill_name;
-          console.log(`Module "${module.title}" keywords [${moduleKeywords}] matched skill "${skill.skill_name}" keywords [${skillKeywords}] via [${matchingKeywords}]`);
+          // console.log(`Module "${module.title}" keywords [${moduleKeywords}] matched skill "${skill.skill_name}" keywords [${skillKeywords}] via [${matchingKeywords}]`);
           break;
         }
       }
@@ -1325,15 +1325,16 @@ export const getStudentRoadmap = async (req, res) => {
         // Module is completed if skill is cleared (is_cleared = 1)
         module.is_completed = Boolean(skillEntry.is_cleared);
         module.matched_skill = skillEntry.skill_name;
-        console.log(`Module "${module.title}" matched skill "${skillEntry.skill_name}", is_cleared: ${skillEntry.is_cleared}, is_completed: ${module.is_completed}`);
+        // console.log(`Module "${module.title}" matched skill "${skillEntry.skill_name}", is_cleared: ${skillEntry.is_cleared}, is_completed: ${module.is_completed}`);
       } else {
-        // Check if any cleared skill matches the module title
+        // No skill match found - check if any cleared skill keywords match module keywords
+        const moduleTitleNormalized = normalizeSkillName(module.title);
         const isCleared = Array.from(clearedSkillsNormalized).some(skillName => 
-          titleNormalized.includes(skillName) || skillName.includes(titleNormalized.substring(0, 6))
+          moduleTitleNormalized.includes(skillName) || skillName.includes(moduleTitleNormalized.substring(0, 6))
         );
         module.is_completed = isCleared;
         module.matched_skill = null;
-        console.log(`Module "${module.title}" no skill match, checking cleared skills, is_completed: ${isCleared}`);
+        // console.log(`Module "${module.title}" no skill match, checking cleared skills, is_completed: ${isCleared}`);
       }
     }
 
@@ -1363,7 +1364,7 @@ export const getStudentRoadmap = async (req, res) => {
         // Debug logging
         if (!allPreviousCompleted) {
           const incompleteModules = previousModules.filter(m => !m.is_completed).map(m => m.title);
-          console.log(`Module "${module.title}" is LOCKED. Incomplete prerequisites: ${incompleteModules.join(', ')}`);
+          // console.log(`Module "${module.title}" is LOCKED. Incomplete prerequisites: ${incompleteModules.join(', ')}`);
         }
       }
 
@@ -1391,7 +1392,7 @@ export const getStudentRoadmap = async (req, res) => {
       // Increment course index
       moduleIndexByCourse[courseType]++;
 
-      console.log(`Module "${module.title}": completed=${module.is_completed}, locked=${module.is_locked}, current=${module.is_current}`);
+      // console.log(`Module "${module.title}": completed=${module.is_completed}, locked=${module.is_locked}, current=${module.is_current}`);
     }
 
     res.status(200).json({
@@ -1423,7 +1424,7 @@ export const getResourceFile = async (req, res) => {
     const { mode } = req.query; // ?mode=preview or ?mode=download
     const user_id = req.user.user_id;
 
-    console.log('Accessing resource:', resource_id, 'mode:', mode || 'preview');
+    // console.log('Accessing resource:', resource_id, 'mode:', mode || 'preview');
 
     // Get user role
     const [user] = await db.query(`
@@ -1566,7 +1567,7 @@ export const updateRoadmapModuleGroup = async (req, res) => {
     const { title, description, learning_objectives, status } = req.body;
     const user_id = req.user.user_id;
 
-    console.log('Updating module group:', group_id, { title, status });
+    // console.log('Updating module group:', group_id, { title, status });
 
     if (!title) {
       return res.status(400).json({

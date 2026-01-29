@@ -317,9 +317,9 @@ const Dashboard = () => {
             setError(null);
             
             try {
-                console.log('Fetching dashboard data from:', api.defaults.baseURL);
+                // console.log('Fetching dashboard data from:', api.defaults.baseURL);
                 const response = await api.get('/');
-                console.log('Dashboard response received:', response.data);
+                // console.log('Dashboard response received:', response.data);
                 
                 const data = response.data;
 
@@ -404,7 +404,7 @@ const Dashboard = () => {
 
     // Function Handlers
     const handleClassAction = async (classId, action) => {
-        console.log(`Action "${action}" on class ${classId}`);
+        // console.log(`Action "${action}" on class ${classId}`);
 
         switch (action) {
             case 'Mark Attendance':
@@ -596,9 +596,9 @@ const Dashboard = () => {
                     </button>
                     <button 
                         onClick={() => {
-                            console.log('API Base URL:', API_BASE);
-                            console.log('Full API URL:', api.defaults.baseURL);
-                            console.log('Using cookie authentication');
+                            // console.log('API Base URL:', API_BASE);
+                            // console.log('Full API URL:', api.defaults.baseURL);
+                            // console.log('Using cookie authentication');
                             alert(`API URL: ${api.defaults.baseURL}\n\nCheck browser console for details.`);
                         }}
                         style={{

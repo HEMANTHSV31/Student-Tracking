@@ -43,36 +43,111 @@ export const getStudentDashboardStats = async (req, res) => {
     }
 
     const venueIds = await resolveStudentVenueIds(studentId);
+    const userId = req.user?.user_id || req.user?.userId || req.user?.id;
+    const currentYear = new Date().getFullYear();
+    const SEMESTER_START_DATE = '2025-12-15';
+    
+    // console.log('[DASHBOARD STATS] Student ID:', studentId);
+    // console.log('[DASHBOARD STATS] Venue IDs:', venueIds);
 
-    // Attendance (last 30 days)
-    const [attNowRows] = await db.query(
-      `
-      SELECT
-        COALESCE(ROUND((SUM(CASE WHEN is_present = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0) as attendance
-      FROM attendance
-      WHERE student_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      `,
-      [studentId]
-    );
+    // Attendance - Match attendance screen calculation exactly
+    // Get daily breakdown to calculate present/late/absent days (4 hours = 1 complete day)
+    const [dailyBreakdown] = await db.query(`
+      SELECT 
+        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as attendance_date,
+        COUNT(*) as total_hours,
+        SUM(CASE WHEN a.is_present = 1 AND a.is_late = 0 THEN 1 ELSE 0 END) as present_hours,
+        SUM(CASE WHEN a.is_late = 1 THEN 1 ELSE 0 END) as late_hours,
+        SUM(CASE WHEN a.is_present = 0 THEN 1 ELSE 0 END) as absent_hours
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.student_id
+      INNER JOIN attendance_session ats ON a.session_id = ats.session_id
+      INNER JOIN venue v ON a.venue_id = v.venue_id
+      INNER JOIN \`groups\` g ON v.venue_id = g.venue_id
+      INNER JOIN group_students gs ON g.group_id = gs.group_id AND gs.student_id = s.student_id
+      WHERE s.user_id = ?
+        AND gs.status = 'Active'
+        AND YEAR(a.created_at) = ?
+        AND DATE(a.created_at) >= ?
+      GROUP BY SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10)
+    `, [userId, currentYear, SEMESTER_START_DATE]);
 
-    // Attendance trend: compare last 30 days vs previous 30 days
-    const [attPrevRows] = await db.query(
-      `
-      SELECT
-        COALESCE(ROUND((SUM(CASE WHEN is_present = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0) as attendance
-      FROM attendance
-      WHERE student_id = ?
-        AND created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
-        AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
-      `,
-      [studentId]
-    );
+    // Count days by status: only days with 4/4 hours present count as Present
+    let presentDays = 0, absentDays = 0;
+    dailyBreakdown.forEach(day => {
+      const totalHours = parseInt(day.total_hours);
+      const presentHours = parseInt(day.present_hours);
+      
+      if (totalHours === 4 && presentHours === 4) {
+        presentDays++; // All 4 hours present = Present Day
+      } else {
+        absentDays++; // Less than 4 hours = Absent Day
+      }
+    });
 
-    const overallAttendance = Number(attNowRows?.[0]?.attendance || 0);
-    const prevAttendance = Number(attPrevRows?.[0]?.attendance || 0);
-    const attendanceTrend = Number((overallAttendance - prevAttendance).toFixed(1));
+    const totalDays = dailyBreakdown.length;
+    const overallAttendance = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+    
+    // For trend: get last 30 days vs previous 30 days breakdown
+    const [trendBreakdown] = await db.query(`
+      SELECT 
+        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as attendance_date,
+        COUNT(*) as total_hours,
+        SUM(CASE WHEN a.is_present = 1 AND a.is_late = 0 THEN 1 ELSE 0 END) as present_hours,
+        DATE(a.created_at) as record_date
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.student_id
+      INNER JOIN attendance_session ats ON a.session_id = ats.session_id
+      INNER JOIN venue v ON a.venue_id = v.venue_id
+      INNER JOIN \`groups\` g ON v.venue_id = g.venue_id
+      INNER JOIN group_students gs ON g.group_id = gs.group_id AND gs.student_id = s.student_id
+      WHERE s.user_id = ?
+        AND gs.status = 'Active'
+        AND a.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+      GROUP BY SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10), DATE(a.created_at)
+    `, [userId]);
 
-    // Tasks: pending & due tomorrow
+    // Split into last 30 and previous 30 days
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    const sixtyDaysAgo = new Date(now.getTime() - (60 * 24 * 60 * 60 * 1000));
+    
+    let last30PresentDays = 0, last30TotalDays = 0;
+    let prev30PresentDays = 0, prev30TotalDays = 0;
+    
+    const dayGroups = {};
+    trendBreakdown.forEach(day => {
+      const dateKey = day.attendance_date;
+      if (!dayGroups[dateKey]) {
+        dayGroups[dateKey] = { totalHours: 0, presentHours: 0, recordDate: day.record_date };
+      }
+      dayGroups[dateKey].totalHours += parseInt(day.total_hours);
+      dayGroups[dateKey].presentHours += parseInt(day.present_hours);
+    });
+    
+    Object.values(dayGroups).forEach(dayData => {
+      const recordDate = new Date(dayData.recordDate);
+      const isComplete = dayData.totalHours === 4 && dayData.presentHours === 4;
+      
+      if (recordDate >= thirtyDaysAgo) {
+        last30TotalDays++;
+        if (isComplete) last30PresentDays++;
+      } else if (recordDate >= sixtyDaysAgo) {
+        prev30TotalDays++;
+        if (isComplete) prev30PresentDays++;
+      }
+    });
+    
+    const last30Attendance = last30TotalDays > 0 ? Math.round((last30PresentDays / last30TotalDays) * 100) : 0;
+    const prev30Attendance = prev30TotalDays > 0 ? Math.round((prev30PresentDays / prev30TotalDays) * 100) : 0;
+    const attendanceTrend = last30Attendance - prev30Attendance;
+    
+    // console.log('[DASHBOARD STATS] Attendance - Present Days:', presentDays, 'Total Days:', totalDays);
+    // console.log('[DASHBOARD STATS] Overall Attendance:', overallAttendance);
+    // console.log('[DASHBOARD STATS] Attendance Trend:', attendanceTrend);
+
+    // Tasks: Use the filtered tasks logic from tasks.controller
+    // This respects skill progression, locked skills, and cleared skills
     let pendingTasks = 0;
     let tasksDueTomorrow = 0;
     let courseProgress = 0;
@@ -80,58 +155,116 @@ export const getStudentDashboardStats = async (req, res) => {
     let totalTasks = 0;
 
     if (venueIds.length) {
-      const placeholders = venueIds.map(() => '?').join(',');
-
-      const [taskCounts] = await db.query(
-        `
-        SELECT
-          COUNT(DISTINCT t.task_id) as total_tasks,
-          COUNT(DISTINCT CASE WHEN ts.status = 'Graded' THEN t.task_id END) as graded_tasks,
-          COUNT(DISTINCT CASE
-            WHEN ts.submission_id IS NULL THEN t.task_id
-            WHEN ts.status IS NULL THEN t.task_id
-            WHEN ts.status <> 'Graded' THEN t.task_id
-            ELSE NULL
-          END) as pending_tasks,
-          COUNT(DISTINCT CASE
-            WHEN t.due_date IS NOT NULL
-              AND t.due_date >= CURDATE()
-              AND t.due_date < DATE_ADD(CURDATE(), INTERVAL 2 DAY)
-              AND (ts.submission_id IS NULL OR ts.status <> 'Graded')
-            THEN t.task_id
-            ELSE NULL
-          END) as due_tomorrow
-        FROM tasks t
-        LEFT JOIN task_submissions ts
-          ON ts.task_id = t.task_id AND ts.student_id = ?
-        WHERE t.status = 'Active'
-          AND t.venue_id IN (${placeholders})
-        `,
-        [studentId, ...venueIds]
-      );
-
-      totalTasks = Number(taskCounts?.[0]?.total_tasks || 0);
-      completedTasks = Number(taskCounts?.[0]?.graded_tasks || 0);
-      pendingTasks = Number(taskCounts?.[0]?.pending_tasks || 0);
-      tasksDueTomorrow = Number(taskCounts?.[0]?.due_tomorrow || 0);
+      // Import task filtering logic - get actual visible tasks for student
+      const { getStudentTasks } = await import('./tasks.controller.js');
+      
+      // console.log('[DASHBOARD STATS] Calling getStudentTasks with user:', req.user);
+      
+      // Create fake request object to reuse getStudentTasks logic
+      const fakeReq = {
+        user: req.user,
+        query: { course_type: 'all' }  // Get all course types
+      };
+      
+      let visibleTasks = [];
+      const fakeRes = {
+        status: (code) => ({
+          json: (data) => {
+            // console.log('[DASHBOARD STATS] getStudentTasks returned:', { 
+            //   success: data.success, 
+            //   dataKeys: data.data ? Object.keys(data.data) : [],
+            //   statusCode: code 
+            // });
+            
+            if (data.success && data.data) {
+              // Extract tasks from groupedTasks structure
+              if (data.data.groupedTasks) {
+                const groupedTasks = data.data.groupedTasks;
+                // console.log('[DASHBOARD STATS] Grouped tasks keys:', Object.keys(groupedTasks));
+                
+                // Flatten all tasks from all groups
+                visibleTasks = Object.values(groupedTasks).flatMap(group => group.tasks || []);
+                // console.log('[DASHBOARD STATS] Extracted tasks from groups:', visibleTasks.length);
+              }
+            }
+            return data;
+          }
+        })
+      };
+      
+      await getStudentTasks(fakeReq, fakeRes);
+      
+      // Ensure visibleTasks is an array
+      if (!Array.isArray(visibleTasks)) {
+        console.warn('[DASHBOARD STATS] getStudentTasks did not return array, got:', typeof visibleTasks);
+        visibleTasks = [];
+      }
+      
+      // console.log('[DASHBOARD STATS] Visible tasks after filtering:', visibleTasks.length);
+      if (visibleTasks.length > 0) {
+        // console.log('[DASHBOARD STATS] Sample task:', {
+        //   title: visibleTasks[0].title,
+        //   status: visibleTasks[0].status,
+        //   submissionStatus: visibleTasks[0].submissionStatus,
+        //   grade: visibleTasks[0].grade
+        // });
+      }
+      
+      // Now count based on visible tasks only
+      totalTasks = visibleTasks.length;
+      
+      visibleTasks.forEach(task => {
+        // Completed: task status is 'completed' (graded with grade >= 50)
+        if (task.status === 'completed') {
+          completedTasks++;
+        }
+        
+        // Pending: not completed and not revision
+        if (task.status !== 'completed' && task.status !== 'revision') {
+          pendingTasks++;
+        }
+        
+        // Due tomorrow: has due date between today and tomorrow, not yet completed
+        if (task.dueDate && task.status !== 'completed') {
+          const dueDate = new Date(task.dueDate);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 2);
+          
+          if (dueDate >= today && dueDate < tomorrow) {
+            tasksDueTomorrow++;
+          }
+        }
+      });
+      
       courseProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      
+      // console.log('[DASHBOARD STATS] Total visible tasks:', totalTasks);
+      // console.log('[DASHBOARD STATS] Completed tasks:', completedTasks);
+      // console.log('[DASHBOARD STATS] Pending tasks:', pendingTasks);
+      // console.log('[DASHBOARD STATS] Course Progress:', courseProgress);
     }
 
     // Tasks Completed: use graded tasks count as "completed" metric
     // (skill_completion table may not exist, so we use task completion instead)
     const tasksCompleted = completedTasks;
 
+    const responseData = {
+      overallAttendance,
+      pendingTasks,
+      tasksCompleted,
+      totalTasks,
+      courseProgress,
+      attendanceTrend,
+      tasksDueTomorrow,
+    };
+    
+    // console.log('[DASHBOARD STATS] Final response data:', responseData);
+
     return res.status(200).json({
       success: true,
-      data: {
-        overallAttendance,
-        pendingTasks,
-        tasksCompleted,
-        totalTasks,
-        courseProgress,
-        attendanceTrend,
-        tasksDueTomorrow,
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error('Error in getStudentDashboardStats:', error);
@@ -299,43 +432,9 @@ export const getStudentSubjectWiseAttendance = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Student not found for this user' });
     }
 
-    const [rows] = await db.query(
-      `
-      SELECT
-        g.group_id,
-        g.group_name,
-        g.group_code,
-        COALESCE(COUNT(a.attendance_id), 0) as total,
-        COALESCE(SUM(CASE WHEN a.is_present = 1 THEN 1 ELSE 0 END), 0) as present
-      FROM group_students gs
-      INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-      LEFT JOIN attendance a
-        ON a.student_id = gs.student_id
-        AND a.venue_id = g.venue_id
-        AND a.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      WHERE gs.student_id = ?
-        AND gs.status = 'Active'
-        AND g.status = 'Active'
-      GROUP BY g.group_id, g.group_name, g.group_code
-      ORDER BY g.group_name ASC
-      `,
-      [studentId]
-    );
-
-    const data = rows.map(r => {
-      const total = Number(r.total || 0);
-      const present = Number(r.present || 0);
-      const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
-      return {
-        subject: r.group_code || r.group_name,
-        subject_code: r.group_code || r.group_name,
-        attendance_percentage: percentage,
-        present,
-        total,
-      };
-    });
-
-    return res.status(200).json({ success: true, data });
+    // Return empty array since students table doesn't have course_type column
+    // and we removed the course breakdown from the UI
+    return res.status(200).json({ success: true, data: [] });
   } catch (error) {
     console.error('Error in getStudentSubjectWiseAttendance:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch subject-wise attendance', error: error.message });
@@ -345,6 +444,7 @@ export const getStudentSubjectWiseAttendance = async (req, res) => {
 /**
  * Get task completion statistics for the donut chart
  * Returns: { completed: number, pending: number, overdue: number }
+ * Uses filtered tasks that respect skill progression
  */
 export const getStudentTaskCompletionStats = async (req, res) => {
   try {
@@ -362,37 +462,59 @@ export const getStudentTaskCompletionStats = async (req, res) => {
       });
     }
 
-    const placeholders = venueIds.map(() => '?').join(',');
-
-    const [taskStats] = await db.query(
-      `
-      SELECT
-        COUNT(DISTINCT CASE 
-          WHEN ts.status = 'Graded' THEN t.task_id 
-        END) as completed,
-        COUNT(DISTINCT CASE 
-          WHEN (ts.submission_id IS NULL OR (ts.status IS NOT NULL AND ts.status <> 'Graded'))
-            AND (t.due_date IS NULL OR t.due_date >= CURDATE())
-          THEN t.task_id 
-        END) as pending,
-        COUNT(DISTINCT CASE 
-          WHEN (ts.submission_id IS NULL OR (ts.status IS NOT NULL AND ts.status <> 'Graded'))
-            AND t.due_date IS NOT NULL 
-            AND t.due_date < CURDATE()
-          THEN t.task_id 
-        END) as overdue
-      FROM tasks t
-      LEFT JOIN task_submissions ts
-        ON ts.task_id = t.task_id AND ts.student_id = ?
-      WHERE t.status = 'Active'
-        AND t.venue_id IN (${placeholders})
-      `,
-      [studentId, ...venueIds]
-    );
-
-    const completed = Number(taskStats?.[0]?.completed || 0);
-    const pending = Number(taskStats?.[0]?.pending || 0);
-    const overdue = Number(taskStats?.[0]?.overdue || 0);
+    // Use filtered tasks logic from tasks.controller (respects skill progression)
+    const { getStudentTasks } = await import('./tasks.controller.js');
+    
+    const fakeReq = {
+      user: req.user,
+      query: { course_type: 'all' }
+    };
+    
+    let visibleTasks = [];
+    const fakeRes = {
+      status: (code) => ({
+        json: (data) => {
+          if (data.success && Array.isArray(data.data)) {
+            visibleTasks = data.data;
+          }
+          return data;
+        }
+      })
+    };
+    
+    await getStudentTasks(fakeReq, fakeRes);
+    
+    // Ensure visibleTasks is an array
+    if (!Array.isArray(visibleTasks)) {
+      console.warn('getStudentTasks did not return array in task completion stats, got:', typeof visibleTasks);
+      visibleTasks = [];
+    }
+    
+    let completed = 0;
+    let pending = 0;
+    let overdue = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    visibleTasks.forEach(task => {
+      // Completed: graded tasks
+      if (task.submission_status === 'Graded') {
+        completed++;
+      } else {
+        // Not graded yet
+        if (task.due_date) {
+          const dueDate = new Date(task.due_date);
+          if (dueDate < today) {
+            overdue++;
+          } else {
+            pending++;
+          }
+        } else {
+          // No due date = pending
+          pending++;
+        }
+      }
+    });
 
     return res.status(200).json({
       success: true,
@@ -400,6 +522,6 @@ export const getStudentTaskCompletionStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Error in getStudentTaskCompletionStats:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch task completion stats', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to fetch task stats', error: error.message });
   }
 };

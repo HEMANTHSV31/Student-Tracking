@@ -7,7 +7,7 @@ export const getStudentSchedule = async (req, res) => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const dayName = days[dateParam.getDay()];
         
-        console.log(`Fetching schedule for user ${userId} on ${dayName} (${dateParam.toDateString()})`);
+        // console.log(`Fetching schedule for user ${userId} on ${dayName} (${dateParam.toDateString()})`);
 
         // 1. First check if student exists and is enrolled in any groups
         const [studentCheck] = await db.execute(`
@@ -19,12 +19,12 @@ export const getStudentSchedule = async (req, res) => {
         `, [userId]);
 
         if (studentCheck.length === 0) {
-            console.log('Student not found for user_id:', userId);
+            // console.log('Student not found for user_id:', userId);
             return res.json({ success: true, data: [], message: 'Student not found' });
         }
 
         const studentId = studentCheck[0].student_id;
-        console.log(`Student found - student_id: ${studentId}, enrolled_groups: ${studentCheck[0].enrolled_groups}`);
+        // console.log(`Student found - student_id: ${studentId}, enrolled_groups: ${studentCheck[0].enrolled_groups}`);
 
         // 2. Check what groups the student is in
         const [groupCheck] = await db.execute(`
@@ -34,9 +34,9 @@ export const getStudentSchedule = async (req, res) => {
             WHERE gs.student_id = ?
         `, [studentId]);
 
-        console.log(`Student is in ${groupCheck.length} groups total:`);
+        // console.log(`Student is in ${groupCheck.length} groups total:`);
         groupCheck.forEach(g => {
-            console.log(`- Group ${g.group_name}: days=${g.schedule_days}, time=${g.schedule_time}, group_status=${g.group_status}, enrollment_status=${g.enrollment_status}`);
+            // console.log(`- Group ${g.group_name}: days=${g.schedule_days}, time=${g.schedule_time}, group_status=${g.group_status}, enrollment_status=${g.enrollment_status}`);
         });
 
         // 2. Fetch schedule data
@@ -62,9 +62,9 @@ export const getStudentSchedule = async (req, res) => {
             AND g.status = 'Active'
         `, [userId]);
 
-        console.log(`Found ${rows.length} total active groups for student`);
+        // console.log(`Found ${rows.length} total active groups for student`);
         rows.forEach(row => {
-            console.log(`Group: ${row.subject}, Days: ${row.schedule_days}, Time: ${row.schedule_time}`);
+            // console.log(`Group: ${row.subject}, Days: ${row.schedule_days}, Time: ${row.schedule_time}`);
         });
 
         // 2. Helper to parse time string (e.g., "09:00 AM") to minutes
@@ -96,7 +96,7 @@ export const getStudentSchedule = async (req, res) => {
         
         // Check if it's Sunday - always show no venue for Sundays
         if (dayName === 'Sunday') {
-            console.log(`Sunday detected - showing no venue allocated`);
+            // console.log(`Sunday detected - showing no venue allocated`);
             return res.json({ success: true, data: [], message: 'No venue allocated' });
         }
         
@@ -110,13 +110,13 @@ export const getStudentSchedule = async (req, res) => {
         // Check if it's past 8 PM today (20:00)
         const isPast8PM = now.getHours() >= 20;
         
-        console.log(`Date comparison:
-            - Today: ${today.toDateString()}
-            - Requested: ${requestedDate.toDateString()}
-            - Tomorrow: ${tomorrow.toDateString()}
-            - Current time: ${now.toTimeString().slice(0,8)}
-            - Is past 8 PM: ${isPast8PM}
-        `);
+        // console.log(`Date comparison:
+        //     - Today: ${today.toDateString()}
+        //     - Requested: ${requestedDate.toDateString()}
+        //     - Tomorrow: ${tomorrow.toDateString()}
+        //     - Current time: ${now.toTimeString().slice(0,8)}
+        //     - Is past 8 PM: ${isPast8PM}
+        // `);
         
         // Determine if we should show schedule
         let shouldShowSchedule = false;
@@ -140,12 +140,12 @@ export const getStudentSchedule = async (req, res) => {
             reason = 'Future date';
         }
         
-        console.log(`Schedule decision: ${shouldShowSchedule ? 'SHOW' : 'HIDE'} - ${reason}`);
+        // console.log(`Schedule decision: ${shouldShowSchedule ? 'SHOW' : 'HIDE'} - ${reason}`);
         
         if (shouldShowSchedule && rows.length > 0) {
             // Show the venue schedule with 4 sessions
             const item = rows[0];
-            console.log(`Creating 4 sessions for: ${item.subject} at ${item.venue_name}`);
+            // console.log(`Creating 4 sessions for: ${item.subject} at ${item.venue_name}`);
             
             let type = 'Lecture';
             if (item.subject.toLowerCase().includes('lab')) type = 'Laboratory';
@@ -169,17 +169,17 @@ export const getStudentSchedule = async (req, res) => {
             }
         } else if (!shouldShowSchedule && requestedDate > today) {
             // For future days, return empty with message
-            console.log(`No venue allocated for ${dayName} - future date`);
+            // console.log(`No venue allocated for ${dayName} - future date`);
         } else if (rows.length === 0) {
             // No group enrollment
-            console.log(`No venue allocated for ${dayName} - not enrolled in any group`);
+            // console.log(`No venue allocated for ${dayName} - not enrolled in any group`);
         }
 
         const responseMessage = shouldShowSchedule ? 
             (schedule.length > 0 ? 'Schedule loaded' : 'No venue allocated') :
             'No venue allocated';
             
-        console.log(`Final response: ${schedule.length} sessions, Message: ${responseMessage}`);
+        // console.log(`Final response: ${schedule.length} sessions, Message: ${responseMessage}`);
         res.json({ success: true, data: schedule, message: responseMessage });
 
     } catch (error) {

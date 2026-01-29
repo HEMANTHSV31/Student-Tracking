@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { MapPin, Calendar, Users, Loader2 } from "lucide-react";
 import useAuthStore from "../../../store/useAuthStore";
+import { apiGet } from "../../../utils/api";
 
 // --- FIXED SESSION DEFINITIONS ---
 const SESSION_SLOTS = [

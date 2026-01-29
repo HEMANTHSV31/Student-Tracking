@@ -3,7 +3,7 @@ import db from '../config/db.js';
 // Helper function to get ID from user_id
 async function getFacultyIdFromUserId(userId) {
   try {
-    console.log('Fetching ID for user_id:', userId);
+    // console.log('Fetching ID for user_id:', userId);
     
     const [facultyResult] = await db.query(
       `SELECT ID FROM users WHERE user_id = ?`,
@@ -11,11 +11,11 @@ async function getFacultyIdFromUserId(userId) {
     );
     
     if (facultyResult.length > 0 && facultyResult[0].ID) {
-      console.log('Found ID:', facultyResult[0].ID);
+      // console.log('Found ID:', facultyResult[0].ID);
       return facultyResult[0].ID;
     }
     
-    console.log('No ID found for user_id:', userId);
+    // console.log('No ID found for user_id:', userId);
     return null;
     
   } catch (error) {
@@ -27,7 +27,7 @@ async function getFacultyIdFromUserId(userId) {
 // Get complete dashboard data
 export const getDashboardData = async (req, res) => {
   try {
-    console.log('getDashboardData called with user:', req.user);
+    // console.log('getDashboardData called with user:', req.user);
     
     if (!req.user || !req.user.user_id) {
       console.error('User not authenticated or user_id missing');
@@ -45,7 +45,7 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
-    console.log('Using faculty ID:', facultyId, 'for user:', req.user.user_id);
+    // console.log('Using faculty ID:', facultyId, 'for user:', req.user.user_id);
 
     // Get stats - FIXED: Added backticks around `groups`
     const [groupsResult] = await db.query(
@@ -325,7 +325,7 @@ export const getDashboardData = async (req, res) => {
       quickActions
     };
 
-    console.log('Dashboard data sent successfully for faculty ID:', facultyId);
+    // console.log('Dashboard data sent successfully for faculty ID:', facultyId);
     res.json(dashboardData);
   } catch (error) {
     console.error('Error in getDashboardData:', error);
@@ -352,7 +352,7 @@ export const getFacultyOverview = async (req, res) => {
       });
     }
 
-    console.log('Fetching overview for faculty ID:', facultyId);
+    // console.log('Fetching overview for faculty ID:', facultyId);
 
     // FIXED: Added backticks around `groups`
     const [groupsResult] = await db.query(
@@ -416,7 +416,7 @@ export const getFacultyOverview = async (req, res) => {
       }
     ];
 
-    console.log('Overview stats sent for faculty ID:', facultyId);
+    // console.log('Overview stats sent for faculty ID:', facultyId);
     res.json({ stats });
   } catch (error) {
     console.error('Error fetching overview:', error);

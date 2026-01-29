@@ -75,7 +75,7 @@ export const getVenueAllocations = async (req, res) => {
   try {
     // Get user ID from JWT token
     const userId = req.user.user_id;
-    console.log(`[ATTENDANCE VENUES] user_id: ${userId}, role: ${req.user.role}`);
+    // console.log(`[ATTENDANCE VENUES] user_id: ${userId}, role: ${req.user.role}`);
 
     // Get user info
     const user = await getUserInfo(userId);
@@ -116,7 +116,7 @@ export const getVenueAllocations = async (req, res) => {
         [userId]
       );
       
-      console.log(`[ATTENDANCE VENUES] Faculty lookup - user_id: ${userId}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
+      // console.log(`[ATTENDANCE VENUES] Faculty lookup - user_id: ${userId}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
       
       if (faculty.length === 0) {
         return res.status(403).json({
@@ -147,7 +147,7 @@ export const getVenueAllocations = async (req, res) => {
         ORDER BY v.venue_name
       `, [facultyId]);
       
-      console.log(`[ATTENDANCE VENUES] Query result for faculty_id ${facultyId}: ${allocations.length} venue(s)`);
+      // console.log(`[ATTENDANCE VENUES] Query result for faculty_id ${facultyId}: ${allocations.length} venue(s)`);
     }
 
 

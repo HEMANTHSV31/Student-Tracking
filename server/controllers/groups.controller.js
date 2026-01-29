@@ -387,7 +387,7 @@ export const lookupStudentByRollNumber = async (req, res) => {
 // Get all venues (only Active venues)
 export const getAllVenues = async (req, res) => {
   try {
-    console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
+    // console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
     
     // Admin sees all venues
     if (req.user.role === 'admin') {
@@ -414,7 +414,7 @@ export const getAllVenues = async (req, res) => {
         ORDER BY v.venue_name
       `);
       
-      console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
+      // console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
       return res.status(200).json({ success: true, data: venues });
     }
     
@@ -424,7 +424,7 @@ export const getAllVenues = async (req, res) => {
       [req.user.user_id]
     );
     
-    console.log(`[GET ALL VENUES] Faculty lookup - user_id: ${req.user.user_id}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
+    // console.log(`[GET ALL VENUES] Faculty lookup - user_id: ${req.user.user_id}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
     
     if (faculty.length === 0) {
       return res.status(403).json({
@@ -459,7 +459,7 @@ export const getAllVenues = async (req, res) => {
       ORDER BY v.venue_name
     `, [facultyId]);
     
-    console.log(`[GET ALL VENUES] Faculty ${facultyId} - found ${venues.length} venue(s)`);
+    // console.log(`[GET ALL VENUES] Faculty ${facultyId} - found ${venues.length} venue(s)`);
     res.status(200).json({ success: true, data: venues });
   } catch (error) {
     console.error('Error fetching venues:', error);
@@ -555,7 +555,7 @@ export const createVenue = async (req, res) => {
     `, [groupCode, groupName, venueId, assigned_faculty_id || null, capacity || 50]);
 
     // Copy existing roadmap modules that were created for "all venues" to this new venue
-    console.log(`[CREATE VENUE] Copying existing "all venues" roadmaps to new venue ${venueId}`);
+    // console.log(`[CREATE VENUE] Copying existing "all venues" roadmaps to new venue ${venueId}`);
     
     // Get all roadmap groups (modules created with apply_to_all_venues)
     // A group_id indicates the module was created for multiple venues
@@ -568,7 +568,7 @@ export const createVenue = async (req, res) => {
     let copiedCount = 0;
 
     if (roadmapGroups.length > 0) {
-      console.log(`[CREATE VENUE] Found ${roadmapGroups.length} roadmap group(s) to copy`);
+      // console.log(`[CREATE VENUE] Found ${roadmapGroups.length} roadmap group(s) to copy`);
       
       // Use the assigned faculty for this venue, or get a default faculty
       let roadmapFacultyId = assigned_faculty_id;
@@ -675,26 +675,26 @@ export const createVenue = async (req, res) => {
               }
 
               if (resources.length > 0) {
-                console.log(`[CREATE VENUE] Copied ${resources.length} resource(s) for roadmap "${roadmap.title}"`);
+                // console.log(`[CREATE VENUE] Copied ${resources.length} resource(s) for roadmap "${roadmap.title}"`);
               }
             }
             
             copiedCount++;
-            console.log(`[CREATE VENUE] Copied roadmap "${roadmap.title}" (Day ${roadmap.day}, ${roadmap.course_type}) to venue ${venueId}`);
+            // console.log(`[CREATE VENUE] Copied roadmap "${roadmap.title}" (Day ${roadmap.day}, ${roadmap.course_type}) to venue ${venueId}`);
           } else {
-            console.log(`[CREATE VENUE] Roadmap for Day ${roadmap.day} (${roadmap.course_type}) already exists in venue ${venueId}, skipping`);
+            // console.log(`[CREATE VENUE] Roadmap for Day ${roadmap.day} (${roadmap.course_type}) already exists in venue ${venueId}, skipping`);
           }
         }
       }
       
-      console.log(`[CREATE VENUE] Successfully copied ${copiedCount} roadmap module(s) from groups to venue ${venueId}`);
+      // console.log(`[CREATE VENUE] Successfully copied ${copiedCount} roadmap module(s) from groups to venue ${venueId}`);
     } else {
-      console.log(`[CREATE VENUE] No roadmap groups found to copy`);
+      // console.log(`[CREATE VENUE] No roadmap groups found to copy`);
     }
 
     // ALSO copy existing roadmaps from any existing venue (for legacy roadmaps without group_id)
     // This ensures new venues get the same curriculum as existing venues
-    console.log(`[CREATE VENUE] Checking for existing roadmaps to replicate...`);
+    // console.log(`[CREATE VENUE] Checking for existing roadmaps to replicate...`);
     
     const [existingRoadmaps] = await connection.query(`
       SELECT 
@@ -712,7 +712,7 @@ export const createVenue = async (req, res) => {
     `);
 
     if (existingRoadmaps.length > 0) {
-      console.log(`[CREATE VENUE] Found ${existingRoadmaps.length} existing roadmap(s) to replicate`);
+      // console.log(`[CREATE VENUE] Found ${existingRoadmaps.length} existing roadmap(s) to replicate`);
       
       let roadmapFacultyId = assigned_faculty_id;
       if (!roadmapFacultyId) {
@@ -788,20 +788,20 @@ export const createVenue = async (req, res) => {
             }
 
             if (resources.length > 0) {
-              console.log(`[CREATE VENUE] Copied ${resources.length} resource(s) for roadmap "${roadmap.title}"`);
+              // console.log(`[CREATE VENUE] Copied ${resources.length} resource(s) for roadmap "${roadmap.title}"`);
             }
           }
           
           copiedCount++;
-          console.log(`[CREATE VENUE] Replicated roadmap "${roadmap.title}" (Day ${roadmap.day}) to venue ${venueId}`);
+          // console.log(`[CREATE VENUE] Replicated roadmap "${roadmap.title}" (Day ${roadmap.day}) to venue ${venueId}`);
         }
       }
     }
 
-    console.log(`[CREATE VENUE] Total roadmaps copied: ${copiedCount}`);
+    // console.log(`[CREATE VENUE] Total roadmaps copied: ${copiedCount}`);
 
     // Copy existing tasks that were created for "all venues" to this new venue
-    console.log(`[CREATE VENUE] Copying existing "all venues" tasks to new venue ${venueId}`);
+    // console.log(`[CREATE VENUE] Copying existing "all venues" tasks to new venue ${venueId}`);
     
     // Get all task groups (tasks created with apply_to_all_venues)
     // A group_id indicates the task was created for multiple venues
@@ -814,7 +814,7 @@ export const createVenue = async (req, res) => {
     let copiedTaskCount = 0;
 
     if (taskGroups.length > 0) {
-      console.log(`[CREATE VENUE] Found ${taskGroups.length} task group(s) to copy`);
+      // console.log(`[CREATE VENUE] Found ${taskGroups.length} task group(s) to copy`);
       
       // Use the assigned faculty for this venue, or get a default faculty
       let taskFacultyId = assigned_faculty_id;
@@ -917,25 +917,25 @@ export const createVenue = async (req, res) => {
                   VALUES (?, ?, 'Pending', NOW())
                 `, [newTaskId, student.student_id]);
               }
-              console.log(`[CREATE VENUE] Copied task "${task.title}" (Day ${task.day}) to venue ${venueId} with ${students.length} student(s)`);
+              // console.log(`[CREATE VENUE] Copied task "${task.title}" (Day ${task.day}) to venue ${venueId} with ${students.length} student(s)`);
             } else {
-              console.log(`[CREATE VENUE] Copied task "${task.title}" (Day ${task.day}) to venue ${venueId} (no students yet)`);
+              // console.log(`[CREATE VENUE] Copied task "${task.title}" (Day ${task.day}) to venue ${venueId} (no students yet)`);
             }
             
             copiedTaskCount++;
           } else {
-            console.log(`[CREATE VENUE] Task "${task.title}" (Day ${task.day}) already exists in venue ${venueId}, skipping`);
+            // console.log(`[CREATE VENUE] Task "${task.title}" (Day ${task.day}) already exists in venue ${venueId}, skipping`);
           }
         }
       }
       
-      console.log(`[CREATE VENUE] Successfully copied ${copiedTaskCount} task(s) from groups to venue ${venueId}`);
+      // console.log(`[CREATE VENUE] Successfully copied ${copiedTaskCount} task(s) from groups to venue ${venueId}`);
     } else {
-      console.log(`[CREATE VENUE] No task groups found to copy`);
+      // console.log(`[CREATE VENUE] No task groups found to copy`);
     }
 
     // ALSO copy existing tasks from any existing venue (for legacy tasks without group_id)
-    console.log(`[CREATE VENUE] Checking for existing tasks to replicate...`);
+    // console.log(`[CREATE VENUE] Checking for existing tasks to replicate...`);
     
     const [existingTasks] = await connection.query(`
       SELECT 
@@ -956,7 +956,7 @@ export const createVenue = async (req, res) => {
     `);
 
     if (existingTasks.length > 0) {
-      console.log(`[CREATE VENUE] Found ${existingTasks.length} existing task(s) to replicate`);
+      // console.log(`[CREATE VENUE] Found ${existingTasks.length} existing task(s) to replicate`);
       
       let taskFacultyId = assigned_faculty_id;
       if (!taskFacultyId) {
@@ -1028,12 +1028,12 @@ export const createVenue = async (req, res) => {
           }
           
           copiedTaskCount++;
-          console.log(`[CREATE VENUE] Replicated task "${task.title}" (Day ${task.day}) to venue ${venueId}`);
+          // console.log(`[CREATE VENUE] Replicated task "${task.title}" (Day ${task.day}) to venue ${venueId}`);
         }
       }
     }
 
-    console.log(`[CREATE VENUE] Total tasks copied: ${copiedTaskCount}`);
+    // console.log(`[CREATE VENUE] Total tasks copied: ${copiedTaskCount}`);
 
     await connection.commit();
 
@@ -1230,7 +1230,7 @@ export const assignFacultyToVenue = async (req, res) => {
       'UPDATE venue SET assigned_faculty_id = ? WHERE venue_id = ?',
       [faculty_id, venueId]
     );
-    console.log(`[ASSIGN FACULTY] Assigned faculty_id: ${faculty_id} to venue_id: ${venueId}`);
+    // console.log(`[ASSIGN FACULTY] Assigned faculty_id: ${faculty_id} to venue_id: ${venueId}`);
 
     // Update groups in new venue
     await connection.query(
@@ -1463,9 +1463,9 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
     const errors = [];
     const successfulStudents = [];
     
-    console.log(`=== BULK UPLOAD TO VENUE ${venueId} ===`);
-    console.log(`Total rows in Excel: ${data.length}`);
-    console.log(`Overwrite mode: ${overwrite}`);
+    // console.log(`=== BULK UPLOAD TO VENUE ${venueId} ===`);
+    // console.log(`Total rows in Excel: ${data.length}`);
+    // console.log(`Overwrite mode: ${overwrite}`);
 
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -1478,12 +1478,12 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
       const year = row.year || row.Year;
       const semester = row.semester || row.Semester;
       
-      console.log(`\n--- Processing Row ${i + 2} ---`);
-      console.log(`Roll Number: ${rollNumber}, Name: ${name}, Email: ${email}`);
+      // console.log(`\n--- Processing Row ${i + 2} ---`);
+      // console.log(`Roll Number: ${rollNumber}, Name: ${name}, Email: ${email}`);
 
       // Only rollNumber is required
       if (!rollNumber || String(rollNumber).trim() === '') {
-        console.log(`Row ${i + 2}: SKIPPED - Missing roll number`);
+        // console.log(`Row ${i + 2}: SKIPPED - Missing roll number`);
         errors.push(`Row ${i + 1}: Missing roll number/registration number`);
         studentsSkipped++;
         continue;
@@ -1501,7 +1501,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           [studentEmail.toLowerCase(), rollNumberStr]
         );
         
-        console.log(`User lookup result: ${existingUser.length > 0 ? `Found user_id ${existingUser[0].user_id}` : 'No existing user'}`);
+        // console.log(`User lookup result: ${existingUser.length > 0 ? `Found user_id ${existingUser[0].user_id}` : 'No existing user'}`);
 
         let userId;
         let studentId;
@@ -1516,7 +1516,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           );
 
           userId = userResult.insertId;
-          console.log(`Created new user with user_id: ${userId}`);
+          // console.log(`Created new user with user_id: ${userId}`);
 
           // Insert student record
           const [studentResult] = await connection.query(
@@ -1525,11 +1525,11 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           );
 
           studentId = studentResult.insertId;
-          console.log(`Created new student with student_id: ${studentId}`);
+          // console.log(`Created new student with student_id: ${studentId}`);
           
         } else {
           userId = existingUser[0].user_id;
-          console.log(`Using existing user_id: ${userId}`);
+          // console.log(`Using existing user_id: ${userId}`);
 
           // Check if student record exists
           const [student] = await connection.query(
@@ -1538,16 +1538,16 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           );
 
           if (student.length === 0) {
-            console.log(`Student record not found, creating new student record`);
+            // console.log(`Student record not found, creating new student record`);
             const [studentResult] = await connection.query(
               'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, ?)',
               [userId, year || 1, semester || 1, venue.assigned_faculty_id || 0]
             );
             studentId = studentResult.insertId;
-            console.log(`Created new student with student_id: ${studentId}`);
+            // console.log(`Created new student with student_id: ${studentId}`);
           } else {
             studentId = student[0].student_id;
-            console.log(`Using existing student_id: ${studentId}`);
+            // console.log(`Using existing student_id: ${studentId}`);
           }
         }
 
@@ -1559,11 +1559,11 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           WHERE gs.student_id = ? AND g.venue_id = ? AND gs.status = 'Active'
         `, [studentId, venueId]);
         
-        console.log(`Existing allocation check: ${existingAllocation.length > 0 ? 'ALREADY ALLOCATED TO THIS VENUE' : 'Not in this venue'}`);
+        // console.log(`Existing allocation check: ${existingAllocation.length > 0 ? 'ALREADY ALLOCATED TO THIS VENUE' : 'Not in this venue'}`);
 
         if (existingAllocation.length > 0) {
           studentsSkipped++;
-          console.log(`Row ${i + 2}: SKIPPED - Already in this venue`);
+          // console.log(`Row ${i + 2}: SKIPPED - Already in this venue`);
           errors.push(`${studentName} (${rollNumberStr}) already allocated to this venue`);
           continue;
         }
@@ -1577,14 +1577,14 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           WHERE gs.student_id = ? AND gs.status = 'Active'
         `, [studentId]);
         
-        console.log(`Other venue check: ${otherVenueAllocation.length > 0 ? `Found in ${otherVenueAllocation[0].venue_name}` : 'Not in any other venue'}`);
+        // console.log(`Other venue check: ${otherVenueAllocation.length > 0 ? `Found in ${otherVenueAllocation[0].venue_name}` : 'Not in any other venue'}`);
 
         if (otherVenueAllocation.length > 0) {
           // Drop student from old venue (preserves history)
           await connection.query(`
             UPDATE group_students SET status = 'Dropped' WHERE id = ?
           `, [otherVenueAllocation[0].id]);
-          console.log(`Moved student from ${otherVenueAllocation[0].venue_name} to this venue`);
+          // console.log(`Moved student from ${otherVenueAllocation[0].venue_name} to this venue`);
           errors.push(`${studentName} (${rollNumberStr}) moved from ${otherVenueAllocation[0].venue_name}`);
         }
 
@@ -1596,7 +1596,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           WHERE gs.student_id = ? AND g.venue_id = ? AND gs.status != 'Active'
         `, [studentId, venueId]);
         
-        console.log(`Previous allocation check: ${previousAllocation.length > 0 ? 'Found inactive record - will reactivate' : 'No previous allocation'}`);
+        // console.log(`Previous allocation check: ${previousAllocation.length > 0 ? 'Found inactive record - will reactivate' : 'No previous allocation'}`);
 
         let groupStudentsId = null;
         if (previousAllocation.length > 0) {
@@ -1606,7 +1606,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
             [previousAllocation[0].id]
           );
           groupStudentsId = previousAllocation[0].id;
-          console.log(`Reactivated previous allocation with id: ${groupStudentsId}`);
+          // console.log(`Reactivated previous allocation with id: ${groupStudentsId}`);
         } else {
           // Insert into group_students
           const [insertResult] = await connection.query(
@@ -1614,11 +1614,11 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
             [groupId, studentId]
           );
           groupStudentsId = insertResult.insertId;
-          console.log(`Created new allocation with id: ${groupStudentsId}`);
+          // console.log(`Created new allocation with id: ${groupStudentsId}`);
         }
         
         studentsAdded++;
-        console.log(`Row ${i + 2}: SUCCESS - Student added to venue`);
+        // console.log(`Row ${i + 2}: SUCCESS - Student added to venue`);
         successfulStudents.push({
           name: studentName,
           email: studentEmail,
@@ -1640,9 +1640,9 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
 
     await connection.commit();
     
-    console.log(`\n=== BULK UPLOAD COMPLETE ===`);
-    console.log(`Added: ${studentsAdded}, Skipped: ${studentsSkipped}, Dropped: ${droppedCount}`);
-    console.log(`Errors: ${errors.length}`);
+    // console.log(`\n=== BULK UPLOAD COMPLETE ===`);
+    // console.log(`Added: ${studentsAdded}, Skipped: ${studentsSkipped}, Dropped: ${droppedCount}`);
+    // console.log(`Errors: ${errors.length}`);
 
     const overwriteMsg = overwrite && droppedCount > 0 ? ` (Replaced ${droppedCount} existing students)` : '';
     res.status(201).json({ 

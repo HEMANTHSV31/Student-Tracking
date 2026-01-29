@@ -1298,7 +1298,7 @@ const StudentDashboard = () => {
             <div className="sb-title">
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <BarChart3 size={18} color="#6b7280" />
-                <h3>Attendance Engagement</h3>
+                <h3>Course-wise Attendance</h3>
               </div>
             </div>
             <BarChart data={attendanceData} loading={loading} />

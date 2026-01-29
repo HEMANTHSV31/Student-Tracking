@@ -108,9 +108,9 @@ function extractSkillLevel(courseName) {
  * - Skill level is extracted from course_name
  */
 export const uploadSkillReport = async (req, res) => {
-  console.log('[SKILL REPORT UPLOAD] Starting upload...');
-  console.log('[SKILL REPORT UPLOAD] User:', req.user?.user_id, 'Role:', req.user?.role);
-  console.log('[SKILL REPORT UPLOAD] File:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file');
+  // console.log('[SKILL REPORT UPLOAD] Starting upload...');
+  // console.log('[SKILL REPORT UPLOAD] User:', req.user?.user_id, 'Role:', req.user?.role);
+  // console.log('[SKILL REPORT UPLOAD] File:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file');
   
   // Check admin role
   if (req.user.role !== 'admin') {
@@ -132,7 +132,7 @@ export const uploadSkillReport = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    console.log('[SKILL REPORT UPLOAD] Parsing Excel file...');
+    // console.log('[SKILL REPORT UPLOAD] Parsing Excel file...');
     
     // Set connection timeout for large uploads (10 minutes)
     await connection.query('SET SESSION wait_timeout = 600');
@@ -145,7 +145,7 @@ export const uploadSkillReport = async (req, res) => {
     const worksheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(worksheet);
     
-    console.log(`[SKILL REPORT UPLOAD] Excel parsed - ${data.length} rows found`);
+    // console.log(`[SKILL REPORT UPLOAD] Excel parsed - ${data.length} rows found`);
 
     if (data.length === 0) {
       console.error('[SKILL REPORT UPLOAD] Excel file is empty');
@@ -166,7 +166,7 @@ export const uploadSkillReport = async (req, res) => {
     // Log Excel columns for debugging
     const firstRow = data[0];
     const columnNames = firstRow ? Object.keys(firstRow) : [];
-    console.log('[SKILL REPORT UPLOAD] Excel columns detected:', columnNames);
+    // console.log('[SKILL REPORT UPLOAD] Excel columns detected:', columnNames);
 
     // Validate required columns
     const requiredColumns = ['user_id', 'course_name', 'status'];
@@ -194,7 +194,7 @@ export const uploadSkillReport = async (req, res) => {
       studentMap.set(key, s);
     });
     
-    console.log(`Student map built with ${studentMap.size} entries`);
+    // console.log(`Student map built with ${studentMap.size} entries`);
 
     await connection.beginTransaction();
 
@@ -207,7 +207,7 @@ export const uploadSkillReport = async (req, res) => {
     const totalBatches = Math.ceil(data.length / BATCH_SIZE);
     const COMMIT_FREQUENCY = 3; // Commit every 3 batches (300 records) for 5000+ records
     
-    console.log(`[SKILL REPORT UPLOAD] Processing ${data.length} records in ${totalBatches} batches (committing every ${COMMIT_FREQUENCY} batches)`);
+    // console.log(`[SKILL REPORT UPLOAD] Processing ${data.length} records in ${totalBatches} batches (committing every ${COMMIT_FREQUENCY} batches)`);
 
     // Process each row in batches
     for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
@@ -215,7 +215,7 @@ export const uploadSkillReport = async (req, res) => {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, data.length);
       const batch = data.slice(batchStart, batchEnd);
       
-      console.log(`[SKILL REPORT UPLOAD] Processing batch ${batchNum + 1}/${totalBatches} (rows ${batchStart + 2}-${batchEnd + 1})`);
+      // console.log(`[SKILL REPORT UPLOAD] Processing batch ${batchNum + 1}/${totalBatches} (rows ${batchStart + 2}-${batchEnd + 1})`);
       
       for (let i = 0; i < batch.length; i++) {
         const row = batch[i];
@@ -240,7 +240,7 @@ export const uploadSkillReport = async (req, res) => {
       // Commit every COMMIT_FREQUENCY batches (300 records)
       if ((batchNum + 1) % COMMIT_FREQUENCY === 0 || batchNum === totalBatches - 1) {
         await connection.commit();
-        console.log(`[SKILL REPORT UPLOAD] Transaction committed at batch ${batchNum + 1} (${(batchNum + 1) * BATCH_SIZE} records processed)`);
+        // console.log(`[SKILL REPORT UPLOAD] Transaction committed at batch ${batchNum + 1} (${(batchNum + 1) * BATCH_SIZE} records processed)`);
         
         // Start new transaction if not the last batch
         if (batchNum < totalBatches - 1) {
@@ -249,13 +249,13 @@ export const uploadSkillReport = async (req, res) => {
       }
       
       // Log progress every batch
-      console.log(`[SKILL REPORT UPLOAD] Batch ${batchNum + 1} complete - Processed: ${processedCount}, Inserted: ${insertedCount}, Skipped: ${skippedCount}, Errors: ${errors.length}`);
+      // console.log(`[SKILL REPORT UPLOAD] Batch ${batchNum + 1} complete - Processed: ${processedCount}, Inserted: ${insertedCount}, Skipped: ${skippedCount}, Errors: ${errors.length}`);
     }
 
     await connection.commit();
     
-    console.log('[SKILL REPORT UPLOAD] Upload completed successfully');
-    console.log(`[SKILL REPORT UPLOAD] Summary - Total: ${data.length}, Processed: ${processedCount}, Inserted: ${insertedCount}, Skipped: ${skippedCount}, Errors: ${errors.length}`);
+    // console.log('[SKILL REPORT UPLOAD] Upload completed successfully');
+    // console.log(`[SKILL REPORT UPLOAD] Summary - Total: ${data.length}, Processed: ${processedCount}, Inserted: ${insertedCount}, Skipped: ${skippedCount}, Errors: ${errors.length}`);
 
     res.status(200).json({
       success: true,
@@ -305,7 +305,7 @@ export const uploadSkillReport = async (req, res) => {
     });
   } finally {
     connection.release();
-    console.log('[SKILL REPORT UPLOAD] Database connection released');
+    // console.log('[SKILL REPORT UPLOAD] Database connection released');
   }
 };
 
@@ -339,7 +339,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   const endTime = parseExcelTime(row.end_time);
 
   // DEBUG: Log what we're reading from Excel
-  console.log(`Row ${rowIndex}: Excel user_id="${excelUserIdColumn}", roll_number="${rollNumber}"`);
+  // console.log(`Row ${rowIndex}: Excel user_id="${excelUserIdColumn}", roll_number="${rollNumber}"`);
 
   // PRIMARY LOOKUP: Use Excel column "user_id" to find student via users.ID
   // Excel user_id (e.g., "7376242AL132") must match users.ID (e.g., "7376242AL132")
@@ -383,7 +383,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   
   // Extract skill level from course name
   const skillLevel = extractSkillLevel(normalizedCourseName);
-  console.log(`Row ${rowIndex}: Normalized "${courseName}" → "${normalizedCourseName}", skill_level=${skillLevel}`);
+  // console.log(`Row ${rowIndex}: Normalized "${courseName}" → "${normalizedCourseName}", skill_level=${skillLevel}`);
 
   // Check if record exists for this student + course (regardless of date)
   const [existing] = await connection.execute(
@@ -411,13 +411,13 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
     
     // If already Cleared, don't update
     if (existingRecord.status === 'Cleared') {
-      console.log(`Row ${rowIndex}: Skipped - Student already cleared ${normalizedCourseName}`);
+      // console.log(`Row ${rowIndex}: Skipped - Student already cleared ${normalizedCourseName}`);
       return { success: true, inserted: false, skipped: true };
     }
 
     // If same date exists, skip
     if (existingRecord.last_slot_date === slotDate) {
-      console.log(`Row ${rowIndex}: Skipped - Record already exists for date ${slotDate}`);
+      // console.log(`Row ${rowIndex}: Skipped - Record already exists for date ${slotDate}`);
       return { success: true, inserted: false, skipped: true };
     }
 
@@ -441,7 +441,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
       [slotId, newAttemptCount, newBestScore, score, status, attendance, slotDate, startTime, endTime, existingRecord.id]
     );
 
-    console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, attempt ${newAttemptCount}, status=${status}`);
+    // console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, attempt ${newAttemptCount}, status=${status}`);
     return { success: true, inserted: false, skipped: false, updated: true };
   }
 
@@ -458,7 +458,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
      attendance, slotDate, startTime, endTime]
   );
 
-  console.log(`Row ${rowIndex}: Inserted - ${rollNumber}, ${normalizedCourseName}, level=${skillLevel}, ${slotDate}`);
+  // console.log(`Row ${rowIndex}: Inserted - ${rollNumber}, ${normalizedCourseName}, level=${skillLevel}, ${slotDate}`);
   return { success: true, inserted: true, skipped: false };
 }
 
@@ -547,7 +547,7 @@ function parseExcelTime(timeValue) {
  */
 export const getFacultyVenues = async (req, res) => {
   try {
-    console.log(`[SKILL REPORT VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
+    // console.log(`[SKILL REPORT VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
     
     // Admin can see all venues
     if (req.user.role === 'admin') {
@@ -568,7 +568,7 @@ export const getFacultyVenues = async (req, res) => {
       [req.user.user_id]
     );
 
-    console.log(`[SKILL REPORT VENUES] Faculty lookup - user_id: ${req.user.user_id}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
+    // console.log(`[SKILL REPORT VENUES] Faculty lookup - user_id: ${req.user.user_id}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
 
     if (faculty.length === 0) {
       return res.status(403).json({ message: 'Faculty record not found' });
@@ -587,7 +587,7 @@ export const getFacultyVenues = async (req, res) => {
       [facultyId]
     );
 
-    console.log(`[SKILL REPORT VENUES] Query result for faculty_id ${facultyId}: ${venues.length} venue(s)`);
+    // console.log(`[SKILL REPORT VENUES] Query result for faculty_id ${facultyId}: ${venues.length} venue(s)`);
 
     res.status(200).json({ venues });
 

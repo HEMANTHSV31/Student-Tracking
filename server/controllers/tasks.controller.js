@@ -217,7 +217,7 @@ export const getVenuesForFaculty = async (req, res) => {
       // Get faculty_id from user_id
       const [faculty] = await db.query('SELECT faculty_id FROM faculties WHERE user_id = ?', [userId]);
       
-      console.log(`[GET VENUES] user_id: ${userId}, faculty record found:`, faculty.length > 0, faculty.length > 0 ? `faculty_id: ${faculty[0].faculty_id}` : 'NO FACULTY RECORD');
+      // console.log(`[GET VENUES] user_id: ${userId}, faculty record found:`, faculty.length > 0, faculty.length > 0 ? `faculty_id: ${faculty[0].faculty_id}` : 'NO FACULTY RECORD');
       
       if (faculty.length === 0) {
         return res.status(404).json({
@@ -240,11 +240,11 @@ export const getVenuesForFaculty = async (req, res) => {
         ORDER BY v. venue_name
       `;
       params = [faculty[0].faculty_id];
-      console.log(`[GET VENUES] Querying venues for faculty_id: ${faculty[0].faculty_id}`);
+      // console.log(`[GET VENUES] Querying venues for faculty_id: ${faculty[0].faculty_id}`);
     }
 
     const [venues] = await db.query(query, params);
-    console.log(`[GET VENUES] Found ${venues.length} venue(s)`);
+    // console.log(`[GET VENUES] Found ${venues.length} venue(s)`);
 
     res.status(200).json({
       success: true,
@@ -394,7 +394,7 @@ export const createTask = async (req, res) => {
       let eligibleStudents = students;
       
       if (skill_filter && skill_filter.trim()) {
-        console.log(`Filtering students for skill: ${skill_filter}`);
+        // console.log(`Filtering students for skill: ${skill_filter}`);
         
         // Get students who have CLEARED this skill
         const [clearedStudents] = await connection.query(`
@@ -408,7 +408,7 @@ export const createTask = async (req, res) => {
         // Only include students who have NOT cleared the skill
         eligibleStudents = students.filter(s => !clearedStudentIds.has(s.student_id));
         
-        console.log(`Total students in venue: ${students.length}, Eligible students: ${eligibleStudents.length}`);
+        // console.log(`Total students in venue: ${students.length}, Eligible students: ${eligibleStudents.length}`);
       }
 
       // Do not pre-create placeholder submissions.
@@ -646,16 +646,40 @@ export const getTaskSubmissions = async (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Helper function to normalize skill names for comparison
+    // EXACT case-insensitive matching only (matches skill_order and roadmap logic)
     const normalizeSkillName = (name) => {
       if (!name) return '';
-      return name
-        .toLowerCase()
-        .trim()
-        .replace(/\bjava\s+script\b/gi, 'javascript')  // "Java Script" -> "javascript"
-        .replace(/\btype\s+script\b/gi, 'typescript')  // "Type Script" -> "typescript"
-        .replace(/\s+/g, ' ')
-        .replace(/\s*\/\s*/g, '/')
-        .replace(/\s*-\s*/g, '-');
+      return name.toLowerCase().trim();
+    };
+
+    // Helper: Extract keywords for matching (remove common words)
+    const extractKeywords = (name) => {
+      const normalized = normalizeSkillName(name);
+      return normalized
+        .split(/[\s\/,.-]+/)
+        .filter(word => word.length > 2 && !['level', 'the', 'and', 'for'].includes(word));
+    };
+
+    // Helper: Check if task skill_filter matches student skill using keyword matching
+    const skillMatches = (taskSkillFilter, studentSkillName) => {
+      // First try exact match
+      if (normalizeSkillName(taskSkillFilter) === normalizeSkillName(studentSkillName)) {
+        return true;
+      }
+      
+      // Then try keyword matching (50% threshold like roadmap)
+      const taskKeywords = extractKeywords(taskSkillFilter);
+      const studentKeywords = extractKeywords(studentSkillName);
+      
+      if (taskKeywords.length === 0 || studentKeywords.length === 0) {
+        return false;
+      }
+      
+      const matchingKeywords = taskKeywords.filter(tk => 
+        studentKeywords.some(sk => sk.includes(tk) || tk.includes(sk))
+      );
+      
+      return matchingKeywords.length >= Math.ceil(taskKeywords.length * 0.5) && matchingKeywords.length > 0;
     };
 
     // First, get the venue_id, skill_filter, and title for this task
@@ -673,7 +697,6 @@ export const getTaskSubmissions = async (req, res) => {
     const venue_id = taskInfo[0].venue_id;
     const skill_filter = taskInfo[0].skill_filter;
     const task_title = taskInfo[0].title;
-    const normalizedSkillFilter = normalizeSkillName(skill_filter);
 
     // Get students who have CLEARED the skill (if skill_filter exists)
     let clearedStudentIds = new Set();
@@ -684,11 +707,14 @@ export const getTaskSubmissions = async (req, res) => {
         WHERE status = 'Cleared'
       `);
       
+      // console.log(`Task "${task_title}" - skill_filter: "${skill_filter}"`);
       allClearedStudents.forEach(s => {
-        if (normalizeSkillName(s.course_name) === normalizedSkillFilter) {
+        if (skillMatches(skill_filter, s.course_name)) {
           clearedStudentIds.add(s.student_id);
+          // console.log(`  ✓ Matched student ${s.student_id} skill: "${s.course_name}"`);
         }
       });
+      // console.log(`Total students with cleared skill: ${clearedStudentIds.size}`);
     }
 
     // Build base conditions for both current venue students AND students who submitted this task
@@ -827,7 +853,7 @@ export const gradeSubmission = async (req, res) => {
 
     // If grade < 50%, log that student needs to resubmit
     if (gradeNum < 50) {
-      console.log(`Student scored ${gradeNum}% (below 50%) - Task will be shown again for resubmission`);
+      // console.log(`Student scored ${gradeNum}% (below 50%) - Task will be shown again for resubmission`);
     }
 
     res.status(200).json({
@@ -1027,7 +1053,7 @@ export const getStudentTasks = async (req, res) => {
 
     const { student_id, venue_id, venue_name } = studentInfo[0];
 
-    console.log('Student Info:', { student_id, venue_id, venue_name, user_id });
+    // console.log('Student Info:', { student_id, venue_id, venue_name, user_id });
 
     // Get ALL venues the student has been in (current + dropped) for historical task display
     const [allVenueAllocations] = await db.query(`
@@ -1042,7 +1068,7 @@ export const getStudentTasks = async (req, res) => {
     const currentVenueId = venue_id;
     const allVenueIds = allVenueAllocations.map(v => v.venue_id);
 
-    console.log('All venues student has been in:', allVenueAllocations);
+    // console.log('All venues student has been in:', allVenueAllocations);
 
     if (!venue_id && allVenueIds.length === 0) {
       return res.status(200).json({
@@ -1091,39 +1117,59 @@ export const getStudentTasks = async (req, res) => {
     `, [student_id]);
 
     // Helper function to normalize skill names for comparison
-    // Only lowercase and trim - exact matching required
     const normalizeSkillName = (name) => {
       if (!name) return '';
       return name.toLowerCase().trim();
     };
 
-    // Helper function to check if a student skill matches a skill order entry
-    // Uses exact case-insensitive matching
-    const skillMatches = (studentSkillName, orderSkillName) => {
-      const studentNorm = normalizeSkillName(studentSkillName);
-      const orderNorm = normalizeSkillName(orderSkillName);
-      return studentNorm === orderNorm;
+    // Helper: Extract keywords for matching (remove common words)
+    const extractKeywords = (name) => {
+      const normalized = normalizeSkillName(name);
+      return normalized
+        .split(/[\s\/,.-]+/)
+        .filter(word => word.length > 2 && !['level', 'the', 'and', 'for'].includes(word));
     };
 
-    // Create sets for cleared and ongoing skills (normalized)
+    // Helper: Check if task skill_filter matches student skill using keyword matching
+    const skillMatches = (taskSkillFilter, studentSkillName) => {
+      // First try exact match
+      if (normalizeSkillName(taskSkillFilter) === normalizeSkillName(studentSkillName)) {
+        return true;
+      }
+      
+      // Then try keyword matching (50% threshold like roadmap)
+      const taskKeywords = extractKeywords(taskSkillFilter);
+      const studentKeywords = extractKeywords(studentSkillName);
+      
+      if (taskKeywords.length === 0 || studentKeywords.length === 0) {
+        return false;
+      }
+      
+      const matchingKeywords = taskKeywords.filter(tk => 
+        studentKeywords.some(sk => sk.includes(tk) || tk.includes(sk))
+      );
+      
+      return matchingKeywords.length >= Math.ceil(taskKeywords.length * 0.5) && matchingKeywords.length > 0;
+    };
+
+    // Create sets for cleared and ongoing skills
     const clearedSkillsSet = new Set();
     const clearedSkillsMap = new Map();
     const clearedSkillsList = [];
     
     studentSkills.forEach(skill => {
-      const normalizedName = normalizeSkillName(skill.course_name);
       if (skill.status === 'Cleared') {
-        clearedSkillsSet.add(skill.course_name); // Keep original for logging
-        clearedSkillsMap.set(normalizedName, skill);
+        clearedSkillsSet.add(skill.course_name); // Keep original for keyword matching
+        clearedSkillsMap.set(skill.course_name, skill); // Use original name as key
         clearedSkillsList.push(skill);
       }
     });
 
-    console.log('========== STUDENT TASKS SKILL PROGRESSION ==========');
-    console.log('Student ID:', student_id, 'Venue:', currentVenueId);
-    console.log('Student cleared skills:', Array.from(clearedSkillsSet));
-    console.log('Normalized cleared skills:', Array.from(clearedSkillsMap.keys()));
-    console.log('Skill order entries:', orderedSkills.map(s => s.skill_name));
+    // console.log('========== STUDENT TASKS SKILL PROGRESSION ==========');
+    // console.log('Student ID:', student_id, 'Venue:', currentVenueId);
+    // console.log('Student cleared skills:', Array.from(clearedSkillsSet));
+    // console.log('Normalized cleared skills:', Array.from(clearedSkillsMap.keys()));
+    // console.log('Skill order entries:', orderedSkills.map(s => s.skill_name));
 
     // Build skill progression with unlock status
     const skillProgression = [];
@@ -1143,7 +1189,7 @@ export const getStudentTasks = async (req, res) => {
           isCleared = true;
           // Add to map for future lookups
           clearedSkillsMap.set(normalizedSkillName, matchedSkill);
-          console.log(`Skill "${skill.skill_name}" MATCHED with cleared skill "${matchedSkill.course_name}" via flexible matching`);
+          // console.log(`Skill "${skill.skill_name}" MATCHED with cleared skill "${matchedSkill.course_name}" via flexible matching`);
         }
       }
       
@@ -1198,12 +1244,12 @@ export const getStudentTasks = async (req, res) => {
       // previousCleared tracking is done above in the if-else block
     }
 
-    console.log('\n--- Skill Progression Summary ---');
+    // console.log('\n--- Skill Progression Summary ---');
     skillProgression.forEach(s => {
-      console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}`);
+      // console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}`);
     });
-    console.log('Unlocked skills set:', Array.from(unlockedSkills));
-    console.log('======================================================\n');
+    // console.log('Unlocked skills set:', Array.from(unlockedSkills));
+    // console.log('======================================================\n');
 
     // Get all tasks from ALL venues the student has been in (match by task title for cross-venue)
     // Priority: Current venue tasks first, then historical submissions from other venues
@@ -1254,7 +1300,8 @@ export const getStudentTasks = async (req, res) => {
     `;
     const tasksParams = [currentVenueId || 0, student_id, currentVenueId || allVenueIds[0]];
 
-    if (course_type) {
+    // Only filter by course_type if it's specified AND not 'all'
+    if (course_type && course_type !== 'all') {
       tasksQuery += ` AND t.course_type = ?`;
       tasksParams.push(course_type);
     }
@@ -1310,16 +1357,16 @@ export const getStudentTasks = async (req, res) => {
       return task;
     });
 
-    console.log(`Found ${tasks.length} tasks for venue_id ${currentVenueId} (including historical submissions)`);
-    console.log('Ordered skills from skill_order table:', orderedSkills.map(s => s.skill_name));
-    console.log('Unlocked skills for student:', Array.from(unlockedSkills));
+    // console.log(`Found ${tasks.length} tasks for venue_id ${currentVenueId} (including historical submissions)`);
+    // console.log('Ordered skills from skill_order table:', orderedSkills.map(s => s.skill_name));
+    // console.log('Unlocked skills for student:', Array.from(unlockedSkills));
 
     // Filter tasks based on skill_filter, skill_order, and completion status
     // HIDE tasks for skills student has already CLEARED
     const filteredTasks = tasks.filter(task => {
       // ALWAYS show tasks that need revision (grade < 50%)
       if (task.submission_status === 'Needs Revision') {
-        console.log(`Task "${task.title}" needs revision - showing to student`);
+        // console.log(`Task "${task.title}" needs revision - showing to student`);
         return true;
       }
       
@@ -1330,30 +1377,36 @@ export const getStudentTasks = async (req, res) => {
       if (!effectiveSkillFilter) {
         // Hide tasks that are already graded successfully (grade >= 50%)
         if (task.submission_status === 'Graded' && task.grade >= 50) {
-          console.log(`Task "${task.title}" - No skill filter, already graded successfully - hiding`);
+          // console.log(`Task "${task.title}" - No skill filter, already graded successfully - hiding`);
           return false;
         }
-        console.log(`Task "${task.title}" - No skill filter - showing`);
+        // console.log(`Task "${task.title}" - No skill filter - showing`);
         return true;
       }
       
       // Use the same normalization function for consistent matching
       const normalizedSkillFilter = normalizeSkillName(effectiveSkillFilter);
       
-      // Check if student has cleared this skill (using normalized names)
-      const hasCleared = clearedSkillsMap.has(normalizedSkillFilter);
+      // Use keyword matching to check if student has cleared this skill
+      const hasCleared = Array.from(clearedSkillsMap.keys()).some(clearedSkillName => {
+        const match = skillMatches(effectiveSkillFilter, clearedSkillName);
+        if (match) {
+          // console.log(`  Task skill "${effectiveSkillFilter}" matched cleared skill "${clearedSkillName}"`);
+        }
+        return match;
+      });
       
-      console.log(`Task "${task.title}" - skill_filter: "${effectiveSkillFilter}" -> normalized: "${normalizedSkillFilter}", hasCleared: ${hasCleared}`);
+      // console.log(`Task "${task.title}" - skill_filter: "${effectiveSkillFilter}", hasCleared: ${hasCleared}`);
       
       // HIDE task if student has CLEARED this skill (they don't need it anymore)
       if (hasCleared) {
-        console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" CLEARED - hiding from student`);
+        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" CLEARED - hiding from student`);
         return false;
       }
       
       // If no skill order is defined, show all tasks (don't check unlock status)
       if (orderedSkills.length === 0) {
-        console.log(`Task "${task.title}" - No skill order defined - showing`);
+        // console.log(`Task "${task.title}" - No skill order defined - showing`);
         return true;
       }
       
@@ -1364,7 +1417,7 @@ export const getStudentTasks = async (req, res) => {
       
       // If skill is not in skill_order table, show the task anyway (don't block on unknown skills)
       if (!skillExistsInOrder) {
-        console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" not in skill_order table - showing`);
+        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" not in skill_order table - showing`);
         return true;
       }
       
@@ -1374,23 +1427,23 @@ export const getStudentTasks = async (req, res) => {
       
       // If skill is locked, don't show the task
       if (!isSkillUnlocked) {
-        console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" is LOCKED - hiding from student`);
+        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" is LOCKED - hiding from student`);
         return false;
       }
       
-      console.log(`Task "${task.title}" - Skill Filter: ${effectiveSkillFilter}, Unlocked: ${isSkillUnlocked}, Cleared: ${hasCleared} - SHOWING`);
+      // console.log(`Task "${task.title}" - Skill Filter: ${effectiveSkillFilter}, Unlocked: ${isSkillUnlocked}, Cleared: ${hasCleared} - SHOWING`);
       
       // Show task - skill is unlocked and not yet cleared
       return true;
     });
 
-    console.log(`Showing ${filteredTasks.length} tasks after skill filtering and revision check`);
+    // console.log(`Showing ${filteredTasks.length} tasks after skill filtering and revision check`);
 
     // Debug: Check all tasks in the venue regardless of status
     const [allVenueTasks] = await db.query(`
       SELECT task_id, title, status, venue_id FROM tasks WHERE venue_id = ?
     `, [currentVenueId || allVenueIds[0] || 0]);
-    console.log(`Total tasks in venue ${currentVenueId}:`, allVenueTasks);
+    // console.log(`Total tasks in venue ${currentVenueId}:`, allVenueTasks);
 
     // Get materials for each task
     const tasksWithResources = await Promise.all(filteredTasks.map(async (task) => {
@@ -1581,7 +1634,7 @@ export const submitTask = async (req, res) => {
         if (fs.existsSync(oldFilePath)) {
           try {
             fs.unlinkSync(oldFilePath);
-            console.log(`Deleted old file: ${oldFilePath}`);
+            // console.log(`Deleted old file: ${oldFilePath}`);
           } catch (err) {
             console.error(`Failed to delete old file: ${oldFilePath}`, err);
             // Continue with update even if deletion fails

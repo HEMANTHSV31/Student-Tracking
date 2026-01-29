@@ -51,7 +51,7 @@ app.use((req, res, next) => {
   if (fullPath.includes('/upload') || 
       fullPath.includes('/submit') ||
       fullPath.includes('/resources')) {
-    console.log(`[BODY PARSER] ✓ Bypassing ALL body parsers for: ${req.method} ${fullPath}`);
+    // console.log(`[BODY PARSER] ✓ Bypassing ALL body parsers for: ${req.method} ${fullPath}`);
     return next();
   }
   
@@ -72,7 +72,7 @@ app.use((req, res, next) => {
   
   // Log request details for debugging
   if (req.originalUrl.includes('/upload')) {
-    console.log(`[SERVER] Upload request - Size: ${req.headers['content-length']} bytes, Type: ${req.headers['content-type']}`);
+    // console.log(`[SERVER] Upload request - Size: ${req.headers['content-length']} bytes, Type: ${req.headers['content-type']}`);
   }
   next();
 });
@@ -101,7 +101,7 @@ app.use(`${API_PREFIX}/api/skill-order`, skillOrderRoutes);
 // app.use('/api/faculty/dashboard', facultyDashboardRoutes); 
 // Cron job to update schedule daily at 8 PM
 cron.schedule('0 20 * * *', () => {
-    console.log('Running daily schedule update at 8 PM...');
+    // console.log('Running daily schedule update at 8 PM...');
     updateDailySchedule();
 }, {
     scheduled: true,
@@ -111,7 +111,7 @@ cron.schedule('0 20 * * *', () => {
 // Function to update daily schedule
 async function updateDailySchedule() {
     try {
-        console.log('Starting daily schedule update...');
+        // console.log('Starting daily schedule update...');
         
         // Import db connection
         const { default: db } = await import('./config/db.js');
@@ -121,7 +121,7 @@ async function updateDailySchedule() {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDay = days[today.getDay()];
         
-        console.log(`Daily update running for: ${currentDay} - ${today.toDateString()}`);
+        // console.log(`Daily update running for: ${currentDay} - ${today.toDateString()}`);
         
         // 1. Check active student enrollments
         const [activeStudents] = await db.execute(`
@@ -140,12 +140,12 @@ async function updateDailySchedule() {
         `);
         
         // 3. Log summary
-        console.log(`Schedule Update Summary:
-            - Active Students: ${activeStudents[0].active_students}
-            - Active Groups: ${activeGroups[0].active_groups}
-            - Scheduled Groups: ${activeGroups[0].scheduled_groups}
-            - Current Day: ${currentDay}
-        `);
+        // console.log(`Schedule Update Summary:
+        //     - Active Students: ${activeStudents[0].active_students}
+        //     - Active Groups: ${activeGroups[0].active_groups}
+        //     - Scheduled Groups: ${activeGroups[0].scheduled_groups}
+        //     - Current Day: ${currentDay}
+        // `);
         
         // 4. Optional: Clear any cached schedule data if you have caching
         // await clearScheduleCache();
@@ -153,7 +153,7 @@ async function updateDailySchedule() {
         // 5. Optional: Update any schedule-related statistics
         // await updateScheduleStatistics();
         
-        console.log('Daily schedule update completed successfully');
+        // console.log('Daily schedule update completed successfully');
         
     } catch (error) {
         console.error('Error in daily schedule update:', error);
@@ -162,6 +162,6 @@ async function updateDailySchedule() {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server running on ${PORT}`);
-    console.log('Daily schedule update cron job scheduled for 8 PM');
+     console.log(`Server running on ${PORT}`);
+     console.log('Daily schedule update cron job scheduled for 8 PM');
 });

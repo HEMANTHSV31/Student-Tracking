@@ -85,7 +85,7 @@ export const createFaculty = async (req, res) => {
     );
 
     const userId = userResult.insertId;
-    console.log(`[CREATE FACULTY] Created user record - user_id: ${userId}, name: ${name}, role_id: 2`);
+    // console.log(`[CREATE FACULTY] Created user record - user_id: ${userId}, name: ${name}, role_id: 2`);
 
     // Insert into faculties table
     const [facultyResult] = await connection.query(
@@ -94,7 +94,7 @@ export const createFaculty = async (req, res) => {
     );
 
     const dbFacultyId = facultyResult.insertId;
-    console.log(`[CREATE FACULTY] Created faculty record - faculty_id: ${dbFacultyId}, user_id: ${userId}, designation: ${designation}`);
+    // console.log(`[CREATE FACULTY] Created faculty record - faculty_id: ${dbFacultyId}, user_id: ${userId}, designation: ${designation}`);
 
     await connection.commit();
 
@@ -498,7 +498,7 @@ export const bulkUploadFaculties = async (req, res) => {
 export const getFacultyClasses = async (req, res) => {
   try {
     const userId = req.user.user_id;
-    console.log(`[MY CLASSES] user_id: ${userId}`);
+    // console.log(`[MY CLASSES] user_id: ${userId}`);
 
     // Get faculty_id for the logged-in user
     const [faculty] = await db.query(
@@ -506,7 +506,7 @@ export const getFacultyClasses = async (req, res) => {
       [userId]
     );
 
-    console.log(`[MY CLASSES] Faculty lookup - user_id: ${userId}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
+    // console.log(`[MY CLASSES] Faculty lookup - user_id: ${userId}, found: ${faculty.length > 0}, faculty_id: ${faculty.length > 0 ? faculty[0].faculty_id : 'NONE'}`);
 
     if (faculty.length === 0) {
       return res.status(404).json({
@@ -556,7 +556,7 @@ export const getFacultyClasses = async (req, res) => {
       ORDER BY v.venue_name, g.group_name
     `, [facultyId]);
 
-    console.log(`[MY CLASSES] Query result for faculty_id ${facultyId}: ${venues.length} venue(s)/group(s)`);
+    // console.log(`[MY CLASSES] Query result for faculty_id ${facultyId}: ${venues.length} venue(s)/group(s)`);
 
     // Transform into a structured format
     const classesMap = new Map();

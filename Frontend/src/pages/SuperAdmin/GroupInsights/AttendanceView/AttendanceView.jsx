@@ -124,16 +124,16 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
           session: selectedSession
         });
         
-        console.log('Fetching attendance with params:', { 
-          venue: selectedVenue, 
-          date: selectedDate, 
-          session: selectedSession 
-        });
+        // console.log('Fetching attendance with params:', { 
+        //   venue: selectedVenue, 
+        //   date: selectedDate, 
+        //   session: selectedSession 
+        // });
         
         const response = await apiGet(`/attendance/venue/${selectedVenue}/details?${params}`);
         const data = await response.json();
         
-        console.log('Attendance response:', data);
+        // console.log('Attendance response:', data);
         
         if (data.success) {
           setStudents(data.data?.students || []);
@@ -241,7 +241,7 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
             style={styles.select} 
             value={selectedSession} 
             onChange={(e) => {
-              console.log('Session changed from', selectedSession, 'to', e.target.value);
+              // console.log('Session changed from', selectedSession, 'to', e.target.value);
               setSelectedSession(e.target.value);
             }}
           >

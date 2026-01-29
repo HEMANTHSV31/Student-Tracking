@@ -411,7 +411,7 @@ const GroupsClasses = () => {
       }
     } catch (err) {
       // Silently fail - student might not exist yet
-      console.log("Student lookup:", err.message);
+      // console.log("Student lookup:", err.message);
     }
   };
 

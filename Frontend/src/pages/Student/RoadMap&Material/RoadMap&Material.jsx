@@ -173,16 +173,16 @@ const StudentRoadmap = () => {
 
   const fetchRoadmapData = async () => {
     setLoading(true);
-    console.log('[ROADMAP] ========== FETCH START ==========');
+    // console.log('[ROADMAP] ========== FETCH START ==========');
     try {
-      console.log('[ROADMAP] Fetching roadmap data for course:', selectedCourse);
-      console.log('[ROADMAP] API URL:', `${import.meta.env.VITE_API_URL}/roadmap/student?course_type=${selectedCourse}`);
+      // console.log('[ROADMAP] Fetching roadmap data for course:', selectedCourse);
+      // console.log('[ROADMAP] API URL:', `${import.meta.env.VITE_API_URL}/roadmap/student?course_type=${selectedCourse}`);
       
       const response = await apiGet(`/roadmap/student?course_type=${selectedCourse}`, {
         headers: { 'Cache-Control': 'no-cache' }
       });
 
-      console.log('[ROADMAP] Response status:', response.status, response.statusText);
+      // console.log('[ROADMAP] Response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
@@ -191,28 +191,28 @@ const StudentRoadmap = () => {
       }
 
       const result = await response.json();
-      console.log('[ROADMAP] ========== API RESPONSE ==========');
-      console.log('[ROADMAP] Full response:', JSON.stringify(result, null, 2));
-      console.log('[ROADMAP] Success:', result.success);
-      console.log('[ROADMAP] Data array length:', result.data?.length);
-      console.log('[ROADMAP] Venue:', result.venue);
-      console.log('[ROADMAP] ========================================');
+      // console.log('[ROADMAP] ========== API RESPONSE ==========');
+      // console.log('[ROADMAP] Full response:', JSON.stringify(result, null, 2));
+      // console.log('[ROADMAP] Success:', result.success);
+      // console.log('[ROADMAP] Data array length:', result.data?.length);
+      // console.log('[ROADMAP] Venue:', result.venue);
+      // console.log('[ROADMAP] ========================================');
       
       // Handle venue display first - whether data exists or not
       if (result.venue && result.venue.venue_name) {
-        console.log('[ROADMAP] Setting venue name:', result.venue.venue_name);
+        // console.log('[ROADMAP] Setting venue name:', result.venue.venue_name);
         setVenueName(result.venue.venue_name);
       } else {
-        console.log('[ROADMAP] No venue assigned, venue object:', result.venue);
+        // console.log('[ROADMAP] No venue assigned, venue object:', result.venue);
         setVenueName('No Venue Assigned');
       }
       
       if (result.success && result.data && result.data.length > 0) {
-        console.log('[ROADMAP] Processing', result.data.length, 'modules');
+        // console.log('[ROADMAP] Processing', result.data.length, 'modules');
         const venueId = result.venue?.venue_id;
         const studentId = result.venue?.student_id;
         const backendSkillProgression = result.skill_progression || [];
-        console.log('[ROADMAP] Skill progression:', backendSkillProgression);
+        // console.log('[ROADMAP] Skill progression:', backendSkillProgression);
 
         // Transform backend data to match UI expectations
         // Use is_locked, is_completed, is_current from backend response
@@ -290,14 +290,17 @@ const StudentRoadmap = () => {
             currentSkill: currentSkill?.skill_name || null
           });
         }
-        console.log('[ROADMAP] Final roadmap data set:', finalData.length, 'modules');
+        
+        // CRITICAL: Actually update the state with the final data
+        setRoadmapData(finalData);
+        // console.log('[ROADMAP] Final roadmap data set:', finalData.length, 'modules');
 
         if (recommendedSelectedId) {
           setSelectedNodeId(recommendedSelectedId);
-          console.log('[ROADMAP] Selected node ID:', recommendedSelectedId);
+          // console.log('[ROADMAP] Selected node ID:', recommendedSelectedId);
         }
       } else {
-        console.log('[ROADMAP] No modules found or empty data');
+        // console.log('[ROADMAP] No modules found or empty data');
         setRoadmapData([]);
       }
     } catch (err) {
@@ -311,6 +314,13 @@ const StudentRoadmap = () => {
 
   // Filter roadmap data by selected course type
   const filteredRoadmapData = roadmapData.filter(n => n.course_type === selectedCourse);
+  // console.log('[ROADMAP] ========== FILTERING ==========');
+  // console.log('[ROADMAP] Total roadmapData:', roadmapData.length);
+  // console.log('[ROADMAP] Selected course:', selectedCourse);
+  // console.log('[ROADMAP] Filtered count:', filteredRoadmapData.length);
+  // console.log('[ROADMAP] Filtered modules:', filteredRoadmapData.map(m => m.title));
+  // console.log('[ROADMAP] ====================================');
+  
   const selectedNode = filteredRoadmapData.find(n => n.roadmap_id === selectedNodeId) || filteredRoadmapData[0];
   const completedCount = filteredRoadmapData.filter(n => n.is_completed).length;
   const progressPercentage = filteredRoadmapData.length ? Math.round((completedCount / filteredRoadmapData.length) * 100) : 0;
