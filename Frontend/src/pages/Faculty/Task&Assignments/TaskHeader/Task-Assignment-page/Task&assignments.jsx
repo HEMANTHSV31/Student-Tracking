@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { apiGet, apiPost, apiPut } from '../../../../../utils/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../../../../utils/api';
 import {
     PlusCircle,
     Search,
@@ -261,15 +261,10 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     }
 
     try {
-      const response = await fetch(`${API_URL}/tasks/delete/${taskId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
+      console.log('Deleting task:', taskId);
+      const response = await apiDelete(`/tasks/delete/${taskId}`);
       const data = await response.json();
+      console.log('Delete response:', { status: response.status, data });
 
       if (data.success) {
         // Remove the task from the assignments list
@@ -279,11 +274,12 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
         setOpenMenuId(null);
         alert('Task deleted successfully');
       } else {
+        console.error('Delete failed:', data);
         alert(data.message || 'Failed to delete task');
       }
     } catch (error) {
       console.error('Error deleting task:', error);
-      alert('Error deleting task');
+      alert('Error deleting task: ' + error.message);
     }
   };
 

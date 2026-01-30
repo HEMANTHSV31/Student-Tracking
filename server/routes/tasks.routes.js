@@ -66,7 +66,7 @@ router.use((err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        message: 'File size exceeds the limit of 5MB'
+        message: 'File size exceeds the limit (100MB for faculty/admin, 10MB for students)'
       });
     }
     if (err.code === 'LIMIT_FILE_COUNT') {

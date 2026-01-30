@@ -89,8 +89,8 @@ const storage = multer.diskStorage({
 export const upload = multer({
   storage: storage,
   limits: { 
-    fileSize: 10 * 1024 * 1024, // 10MB limit (reduced for security)
-    files: 5 // Maximum 5 files per upload
+    fileSize: 100 * 1024 * 1024, // 100MB limit for faculty/admin
+    files: 10 // Maximum 10 files per upload
   },
   fileFilter: (req, file, cb) => {
     // Sanitize filename first
@@ -2080,12 +2080,18 @@ export const deleteTask = async (req, res) => {
     const { task_id } = req.params;
     const userId = req.user.user_id;
 
-    // Get user role
+    console.log('Delete task request:', { task_id, userId });
+
+    // Get user role and details
     const [user] = await connection.query(`
-      SELECT role_id FROM users WHERE user_id = ?
+      SELECT u.role_id, u.email, f.faculty_id 
+      FROM users u 
+      LEFT JOIN faculties f ON u.user_id = f.user_id 
+      WHERE u.user_id = ?
     `, [userId]);
 
     if (user.length === 0) {
+      console.log('User not found:', userId);
       return res.status(403).json({
         success: false,
         message: 'User not found'
@@ -2093,40 +2099,69 @@ export const deleteTask = async (req, res) => {
     }
 
     const userRole = user[0].role_id;
+    const facultyId = user[0].faculty_id;
+    console.log('User details:', { userRole, facultyId, email: user[0].email });
 
     // Start transaction
     await connection.beginTransaction();
 
-    // First, get task details and verify permissions
+    // Get task details and verify permissions
     const [taskDetails] = await connection.execute(
-      'SELECT t.*, v.assigned_faculty_id FROM tasks t INNER JOIN venue v ON t.venue_id = v.venue_id WHERE t.task_id = ?',
+      'SELECT t.*, v.assigned_faculty_id, v.venue_name FROM tasks t INNER JOIN venue v ON t.venue_id = v.venue_id WHERE t.task_id = ?',
       [task_id]
     );
 
     if (taskDetails.length === 0) {
       await connection.rollback();
+      console.log('Task not found:', task_id);
       return res.status(404).json({
         success: false,
         message: 'Task not found'
       });
     }
 
-    // If faculty, verify they are assigned to this venue
-    if (userRole === 2) {
-      const [faculty] = await connection.query(`
-        SELECT faculty_id FROM faculties WHERE user_id = ?
-      `, [userId]);
+    const task = taskDetails[0];
+    console.log('Task details:', { 
+      task_id: task.task_id, 
+      venue_id: task.venue_id, 
+      assigned_faculty_id: task.assigned_faculty_id,
+      venue_name: task.venue_name
+    });
 
-      if (faculty.length === 0 || taskDetails[0].assigned_faculty_id !== faculty[0].faculty_id) {
+    // Admin (role_id = 1) can delete any task
+    // Faculty (role_id = 2) can only delete tasks from their assigned venue
+    if (userRole === 2) {
+      if (!facultyId) {
         await connection.rollback();
+        console.log('Faculty ID not found for user:', userId);
         return res.status(403).json({
           success: false,
-          message: 'You can only delete tasks from your assigned venue'
+          message: 'Faculty information not found'
         });
       }
+
+      if (task.assigned_faculty_id !== facultyId) {
+        await connection.rollback();
+        console.log('Permission denied - faculty not assigned to venue:', {
+          facultyId,
+          assignedFacultyId: task.assigned_faculty_id
+        });
+        return res.status(403).json({
+          success: false,
+          message: `You can only delete tasks from your assigned venue. This task is in ${task.venue_name}.`
+        });
+      }
+    } else if (userRole !== 1) {
+      // Not admin or faculty
+      await connection.rollback();
+      console.log('Invalid role for delete operation:', userRole);
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to delete tasks'
+      });
     }
 
-    // Check if soft delete columns exist, if not, use hard delete
+    // Check if soft delete columns exist
     const [columns] = await connection.execute(`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
@@ -2138,12 +2173,14 @@ export const deleteTask = async (req, res) => {
     let deleteResult;
     if (columns.length > 0) {
       // Soft delete - mark as deleted
+      console.log('Using soft delete');
       [deleteResult] = await connection.execute(
         'UPDATE tasks SET deleted = 1, deleted_at = NOW() WHERE task_id = ? AND (deleted IS NULL OR deleted = 0)',
         [task_id]
       );
     } else {
       // Hard delete - remove from database
+      console.log('Using hard delete');
       // First delete submissions
       await connection.execute(
         'DELETE FROM task_submissions WHERE task_id = ?',
@@ -2159,6 +2196,7 @@ export const deleteTask = async (req, res) => {
 
     if (deleteResult.affectedRows === 0) {
       await connection.rollback();
+      console.log('No rows affected during delete:', task_id);
       return res.status(404).json({
         success: false,
         message: 'Task not found or already deleted'
@@ -2167,6 +2205,7 @@ export const deleteTask = async (req, res) => {
 
     // Commit the transaction
     await connection.commit();
+    console.log('Task deleted successfully:', task_id);
 
     res.json({
       success: true,
@@ -2178,7 +2217,8 @@ export const deleteTask = async (req, res) => {
     console.error('Error deleting task:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while deleting task'
+      message: 'Server error while deleting task',
+      error: error.message
     });
   } finally {
     connection.release();

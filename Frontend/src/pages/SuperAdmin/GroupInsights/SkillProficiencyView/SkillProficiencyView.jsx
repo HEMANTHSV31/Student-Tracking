@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CheckCircle, XCircle, Clock, TrendingUp, Award, Target, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertCircle, TrendingUp, Award, Target, Plus, X, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
 import { apiPost } from '../../../../utils/api';
 
 const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '' }) => {
@@ -414,21 +414,30 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         <div style={styles.statsRow}>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={styles.statLabel}>Total Students</div>
+              <div style={styles.statLabel}>
+                <Users size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Total Students</span>
+              </div>
               <div style={styles.statValue}>{skillStats.totalStudentsDB || 0}</div>
-              <div style={styles.statSub}>In database</div>
+              
             </div>
           </div>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={styles.statLabel}>Total Students</div>
+              <div style={styles.statLabel}>
+                <BookOpen size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Total Students</span>
+              </div>
               <div style={styles.statValue}>{skillStats.totalAssignedStudents || 0}</div>
               <div style={styles.statSub}>Assigned to venues</div>
             </div>
           </div>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={{...styles.statLabel, color: '#166534'}}>Cleared</div>
+              <div style={{...styles.statLabel, color: '#166534'}}>
+                <CheckCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Cleared</span>
+              </div>
               <div style={{...styles.statValue, color: '#166534', cursor: 'pointer', transition: 'all 0.2s ease'}}
                 onClick={() => setStatusFilter('Cleared')}
                 title="Click to filter by Cleared"
@@ -440,7 +449,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
           </div>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={{...styles.statLabel, color: '#991b1b'}}>Not Cleared</div>
+              <div style={{...styles.statLabel, color: '#991b1b'}}>
+                <XCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Not Cleared</span>
+              </div>
               <div style={{...styles.statValue, color: '#991b1b', cursor: 'pointer', transition: 'all 0.2s ease'}}
                 onClick={() => setStatusFilter('Not Cleared')}
                 title="Click to filter by Not Cleared"
@@ -452,7 +464,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
           </div>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={{...styles.statLabel, color: '#f59e0b'}}>Ongoing</div>
+              <div style={{...styles.statLabel, color: '#f59e0b'}}>
+                <Clock size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Ongoing</span>
+              </div>
               <div style={{...styles.statValue, color: '#f59e0b', cursor: 'pointer', transition: 'all 0.2s ease'}}
                 onClick={() => setStatusFilter('Ongoing')}
                 title="Click to filter by Ongoing"
@@ -464,7 +479,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
           </div>
           <div style={styles.statBox}>
             <div style={styles.statContent}>
-              <div style={{...styles.statLabel, color: '#6b7280'}}>Not Attempted</div>
+              <div style={{...styles.statLabel, color: '#6b7280'}}>
+                <AlertCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                <span style={{verticalAlign: 'middle'}}>Not Attempted</span>
+              </div>
               <div style={{...styles.statValue, color: '#6b7280', cursor: 'pointer', transition: 'all 0.2s ease'}}
                 onClick={() => setStatusFilter('Not Attempted')}
                 title="Click to filter by Not Attempted"

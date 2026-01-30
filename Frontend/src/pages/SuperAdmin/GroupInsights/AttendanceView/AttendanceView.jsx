@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet } from '../../../../utils/api';
-import { ClipboardList, Clock } from 'lucide-react';
+import { ClipboardList, Clock, Users, CheckCircle, XCircle, AlertCircle, Calendar, UserCheck, Briefcase, Coffee, FileQuestion } from 'lucide-react';
 
 // Sessions - 4 per day with actual time boundaries
 const SESSIONS = [
@@ -340,32 +340,50 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
               <>
                 <div style={styles.statsRow}>
                   <div style={styles.statBox}>
-                    <div style={styles.statLabel}>Total Students</div>
+                    <div style={styles.statLabel}>
+                      <Users size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Total Students</span>
+                    </div>
                     <div style={styles.statValue}>{attendanceStats.total}</div>
                     <div style={styles.statSub}>Enrolled in this venue</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#166534' }}>Present</div>
+                    <div style={{ ...styles.statLabel, color: '#166534' }}>
+                      <CheckCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Present</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#166534' }}>{attendanceStats.present}</div>
                     <div style={styles.statSub}>Attended on selected date</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#991b1b' }}>Absent</div>
+                    <div style={{ ...styles.statLabel, color: '#991b1b' }}>
+                      <XCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Absent</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#991b1b' }}>{attendanceStats.absent}</div>
                     <div style={styles.statSub}>Missed sessions</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#f59e0b' }}>Late</div>
+                    <div style={{ ...styles.statLabel, color: '#f59e0b' }}>
+                      <Clock size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Late</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#f59e0b' }}>{attendanceStats.late || 0}</div>
                     <div style={styles.statSub}>Came in late</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#8b5cf6' }}>PS</div>
+                    <div style={{ ...styles.statLabel, color: '#8b5cf6' }}>
+                      <UserCheck size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>PS</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#8b5cf6' }}>{attendanceStats.ps || 0}</div>
                     <div style={styles.statSub}>Personalized Skill</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#3b82f6' }}>Attendance Rate</div>
+                    <div style={{ ...styles.statLabel, color: '#3b82f6' }}>
+                      <Calendar size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Attendance Rate</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#3b82f6' }}>
                       {attendanceStats.total > 0
                         ? ((attendanceStats.present / attendanceStats.total) * 100).toFixed(1)
@@ -374,17 +392,26 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
                     <div style={styles.statSub}>For selected period</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#3B82F6' }}>AD</div>
+                    <div style={{ ...styles.statLabel, color: '#3B82F6' }}>
+                      <Briefcase size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>AD</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#3B82F6' }}>{attendanceStats.ad || 0}</div>
                     <div style={styles.statSub}>Academics</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#10B981' }}>MM</div>
+                    <div style={{ ...styles.statLabel, color: '#10B981' }}>
+                      <Coffee size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>MM</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#10B981' }}>{attendanceStats.mm || 0}</div>
                     <div style={styles.statSub}>Mentor meeting</div>
                   </div>
                   <div style={styles.statBox}>
-                    <div style={{ ...styles.statLabel, color: '#6b7280' }}>Other</div>
+                    <div style={{ ...styles.statLabel, color: '#6b7280' }}>
+                      <FileQuestion size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
+                      <span style={{verticalAlign: 'middle'}}>Other</span>
+                    </div>
                     <div style={{ ...styles.statValue, color: '#6b7280' }}>{attendanceStats.other || 0}</div>
                     <div style={styles.statSub}>Other reasons</div>
                   </div>
@@ -686,14 +713,12 @@ const styles = {
     textAlign: 'center',
   },
   statsRow: {
-    display: 'flex',
-    gap: '20px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
+    gap: '16px',
     marginBottom: '24px',
-    flexWrap: 'wrap',
   },
   statBox: {
-    flex: 1,
-    minWidth: '180px',
     backgroundColor: '#fff',
     padding: '20px',
     borderRadius: '8px',
@@ -702,10 +727,10 @@ const styles = {
     textAlign: 'center',
   },
   statLabel: {
-    fontSize: '18px',
+    fontSize: '14px',
     color: '#6b7280',
     marginBottom: '8px',
-    fontWeight: '600',
+    fontWeight: '500',
   },
   statValue: {
     fontSize: '24px',
