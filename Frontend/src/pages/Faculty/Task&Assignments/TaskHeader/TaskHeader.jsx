@@ -145,7 +145,7 @@ useEffect(() => {
                     onChange={handleVenueChange}
                     style={styles.dropdownSelect}
                   >
-                    <option value="all" style={{ fontWeight: 'bold', color: '#3b82f6' }}> All Venues</option>
+                    <option value="" disabled>Select a venue</option>
                     {venues.map(venue => (
                       <option key={venue. venue_id} value={venue. venue_id}>
                         {venue.venue_name} ({venue.student_count} students)

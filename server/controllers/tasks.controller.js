@@ -142,7 +142,7 @@ export const upload = multer({
 export const studentUpload = multer({
   storage: storage,
   limits: { 
-    fileSize: 5 * 1024 * 1024, // 5MB limit for students
+    fileSize: 10 * 1024 * 1024, // 10MB limit for students
     files: 1 // Students can only upload 1 file at a time
   },
   fileFilter: (req, file, cb) => {
@@ -812,6 +812,8 @@ export const getTaskSubmissions = async (req, res) => {
 
 // Grade a submission
 export const gradeSubmission = async (req, res) => {
+  const connection = await db.getConnection();
+  
   try {
     const { submission_id } = req.params;
     const { grade, feedback } = req.body;
@@ -820,7 +822,7 @@ export const gradeSubmission = async (req, res) => {
     const userId = req.user.user_id;
     
     // Get faculty_id from user_id
-    const [faculty] = await db.query('SELECT faculty_id FROM faculties WHERE user_id = ?', [userId]);
+    const [faculty] = await connection.query('SELECT faculty_id FROM faculties WHERE user_id = ?', [userId]);
     const faculty_id = faculty.length > 0 ? faculty[0].faculty_id : userId;
 
     // Validate grade
@@ -840,7 +842,24 @@ export const gradeSubmission = async (req, res) => {
       submissionStatus = 'Needs Revision'; // Failed - student must resubmit
     }
 
-    await db.query(`
+    // Get submission details to check for due date extension
+    const [submissionDetails] = await connection.query(`
+      SELECT ts.student_id, ts.task_id, t.due_date, t.title
+      FROM task_submissions ts
+      INNER JOIN tasks t ON ts.task_id = t.task_id
+      WHERE ts.submission_id = ?
+    `, [submission_id]);
+
+    if (submissionDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    await connection.beginTransaction();
+
+    await connection.query(`
       UPDATE task_submissions
       SET 
         grade = ?,
@@ -851,27 +870,59 @@ export const gradeSubmission = async (req, res) => {
       WHERE submission_id = ?
     `, [gradeNum, feedback || null, submissionStatus, faculty_id, submission_id]);
 
-    // If grade < 50%, log that student needs to resubmit
-    if (gradeNum < 50) {
-      // console.log(`Student scored ${gradeNum}% (below 50%) - Task will be shown again for resubmission`);
+    // If grade < 50%, automatically extend the due date by 1 day for this student
+    if (gradeNum < 50 && submissionDetails[0].due_date) {
+      const currentDueDate = submissionDetails[0].due_date;
+
+      // Get current extension from submission
+      const [currentSubmission] = await connection.query(`
+        SELECT extended_due_date, extension_days FROM task_submissions
+        WHERE submission_id = ?
+      `, [submission_id]);
+
+      const baseDueDate = currentSubmission[0].extended_due_date 
+        ? new Date(currentSubmission[0].extended_due_date)
+        : new Date(currentDueDate);
+      
+      const currentExtensionDays = currentSubmission[0].extension_days || 0;
+      
+      // Extend by 1 day
+      const extendedDueDate = new Date(baseDueDate);
+      extendedDueDate.setDate(extendedDueDate.getDate() + 1);
+
+      // Update submission with extension
+      await connection.query(`
+        UPDATE task_submissions
+        SET extended_due_date = ?,
+            extension_days = ?
+        WHERE submission_id = ?
+      `, [extendedDueDate, currentExtensionDays + 1, submission_id]);
+
+      // console.log(`Auto-extended due date for submission ${submission_id} by 1 day`);
     }
+
+    await connection.commit();
 
     res.status(200).json({
       success: true,
       message: gradeNum >= 50 
         ? 'Submission graded successfully!' 
-        : 'Submission graded. Student needs to resubmit (score below 50%).',
+        : 'Submission graded. Student needs to resubmit. Due date extended by 1 day.',
       data: { 
         status: submissionStatus,
-        needsResubmission: gradeNum < 50
+        needsResubmission: gradeNum < 50,
+        autoExtended: gradeNum < 50 && submissionDetails[0].due_date ? true : false
       }
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Error grading submission:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to grade submission'
     });
+  } finally {
+    connection.release();
   }
 };
 
@@ -1279,6 +1330,8 @@ export const getStudentTasks = async (req, res) => {
         ts.feedback,
         ts.is_late,
         ts.status as submission_status,
+        ts.extended_due_date,
+        ts.extension_days,
         CASE WHEN t.venue_id = ? THEN 1 ELSE 0 END as is_current_venue
       FROM tasks t
       INNER JOIN venue v ON t.venue_id = v.venue_id
@@ -1458,6 +1511,9 @@ export const getStudentTasks = async (req, res) => {
         });
       }
 
+      // Use extended due date if available, otherwise use original due date
+      const effectiveDueDate = task.extended_due_date || task.due_date;
+
       // Determine overall status
       let overallStatus = 'pending';
       if (task.submission_status === 'Needs Revision') {
@@ -1466,7 +1522,7 @@ export const getStudentTasks = async (req, res) => {
         overallStatus = 'completed';
       } else if (task.submission_id) {
         overallStatus = 'pending'; // Submitted but not graded yet
-      } else if (task.due_date && new Date(task.due_date) < new Date()) {
+      } else if (effectiveDueDate && new Date(effectiveDueDate) < new Date()) {
         overallStatus = 'overdue';
       }
 
@@ -1475,7 +1531,10 @@ export const getStudentTasks = async (req, res) => {
         day: task.day,
         title: task.title,
         description: task.description,
-        dueDate: task.due_date,
+        dueDate: effectiveDueDate,
+        originalDueDate: task.due_date,
+        isExtended: task.extended_due_date ? true : false,
+        extensionDays: task.extension_days || 0,
         status: overallStatus,
         score: task.max_score,
         materialType: task.material_type,
@@ -1839,6 +1898,154 @@ export const syncTaskSubmissions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to sync task submissions',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Extend task due date for a specific student
+export const extendTaskDueDate = async (req, res) => {
+  const connection = await db.getConnection();
+  
+  try {
+    const { task_id, student_id } = req.params;
+    const { extension_days = 1 } = req.body; // Default 1 day extension
+    
+    const userId = req.user.user_id;
+    
+    // Get user role
+    const [user] = await connection.query(`
+      SELECT role_id FROM users WHERE user_id = ?
+    `, [userId]);
+
+    if (user.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userRole = user[0].role_id;
+    
+    // Only admin and faculty can extend deadlines
+    if (userRole !== 1 && userRole !== 2) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only faculty and admin can extend task deadlines'
+      });
+    }
+
+    // Verify task exists and get current due date
+    const [task] = await connection.query(`
+      SELECT t.task_id, t.due_date, t.venue_id, v.assigned_faculty_id
+      FROM tasks t
+      INNER JOIN venue v ON t.venue_id = v.venue_id
+      WHERE t.task_id = ? AND t.status = 'Active'
+    `, [task_id]);
+
+    if (task.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or not active'
+      });
+    }
+
+    // If faculty, verify they are assigned to this venue
+    if (userRole === 2) {
+      const [faculty] = await connection.query(`
+        SELECT faculty_id FROM faculties WHERE user_id = ?
+      `, [userId]);
+
+      if (faculty.length === 0 || task[0].assigned_faculty_id !== faculty[0].faculty_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not assigned to this venue'
+        });
+      }
+    }
+
+    // Verify student exists
+    const [student] = await connection.query(`
+      SELECT student_id FROM students WHERE student_id = ?
+    `, [student_id]);
+
+    if (student.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const currentDueDate = task[0].due_date;
+    
+    if (!currentDueDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'This task has no due date set'
+      });
+    }
+
+    // Check if submission exists for this student and task
+    const [existingSubmission] = await connection.query(`
+      SELECT submission_id, extended_due_date, extension_days FROM task_submissions
+      WHERE task_id = ? AND student_id = ?
+    `, [task_id, student_id]);
+
+    let submission_id;
+    let currentExtensionDays = 0;
+    let baseDueDate = new Date(currentDueDate);
+
+    if (existingSubmission.length > 0) {
+      submission_id = existingSubmission[0].submission_id;
+      currentExtensionDays = existingSubmission[0].extension_days || 0;
+      baseDueDate = existingSubmission[0].extended_due_date 
+        ? new Date(existingSubmission[0].extended_due_date)
+        : new Date(currentDueDate);
+    } else {
+      // Create a submission record for this student if it doesn't exist
+      const [newSubmission] = await connection.query(`
+        INSERT INTO task_submissions (task_id, student_id, status, created_at)
+        VALUES (?, ?, 'Not Submitted', NOW())
+      `, [task_id, student_id]);
+      submission_id = newSubmission.insertId;
+    }
+    
+    // Calculate new extended due date
+    const extendedDueDate = new Date(baseDueDate);
+    extendedDueDate.setDate(extendedDueDate.getDate() + parseInt(extension_days));
+
+    await connection.beginTransaction();
+
+    // Update submission with extension
+    await connection.query(`
+      UPDATE task_submissions
+      SET extended_due_date = ?,
+          extension_days = ?
+      WHERE submission_id = ?
+    `, [extendedDueDate, currentExtensionDays + parseInt(extension_days), submission_id]);
+
+    await connection.commit();
+
+    res.status(200).json({
+      success: true,
+      message: `Task deadline extended by ${extension_days} day(s) for this student`,
+      data: {
+        task_id,
+        student_id,
+        original_due_date: currentDueDate,
+        extended_due_date: extendedDueDate,
+        extension_days: extension_days
+      }
+    });
+    
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error extending task due date:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to extend task due date',
       error: error.message
     });
   } finally {

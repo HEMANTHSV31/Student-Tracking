@@ -14,6 +14,7 @@ import {
   submitTask,
   downloadSubmission,
   syncTaskSubmissions,
+  extendTaskDueDate,
   upload,
   studentUpload
 } from '../controllers/tasks.controller.js';
@@ -52,6 +53,9 @@ router.post('/sync/:venue_id', authenticate, facultyOrAdmin, syncTaskSubmissions
 // Submissions/Reports routes - for faculty grading
 router.get('/submissions/:task_id', authenticate, facultyOrAdmin, getTaskSubmissions);
 router.put('/grade/:submission_id', authenticate, facultyOrAdmin, gradeSubmission);
+
+// Extend task due date for specific student
+router.put('/extend/:task_id/student/:student_id', authenticate, facultyOrAdmin, extendTaskDueDate);
 
 // Error handling middleware for multer errors
 router.use((err, req, res, next) => {

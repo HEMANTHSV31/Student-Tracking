@@ -112,7 +112,7 @@ export const getRoadmapByVenue = async (req, res) => {
     }
 
     // Get all roadmap modules for the venue
-    // Admin can see all, faculty can only see their own
+    // Admin can see all, faculty can only see roadmap for venues they are assigned to
     let query = '';
     let params = [];
 
@@ -140,6 +140,19 @@ export const getRoadmapByVenue = async (req, res) => {
       `;
       params = [venue_id];
     } else if (userRole === 2 && faculty_id) { // Faculty
+      // First check if faculty is assigned to this venue
+      const [venueCheck] = await db.query(`
+        SELECT venue_id FROM venue WHERE venue_id = ? AND assigned_faculty_id = ?
+      `, [venue_id, faculty_id]);
+
+      if (venueCheck.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not assigned to this venue'
+        });
+      }
+
+      // Faculty can see all roadmap modules for their assigned venues
       query = `
         SELECT 
           r.roadmap_id,
@@ -152,13 +165,16 @@ export const getRoadmapByVenue = async (req, res) => {
           r.status,
           r.created_at,
           r.updated_at,
-          r.faculty_id
+          r.faculty_id,
+          u.name as faculty_name,
+          f.user_id as faculty_user_id
         FROM roadmap r
-        WHERE r.venue_id = ? 
-          AND r.faculty_id = ?
+        LEFT JOIN faculties f ON r.faculty_id = f.faculty_id
+        LEFT JOIN users u ON f.user_id = u.user_id
+        WHERE r.venue_id = ?
         ORDER BY r.course_type, r.module_order ASC
       `;
-      params = [venue_id, faculty_id];
+      params = [venue_id];
     } else {
       return res.status(403).json({
         success: false,

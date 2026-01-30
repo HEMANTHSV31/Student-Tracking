@@ -29,7 +29,8 @@ const MyClassRoom = () => {
       const localDate = new Date(date.getTime() - offset * 60 * 1000);
       const dateStr = localDate.toISOString().split("T")[0];
 
-      const response = await apiGet(`/schedule?date=${dateStr}`);
+      // Add timestamp to prevent caching
+      const response = await apiGet(`/schedule?date=${dateStr}&_t=${Date.now()}`);
 
       if (response.ok) {
         const result = await response.json();
@@ -49,6 +50,24 @@ const MyClassRoom = () => {
   useEffect(() => {
     fetchSchedule(selectedDate);
   }, [selectedDate, user]);
+
+  // Auto-refresh at 8 PM to show tomorrow's schedule
+  useEffect(() => {
+    const checkTime = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      
+      // If it's 8:00 PM or later, refresh the schedule
+      if (hour === 20 && minute === 0) {
+        fetchSchedule(selectedDate);
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkTime, 60000);
+    return () => clearInterval(interval);
+  }, [selectedDate]);
 
   // --- HELPER: GET STATUS ---
   const getSlotStatus = (slotTimeStr, date) => {

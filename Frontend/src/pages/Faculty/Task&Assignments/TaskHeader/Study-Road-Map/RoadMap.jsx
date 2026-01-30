@@ -70,7 +70,9 @@ const StudyRoadmap = ({
         // Fetch modules for all venues grouped
         setLoading(true);
         try {
-          const data = await apiGet('/roadmap/all-venues');
+          const response = await apiGet('/roadmap/all-venues');
+
+          const data = await response.json();
 
           if (data.success) {
             setAllVenuesModules(data.data || []);
@@ -89,7 +91,9 @@ const StudyRoadmap = ({
 
       setLoading(true);
       try {
-        const data = await apiGet(`/roadmap/venue/${selectedVenueId}`);
+        const response = await apiGet(`/roadmap/venue/${selectedVenueId}`);
+
+        const data = await response.json();
 
         if (data.success) {
           setRoadmap(data.data);

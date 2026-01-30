@@ -18,6 +18,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   // Backend data states
   const [skillReports, setSkillReports] = useState([]);
   const [venueStudents, setVenueStudents] = useState([]); // All students in venue for "Not Attempted"
+  const [attemptedStudentIds, setAttemptedStudentIds] = useState([]); // All student IDs who attempted the skill
   const [availableSkills, setAvailableSkills] = useState([]); // Skills list from API
   const [skillStats, setSkillStats] = useState({
     totalStudents: 0,
@@ -126,6 +127,13 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         setVenueStudents(data.venueStudents);
       }
       
+      // Store attempted student IDs (all students who have attempted the skill, not paginated)
+      if (data.attemptedStudentIds) {
+        setAttemptedStudentIds(data.attemptedStudentIds);
+      } else {
+        setAttemptedStudentIds([]);
+      }
+      
       // Set stats from API response (backend returns 'statistics')
       if (data.statistics) {
         const totalVenueStudents = data.venueStudents?.length || 0;
@@ -170,9 +178,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   // Memoize the "Not Attempted" students list
   const notAttemptedStudents = useMemo(() => {
     if (!selectedSkill) return [];
-    const attemptedStudentIds = new Set(skillReports.map(r => r.student_id));
+    // Use attemptedStudentIds from API (all students who attempted, not just current page)
+    const attemptedIdsSet = new Set(attemptedStudentIds);
     return venueStudents
-      .filter(vs => !attemptedStudentIds.has(vs.student_id))
+      .filter(vs => !attemptedIdsSet.has(vs.student_id))
       .map(vs => ({
         rollNumber: vs.roll_number,
         studentId: vs.student_id,
@@ -188,7 +197,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         startTime: '-',
         endTime: '-'
       }));
-  }, [skillReports, venueStudents, selectedSkill, selectedVenueName]);
+  }, [attemptedStudentIds, venueStudents, selectedSkill, selectedVenueName]);
 
   // Transform skill reports to display format
   const attemptedStudents = useMemo(() => {

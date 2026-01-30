@@ -605,6 +605,8 @@ export const getSkillReportsForFaculty = async (req, res) => {
   try {
     const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC' } = req.body;
     
+    // console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, userRole: req.user.role });
+    
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
     // Check if venueId is 'all' (admin requesting all venues)
@@ -646,6 +648,8 @@ export const getSkillReportsForFaculty = async (req, res) => {
         [facultyId]
       );
       facultyVenueIds = accessibleVenues.map(v => v.venue_id);
+      
+      // console.log('[SKILL REPORTS] Faculty accessible venues:', facultyVenueIds);
     }
 
     // Build query - Get only the LATEST record per student/course (using subquery)
@@ -815,8 +819,8 @@ export const getSkillReportsForFaculty = async (req, res) => {
     const total = countResult[0].total;
 
     // Get statistics (only for latest records per student/course)
-    // Always show total students count from students table (not enrolled count)
-    // Statistics should NOT be affected by status/search filters - only by venue and skill
+    // Statistics SHOULD be affected by venue and skill filters but NOT by status/date/search
+    // This gives accurate counts for all statuses within the filtered context
     let statsQuery = `
       SELECT 
         COUNT(*) as total,
@@ -838,7 +842,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
       WHERE 1=1`;
     const statsParams = [];
     
-    // Venue filter - same logic as main query (filter by group membership)
+    // Venue filter - MUST match the main query venue filter
     if (venueId && !isAllVenues) {
       statsQuery += ` AND ss.student_id IN (
         SELECT gs.student_id 
@@ -847,7 +851,8 @@ export const getSkillReportsForFaculty = async (req, res) => {
         WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
       )`;
       statsParams.push(parseInt(venueId));
-    } else if (facultyVenueIds.length > 0 && !isAllVenues) {
+    } else if (!isAllVenues && facultyVenueIds.length > 0) {
+      // Faculty non-admin: filter by their assigned venues
       statsQuery += ` AND ss.student_id IN (
         SELECT gs.student_id 
         FROM group_students gs
@@ -855,12 +860,14 @@ export const getSkillReportsForFaculty = async (req, res) => {
         WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
       )`;
     }
+    // If isAllVenues=true (admin), no venue filter
 
-    // Only apply skill filter for stats (NOT status/date/search - stats should show overall for the skill)
+    // Skill filter - MUST be applied to stats
     if (skill && skill.trim().length > 0) {
       statsQuery += ' AND ss.course_name = ?';
       statsParams.push(skill.trim());
     }
+    // DO NOT apply status/date/search filters to statistics
 
     const [stats] = await db.execute(statsQuery, statsParams);
 
@@ -932,6 +939,46 @@ export const getSkillReportsForFaculty = async (req, res) => {
     const [skillsList] = await db.execute(availableSkillsQuery, skillParams);
     const availableSkills = skillsList.map(s => s.course_name);
 
+    // Get ALL student IDs who have attempted the selected skill (for "Not Attempted" calculation)
+    // This is NOT paginated - we need all IDs to properly calculate who hasn't attempted
+    let attemptedStudentIds = [];
+    if (skill && skill.trim().length > 0) {
+      let attemptedQuery = `
+        SELECT DISTINCT ss.student_id
+        FROM student_skills ss
+        INNER JOIN (
+          SELECT student_id, course_name, MAX(last_slot_date) as max_date
+          FROM student_skills
+          GROUP BY student_id, course_name
+        ) latest ON ss.student_id = latest.student_id 
+                  AND ss.course_name = latest.course_name 
+                  AND ss.last_slot_date = latest.max_date
+        JOIN students s ON ss.student_id = s.student_id
+        WHERE ss.course_name = ?`;
+      const attemptedParams = [skill.trim()];
+      
+      // Apply same venue filter
+      if (venueId && !isAllVenues) {
+        attemptedQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+        attemptedParams.push(parseInt(venueId));
+      } else if (facultyVenueIds.length > 0 && !isAllVenues) {
+        attemptedQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      }
+      
+      const [attemptedStudents] = await db.execute(attemptedQuery, attemptedParams);
+      attemptedStudentIds = attemptedStudents.map(s => s.student_id);
+    }
+
     // Return response even if no data
     res.status(200).json({
       venue: isAllVenues 
@@ -941,6 +988,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
           : { venue_name: 'All Venues' },
       reports: reports || [],
       venueStudents: venueStudents, // All students in the venue for "Not Attempted" filter
+      attemptedStudentIds: attemptedStudentIds, // All student IDs who have attempted the selected skill
       availableSkills: availableSkills, // List of skill names for dropdown
       statistics: stats[0] || {
         total: 0,
