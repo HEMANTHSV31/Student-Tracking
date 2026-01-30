@@ -350,7 +350,7 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
                   <div style={styles.statBox}>
                     <div style={{ ...styles.statLabel, color: '#8b5cf6' }}>PS</div>
                     <div style={{ ...styles.statValue, color: '#8b5cf6' }}>{attendanceStats.ps || 0}</div>
-                    <div style={styles.statSub}>Permission slip</div>
+                    <div style={styles.statSub}>Personalized Skill</div>
                   </div>
                   <div style={styles.statBox}>
                     <div style={{ ...styles.statLabel, color: '#3b82f6' }}>Attendance Rate</div>

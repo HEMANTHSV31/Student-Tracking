@@ -182,9 +182,6 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     try {
       const response = await fetch(`${API_URL}/tasks/create`, {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer cookie'
-        },
         credentials: 'include',
         body: formData
       });
@@ -300,7 +297,6 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                     disabled={loading}
                   >
                     <option value="" hidden>Select a venue... </option>
-                    <option value="all" style={{ fontWeight: 'bold', color: '#3b82f6' }}> All Venues</option>
                     {venues.map(venue => (
                       <option key={venue.venue_id} value={venue.venue_id}>
                         {venue.venue_name} ({venue.student_count} students)
@@ -371,7 +367,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                   onChange={e => setSkillFilter(e.target.value)}
                   disabled={loading}
                 >
-                  <option value="">No skill filter (optional)</option>
+                  <option value="">No skill filter</option>
                   {skillOptions
                     .filter(skill => !selectedCourseType || skill.course_type === selectedCourseType)
                     .map(skill => (
@@ -419,6 +415,11 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                     placeholder="e.g. https://resource.link"
                     value={externalUrl}
                     onChange={e => setExternalUrl(e.target.value)}
+                    onPaste={e => {
+                      e.stopPropagation();
+                      const pastedText = e.clipboardData.getData('text');
+                      setExternalUrl(pastedText);
+                    }}
                     disabled={loading}
                   />
                   <LinkIcon size={16} style={styles.dateIcon} />
