@@ -23,3 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
+EXCEL_TEMPLATE_GUIDE.node_modules
+README.md
