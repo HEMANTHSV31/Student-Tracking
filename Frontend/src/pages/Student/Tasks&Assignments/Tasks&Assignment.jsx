@@ -1040,19 +1040,19 @@ const TasksAssignments = () => {
                         {selectedTask.resources.map((res, idx) => (
                           <a 
                             key={idx} 
-                            href={res.type === "pdf" ? `http://localhost:5000${res.path}` : res.url} 
+                            href={res.type === "file" ? `${API_URL}${res.fileUrl}` : res.url} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            download={res.type === "pdf" ? res.name : undefined}
+                            download={res.type === "file" ? res.name : undefined}
                             className="resource-btn"
                           >
-                            {res.type === "pdf" ? (
+                            {res.type === "file" ? (
                               <FileText size={18} className="text-red-500" />
                             ) : (
                               <Link size={18} className="text-blue-500" />
                             )}
                             {res.name}
-                            {res.type === "pdf" && (
+                            {res.type === "file" && (
                               <Download size={14} className="text-gray-400 ms-2" />
                             )}
                           </a>

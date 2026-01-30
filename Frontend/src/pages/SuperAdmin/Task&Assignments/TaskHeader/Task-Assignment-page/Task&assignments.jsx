@@ -254,6 +254,39 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     setOpenMenuId(null);
   };
 
+  /* -------- DELETE ACTION -------- */
+  const deleteTask = async (taskId) => {
+    if (!confirm('Are you sure you want to delete this task? This action cannot be undone and will remove all submissions.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/tasks/delete/${taskId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove the task from the assignments list
+        setAssignments(prevAssignments => 
+          prevAssignments.filter(assignment => assignment.id !== taskId)
+        );
+        setOpenMenuId(null);
+        alert('Task deleted successfully');
+      } else {
+        alert(data.message || 'Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      alert('Error deleting task');
+    }
+  };
+
   const handleRowClick = (assignment) => {
     navigate('/reports', {
       state: {
@@ -549,15 +582,27 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                     {openMenuId === row.id && (
                       <div style={{ position: 'absolute', right: 0, top: '22px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: '6px', zIndex: 10, minWidth: '140px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                         <div
-                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#1F2937', '&:hover': { backgroundColor: '#F3F4F6' } }}
+                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#1F2937', borderBottom: '1px solid #E5E7EB' }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#F3F4F6'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                           onClick={(e) => {
-                            e.stopPropagation(); // Prevents menu item click from closing menu early
+                            e.stopPropagation();
                             toggleTaskStatus(row.id, row.status);
                           }}
                         >
                           {row.status === 'Active' ? 'Set as Inactive' : 'Set as Active'}
                         </div>
-                        {/* More options can be added here if needed, e.g., 'Edit Assignment', 'Delete Assignment' */}
+                        <div
+                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#DC2626' }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#FEF2F2'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTask(row.id);
+                          }}
+                        >
+                          Delete Task
+                        </div>
                       </div>
                     )}
                   </div>

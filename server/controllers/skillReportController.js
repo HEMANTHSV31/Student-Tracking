@@ -828,7 +828,11 @@ export const getSkillReportsForFaculty = async (req, res) => {
         SUM(CASE WHEN ss.status = 'Not Cleared' THEN 1 ELSE 0 END) as not_cleared,
         SUM(CASE WHEN ss.status = 'Ongoing' THEN 1 ELSE 0 END) as ongoing,
         ROUND(AVG(ss.best_score), 2) as avg_best_score,
-        (SELECT COUNT(*) FROM students) as total_students
+        (SELECT COUNT(*) FROM students) as total_students,
+        (SELECT COUNT(DISTINCT gs.student_id) 
+         FROM group_students gs 
+         INNER JOIN \`groups\` g ON gs.group_id = g.group_id 
+         WHERE gs.status = 'Active' AND g.status = 'Active') as total_assigned_students
       FROM student_skills ss
       INNER JOIN (
         SELECT student_id, course_name, MAX(last_slot_date) as max_date

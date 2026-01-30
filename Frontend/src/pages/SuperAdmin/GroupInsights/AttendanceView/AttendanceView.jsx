@@ -155,10 +155,13 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
   // Calculate stats from students data
   const attendanceStats = attendanceData || {
     total: students.length,
-    present: students.filter(s => s.status === 'Present').length,
+    present: students.filter(s => s.status === 'Present' || s.status === 'MM' || s.status === 'AD' || s.status === 'Other').length,
     absent: students.filter(s => s.status === 'Absent').length,
     late: students.filter(s => s.status === 'Late').length,
     ps: students.filter(s => s.status === 'PS').length,
+    mm: students.filter(s => s.status === 'MM').length,
+    ad: students.filter(s => s.status === 'AD').length,
+    other: students.filter(s => s.status === 'Other').length,
   };
 
   // Filter students by status
@@ -203,6 +206,9 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
       case 'Absent': return { bg: '#fee2e2', text: '#991b1b' };
       case 'Late': return { bg: '#fef3c7', text: '#92400e' };
       case 'PS': return { bg: '#ede9fe', text: '#6b21a8' };
+      case 'MM': return { bg: '#d1fae5', text: '#065f46' };
+      case 'AD': return { bg: '#dbeafe', text: '#1e40af' };
+      case 'Other': return { bg: '#e0e7ff', text: '#3730a3' };
       default: return { bg: '#f3f4f6', text: '#374151' };
     }
   };
@@ -367,6 +373,21 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
                     </div>
                     <div style={styles.statSub}>For selected period</div>
                   </div>
+                  <div style={styles.statBox}>
+                    <div style={{ ...styles.statLabel, color: '#3B82F6' }}>AD</div>
+                    <div style={{ ...styles.statValue, color: '#3B82F6' }}>{attendanceStats.ad || 0}</div>
+                    <div style={styles.statSub}>Academics</div>
+                  </div>
+                  <div style={styles.statBox}>
+                    <div style={{ ...styles.statLabel, color: '#10B981' }}>MM</div>
+                    <div style={{ ...styles.statValue, color: '#10B981' }}>{attendanceStats.mm || 0}</div>
+                    <div style={styles.statSub}>Mentor meeting</div>
+                  </div>
+                  <div style={styles.statBox}>
+                    <div style={{ ...styles.statLabel, color: '#6b7280' }}>Other</div>
+                    <div style={{ ...styles.statValue, color: '#6b7280' }}>{attendanceStats.other || 0}</div>
+                    <div style={styles.statSub}>Other reasons</div>
+                  </div>
                 </div>
 
                 <div style={styles.tableControls}>
@@ -399,6 +420,24 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
                     onClick={() => setStatusFilter('PS')}
                   >
                     PS ({attendanceStats.ps || 0})
+                  </button>
+                  <button
+                    style={statusFilter === 'MM' ? styles.filterBadgeActive : styles.filterBadge}
+                    onClick={() => setStatusFilter('MM')}
+                  >
+                    MM ({attendanceStats.mm || 0})
+                  </button>
+                  <button
+                    style={statusFilter === 'AD' ? styles.filterBadgeActive : styles.filterBadge}
+                    onClick={() => setStatusFilter('AD')}
+                  >
+                    AD ({attendanceStats.ad || 0})
+                  </button>
+                  <button
+                    style={statusFilter === 'Other' ? styles.filterBadgeActive : styles.filterBadge}
+                    onClick={() => setStatusFilter('Other')}
+                  >
+                    Other ({attendanceStats.other || 0})
                   </button>
                 </div>
 

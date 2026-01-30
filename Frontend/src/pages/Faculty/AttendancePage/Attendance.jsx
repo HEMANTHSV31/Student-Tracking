@@ -352,6 +352,9 @@ const AttendanceManagement = () => {
         absent: students.filter(s => s.status === 'absent').length,
         late: students.filter(s => s.status === 'late').length,
         ps: students.filter(s => s.status === 'ps').length,
+        mm: students.filter(s => s.status === 'mm').length,
+        ad: students.filter(s => s.status === 'ad').length,
+        other: students.filter(s => s.status === 'other').length,
         marked: students.filter(s => s.status).length
     }), [students]);
 
@@ -609,7 +612,7 @@ const AttendanceManagement = () => {
             transition: 'background-color 0.2s'
         },
         studentCell: { 
-            flex: 1.2, 
+            flex: 0.8, 
             display: 'flex', 
             alignItems: 'center', 
             gap: '14px' 
@@ -734,6 +737,58 @@ const AttendanceManagement = () => {
             color: '#8B5CF6', 
             border: 'none', 
             cursor: 'pointer'
+        },
+        toggleActiveMm: {
+            flex: isMobile ? 1 : 'none',
+            backgroundColor: '#FFF', 
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: isMobile ? '10px 8px' : '8px 18px', 
+            borderRadius: isMobile ? '6px' : '100px',
+            fontSize: isMobile ? '12px' : '13px', 
+            fontWeight: '700', 
+            color: '#10B981', 
+            border: 'none', 
+            cursor: 'pointer'
+        },
+        toggleActiveAd: {
+            flex: isMobile ? 1 : 'none',
+            backgroundColor: '#FFF', 
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: isMobile ? '10px 8px' : '8px 18px', 
+            borderRadius: isMobile ? '6px' : '100px',
+            fontSize: isMobile ? '12px' : '13px', 
+            fontWeight: '700', 
+            color: '#3B82F6', 
+            border: 'none', 
+            cursor: 'pointer'
+        },
+        toggleActiveOther: {
+            flex: isMobile ? 1 : 'none',
+            backgroundColor: '#FFF', 
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: isMobile ? '10px 8px' : '8px 18px', 
+            borderRadius: isMobile ? '6px' : '100px',
+            fontSize: isMobile ? '12px' : '13px', 
+            fontWeight: '700', 
+            color: '#6366F1', 
+            border: 'none', 
+            cursor: 'pointer'
+        },
+        toggleActiveOthers: {
+            backgroundColor: '#FFF', 
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            fontWeight: '700', 
+            color: '#8B5CF6', 
+            border: '2px solid #8B5CF6'
         },
         statusIndicator: {
             fontSize: '11px',
@@ -978,6 +1033,14 @@ remarkInputActive: {
                         <span style={{ ...styles.statValue, color: '#8B5CF6' }}>{stats.ps || 0}</span>
                     </div>
                     <div style={styles.statItem}>
+                        <span style={styles.statLabel}>MM</span>
+                        <span style={{ ...styles.statValue, color: '#10B981' }}>{stats.mm || 0}</span>
+                    </div>
+                    <div style={styles.statItem}>
+                        <span style={styles.statLabel}>AD</span>
+                        <span style={{ ...styles.statValue, color: '#3B82F6' }}>{stats.ad || 0}</span>
+                    </div>
+                    <div style={styles.statItem}>
                         <span style={styles.statLabel}>Marked</span>
                         <span style={{ ...styles.statValue, ...styles.statValueBlue }}>{stats.marked}</span>
                     </div>
@@ -1023,8 +1086,8 @@ remarkInputActive: {
                     <div style={styles.table}>
                         {/* Table Header - Desktop only */}
                         <div style={styles.thRow}>
-                            <div style={{ ...styles.th, flex: 1.2 }}>Student</div>
-                            <div style={{ ...styles.th, flex: 1.4 }}>Status</div>
+                            <div style={{ ...styles.th, flex: 0.8 }}>Student</div>
+                            <div style={{ ...styles.th, flex: 1.4 }}>Status (Others: PS, MM, AD)</div>
                             <div style={{ ...styles.th, flex: 1 }}>Remarks (Optional)</div>
                         </div>
 
@@ -1045,7 +1108,7 @@ remarkInputActive: {
                                         <div style={styles.studentId}>ID: {s.id}</div>
                                         {(isMobile || s.department) && (
                                             <div style={styles.studentDetails}>
-                                                {s.department} • {s.group_name}
+                                                {s.department}
                                             </div>
                                         )}
                                     </div>
@@ -1080,11 +1143,27 @@ remarkInputActive: {
                                         <button
                                             style={s.status === 'ps' ? styles.toggleActivePs : styles.toggleBtn}
                                             onClick={() => updateStatus(s.id, 'ps')}
-                                            title="Mark PS (Placement Support)"
+                                            title="Mark PS (Personalized Skill)"
                                         >
                                             <CheckCircle2 size={14} style={{ marginRight: isMobile ? '4px' : '6px' }} /> 
                                             {isMobile ? 'PS' : 'PS'}
                                         </button>
+                                        <select
+                                            style={{
+                                                ...styles.toggleBtn,
+                                                ...(s.status === 'mm' || s.status === 'ad' || s.status === 'other' ? styles.toggleActiveOthers : {}),
+                                                padding: isMobile ? '10px 8px' : '8px 12px',
+                                                cursor: 'pointer'
+                                            }}
+                                            value={s.status === 'mm' || s.status === 'ad' || s.status === 'other' ? s.status : ''}
+                                            onChange={(e) => e.target.value && updateStatus(s.id, e.target.value)}
+                                            title="Mark Others"
+                                        >
+                                            <option value="">Others</option>
+                                            <option value="mm">MM</option>
+                                            <option value="ad">AD</option>
+                                            <option value="other">Other</option>
+                                        </select>
                                     </div>
                                     {s.status && (
                                         <div style={styles.statusIndicator}>

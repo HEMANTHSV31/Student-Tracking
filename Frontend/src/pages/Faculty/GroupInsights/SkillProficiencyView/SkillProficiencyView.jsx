@@ -21,6 +21,9 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   const [attemptedStudentIds, setAttemptedStudentIds] = useState([]); // All student IDs who attempted the skill
   const [availableSkills, setAvailableSkills] = useState([]); // Skills list from API
   const [skillStats, setSkillStats] = useState({
+    totalStudentsDB: 0,
+    totalAssignedStudents: 0,
+    totalVenueStudents: 0,
     totalStudents: 0,
     cleared: 0,
     notCleared: 0,
@@ -142,7 +145,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         const notAttemptedCount = Math.max(0, totalVenueStudents - attemptedCount);
         
         setSkillStats({
-          totalStudents: totalVenueStudents, // Total students in venue
+          totalStudentsDB: data.statistics.total_students || 0, // All students in DB
+          totalAssignedStudents: data.statistics.total_assigned_students || 0, // Always show total assigned
+          totalVenueStudents: totalVenueStudents,
+          totalStudents: attemptedCount, // Keep for percentage calculation
           cleared: data.statistics.cleared || 0,
           notCleared: data.statistics.not_cleared || 0,
           ongoing: data.statistics.ongoing || 0,
@@ -402,67 +408,76 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         {/* Statistics Row */}
         <div style={styles.statsRow}>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <Award size={24} color="#3b82f6" />
-            </div>
-            <div>
+            <div style={styles.statContent}>
               <div style={styles.statLabel}>Total Students</div>
-              <div style={styles.statValue}>{skillStats.totalStudents}</div>
-              <div style={styles.statSub}>Enrolled in skills</div>
+              <div style={styles.statValue}>{skillStats.totalStudentsDB || 0}</div>
+              <div style={styles.statSub}>In database</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <CheckCircle size={24} color="#166534" />
+            <div style={styles.statContent}>
+              <div style={styles.statLabel}>Total Students</div>
+              <div style={styles.statValue}>{skillStats.totalAssignedStudents || 0}</div>
+              <div style={styles.statSub}>Assigned to venues</div>
             </div>
-            <div>
+          </div>
+          <div style={styles.statBox}>
+            <div style={styles.statContent}>
               <div style={{...styles.statLabel, color: '#166534'}}>Cleared</div>
-              <div style={{...styles.statValue, color: '#166534'}}>{skillStats.cleared}</div>
-              <div style={styles.statSub}>Successfully completed</div>
+              <div style={{...styles.statValue, color: '#166534', cursor: 'pointer', transition: 'all 0.2s ease'}}
+                onClick={() => setStatusFilter('Cleared')}
+                title="Click to filter by Cleared"
+              >
+                {skillStats.cleared}
+              </div>
+              <div style={styles.statSub}>Click to filter</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <XCircle size={24} color="#991b1b" />
-            </div>
-            <div>
+            <div style={styles.statContent}>
               <div style={{...styles.statLabel, color: '#991b1b'}}>Not Cleared</div>
-              <div style={{...styles.statValue, color: '#991b1b'}}>{skillStats.notCleared}</div>
-              <div style={styles.statSub}>Need improvement</div>
+              <div style={{...styles.statValue, color: '#991b1b', cursor: 'pointer', transition: 'all 0.2s ease'}}
+                onClick={() => setStatusFilter('Not Cleared')}
+                title="Click to filter by Not Cleared"
+              >
+                {skillStats.notCleared}
+              </div>
+              <div style={styles.statSub}>Click to filter</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <Clock size={24} color="#f59e0b" />
-            </div>
-            <div>
+            <div style={styles.statContent}>
               <div style={{...styles.statLabel, color: '#f59e0b'}}>Ongoing</div>
-              <div style={{...styles.statValue, color: '#f59e0b'}}>{skillStats.ongoing}</div>
-              <div style={styles.statSub}>In progress</div>
+              <div style={{...styles.statValue, color: '#f59e0b', cursor: 'pointer', transition: 'all 0.2s ease'}}
+                onClick={() => setStatusFilter('Ongoing')}
+                title="Click to filter by Ongoing"
+              >
+                {skillStats.ongoing}
+              </div>
+              <div style={styles.statSub}>Click to filter</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <Target size={24} color="#6b7280" />
-            </div>
-            <div>
+            <div style={styles.statContent}>
               <div style={{...styles.statLabel, color: '#6b7280'}}>Not Attempted</div>
-              <div style={{...styles.statValue, color: '#6b7280'}}>{skillStats.notAttempted}</div>
-              <div style={styles.statSub}>Yet to start</div>
+              <div style={{...styles.statValue, color: '#6b7280', cursor: 'pointer', transition: 'all 0.2s ease'}}
+                onClick={() => setStatusFilter('Not Attempted')}
+                title="Click to filter by Not Attempted"
+              >
+                {skillStats.notAttempted}
+              </div>
+              <div style={styles.statSub}>Click to filter</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <div style={styles.statIconWrapper}>
-              <TrendingUp size={24} color="#8b5cf6" />
-            </div>
-            <div>
+            <div style={styles.statContent}>
               <div style={{...styles.statLabel, color: '#8b5cf6'}}>% Cleared</div>
-              <div style={{...styles.statValue, color: '#8b5cf6', cursor: 'pointer'}}
+              <div style={{...styles.statValue, color: '#8b5cf6', cursor: 'pointer', transition: 'all 0.2s ease'}}
                 onClick={() => setStatusFilter('Cleared')}
                 title="Click to filter by Cleared"
               >
                 {skillStats.totalStudents > 0 
-                  ? ((skillStats.cleared / skillStats.totalStudents) * 100).toFixed(1)
+                  ? ((skillStats.cleared / (skillStats.cleared + skillStats.notCleared + skillStats.ongoing)) * 100).toFixed(1)
                   : '0.0'}%
               </div>
               <div style={styles.statSub}>Click to filter</div>
@@ -472,11 +487,36 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
 
         {/* Status Filter Badges */}
         <div style={styles.tableControls}>
-          <button style={styles.filterBadgeActive}>All ({skillStats.totalStudents})</button>
-          <button style={styles.filterBadge}>Cleared ({skillStats.cleared})</button>
-          <button style={styles.filterBadge}>Not Cleared ({skillStats.notCleared})</button>
-          <button style={styles.filterBadge}>Ongoing ({skillStats.ongoing})</button>
-          <button style={styles.filterBadge}>Not Attempted ({skillStats.notAttempted})</button>
+          <button 
+            style={statusFilter === 'All Status' ? styles.filterBadgeActive : styles.filterBadge}
+            onClick={() => setStatusFilter('All Status')}
+          >
+            All ({skillStats.totalAssignedStudents})
+          </button>
+          <button 
+            style={statusFilter === 'Cleared' ? styles.filterBadgeActive : styles.filterBadge}
+            onClick={() => setStatusFilter('Cleared')}
+          >
+            Cleared ({skillStats.cleared})
+          </button>
+          <button 
+            style={statusFilter === 'Not Cleared' ? styles.filterBadgeActive : styles.filterBadge}
+            onClick={() => setStatusFilter('Not Cleared')}
+          >
+            Not Cleared ({skillStats.notCleared})
+          </button>
+          <button 
+            style={statusFilter === 'Ongoing' ? styles.filterBadgeActive : styles.filterBadge}
+            onClick={() => setStatusFilter('Ongoing')}
+          >
+            Ongoing ({skillStats.ongoing})
+          </button>
+          <button 
+            style={statusFilter === 'Not Attempted' ? styles.filterBadgeActive : styles.filterBadge}
+            onClick={() => setStatusFilter('Not Attempted')}
+          >
+            Not Attempted ({skillStats.notAttempted})
+          </button>
         </div>
 
         {/* Student Skill Attempts Table */}
@@ -703,19 +743,26 @@ const styles = {
   },
   statsRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
     gap: '12px',
     marginBottom: '24px',
   },
   statBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
     backgroundColor: '#fff',
     padding: '16px',
     borderRadius: '8px',
     border: '1px solid #e5e7eb',
     boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    width: '100%',
   },
   statIconWrapper: {
     flexShrink: 0,

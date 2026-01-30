@@ -1502,12 +1502,33 @@ export const getStudentTasks = async (req, res) => {
     const tasksWithResources = await Promise.all(filteredTasks.map(async (task) => {
       // Parse materials from task if they exist
       let materials = [];
+      
+      // Add external_url material if it exists
       if (task.material_type && task.external_url) {
         materials.push({
           type: task.material_type,
           name: task.title,
           fileUrl: task.material_type === 'file' ? task.external_url : null,
           url: task.material_type === 'link' ? task.external_url : null
+        });
+      }
+
+      // Fetch uploaded files from task_files table
+      const [taskFiles] = await db.query(`
+        SELECT file_id, file_name, file_path, file_type, file_size
+        FROM task_files
+        WHERE task_id = ?
+      `, [task.task_id]);
+
+      // Add task files to materials
+      if (taskFiles && taskFiles.length > 0) {
+        taskFiles.forEach(file => {
+          materials.push({
+            type: 'file',
+            name: file.file_name,
+            fileUrl: `/${file.file_path.replace(/\\/g, '/')}`,
+            url: null
+          });
         });
       }
 
@@ -2047,6 +2068,117 @@ export const extendTaskDueDate = async (req, res) => {
       success: false,
       message: 'Failed to extend task due date',
       error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteTask = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { task_id } = req.params;
+    const userId = req.user.user_id;
+
+    // Get user role
+    const [user] = await connection.query(`
+      SELECT role_id FROM users WHERE user_id = ?
+    `, [userId]);
+
+    if (user.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userRole = user[0].role_id;
+
+    // Start transaction
+    await connection.beginTransaction();
+
+    // First, get task details and verify permissions
+    const [taskDetails] = await connection.execute(
+      'SELECT t.*, v.assigned_faculty_id FROM tasks t INNER JOIN venue v ON t.venue_id = v.venue_id WHERE t.task_id = ?',
+      [task_id]
+    );
+
+    if (taskDetails.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // If faculty, verify they are assigned to this venue
+    if (userRole === 2) {
+      const [faculty] = await connection.query(`
+        SELECT faculty_id FROM faculties WHERE user_id = ?
+      `, [userId]);
+
+      if (faculty.length === 0 || taskDetails[0].assigned_faculty_id !== faculty[0].faculty_id) {
+        await connection.rollback();
+        return res.status(403).json({
+          success: false,
+          message: 'You can only delete tasks from your assigned venue'
+        });
+      }
+    }
+
+    // Check if soft delete columns exist, if not, use hard delete
+    const [columns] = await connection.execute(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'tasks' 
+      AND TABLE_SCHEMA = DATABASE() 
+      AND COLUMN_NAME = 'deleted'
+    `);
+
+    let deleteResult;
+    if (columns.length > 0) {
+      // Soft delete - mark as deleted
+      [deleteResult] = await connection.execute(
+        'UPDATE tasks SET deleted = 1, deleted_at = NOW() WHERE task_id = ? AND (deleted IS NULL OR deleted = 0)',
+        [task_id]
+      );
+    } else {
+      // Hard delete - remove from database
+      // First delete submissions
+      await connection.execute(
+        'DELETE FROM task_submissions WHERE task_id = ?',
+        [task_id]
+      );
+      
+      // Then delete task
+      [deleteResult] = await connection.execute(
+        'DELETE FROM tasks WHERE task_id = ?',
+        [task_id]
+      );
+    }
+
+    if (deleteResult.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or already deleted'
+      });
+    }
+
+    // Commit the transaction
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Task deleted successfully'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error deleting task:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while deleting task'
     });
   } finally {
     connection.release();

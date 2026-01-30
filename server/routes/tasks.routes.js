@@ -6,6 +6,7 @@ import {
   getTasksAllVenues,
   getTaskDetails,
   toggleTaskStatus,
+  deleteTask,
   getTaskSubmissions,
   gradeSubmission,
   submitAssignmentFile,
@@ -46,6 +47,7 @@ router.get('/all-venues', authenticate, facultyOrAdmin, getTasksAllVenues);
 router.get('/venue/:venue_id', authenticate, facultyOrAdmin, getTasksByVenue);
 router.get('/details/:task_id', authenticate, facultyOrAdmin, getTaskDetails);
 router.put('/status/:task_id', authenticate, facultyOrAdmin, toggleTaskStatus);
+router.delete('/delete/:task_id', authenticate, facultyOrAdmin, deleteTask);
 
 // Sync task submissions for newly added students
 router.post('/sync/:venue_id', authenticate, facultyOrAdmin, syncTaskSubmissions);

@@ -317,9 +317,15 @@ export const getSessionAttendance = async (req, res) => {
     attendanceRecords.forEach(record => {
       let status = 'absent';
       
-      // Check for PS status first (stored in remarks)
+      // Check for special statuses (stored in remarks)
       if (record.remarks === 'PS') {
         status = 'ps';
+      } else if (record.remarks === 'MM') {
+        status = 'mm';
+      } else if (record.remarks === 'AD') {
+        status = 'ad';
+      } else if (record.remarks === 'Other') {
+        status = 'other';
       } else if (record.is_present === 1) {
         status = record.is_late === 1 ? 'late' : 'present';
       }
@@ -970,9 +976,15 @@ export const getVenueAttendanceDetails = async (req, res) => {
       let status = 'Not Marked';
       
       if (attendance) {
-        // Check for PS status first (stored in remarks)
+        // Check for special statuses (stored in remarks)
         if (attendance.remarks === 'PS') {
           status = 'PS';
+        } else if (attendance.remarks === 'MM') {
+          status = 'MM';
+        } else if (attendance.remarks === 'AD') {
+          status = 'AD';
+        } else if (attendance.remarks === 'Other') {
+          status = 'Other';
         } else if (attendance.is_present === 1 && attendance.is_late === 0) {
           status = 'Present';
         } else if (attendance.is_present === 1 && attendance.is_late === 1) {
@@ -996,17 +1008,20 @@ export const getVenueAttendanceDetails = async (req, res) => {
 
     // Calculate summary
     const total = studentsWithAttendance.length;
-    const present = studentsWithAttendance.filter(s => s.status === 'Present').length;
+    const present = studentsWithAttendance.filter(s => s.status === 'Present' || s.status === 'MM' || s.status === 'AD' || s.status === 'Other').length;
     const absent = studentsWithAttendance.filter(s => s.status === 'Absent').length;
     const late = studentsWithAttendance.filter(s => s.status === 'Late').length;
     const ps = studentsWithAttendance.filter(s => s.status === 'PS').length;
+    const mm = studentsWithAttendance.filter(s => s.status === 'MM').length;
+    const ad = studentsWithAttendance.filter(s => s.status === 'AD').length;
+    const other = studentsWithAttendance.filter(s => s.status === 'Other').length;
     const notMarked = studentsWithAttendance.filter(s => s.status === 'Not Marked').length;
 
     res.status(200).json({
       success: true,
       data: {
         students: studentsWithAttendance,
-        summary: { total, present, absent, late, ps, notMarked },
+        summary: { total, present, absent, late, ps, mm, ad, other, notMarked },
         filters: { date: selectedDate, session: session || 'all', venueId }
       }
     });
@@ -1107,14 +1122,22 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
     let insertedCount = 0;
 
     for (const record of attendance) {
-      const isPresent = record.status === 'present' ? 1 : 0;
+      const isPresent = (record.status === 'present' || record.status === 'mm' || record.status === 'ad' || record.status === 'other') ? 1 : 0;
       const isLate = record.status === 'late' ? 1 : 0;
       const isPs = record.status === 'ps' ? 1 : 0;
-      const remarks = isPs
-        ? 'PS'
-        : record.remarks && String(record.remarks).trim()
-          ? String(record.remarks).trim()
-          : null;
+      
+      let remarks = null;
+      if (record.status === 'ps') {
+        remarks = 'PS';
+      } else if (record.status === 'mm') {
+        remarks = 'MM';
+      } else if (record.status === 'ad') {
+        remarks = 'AD';
+      } else if (record.status === 'other') {
+        remarks = 'Other';
+      } else if (record.remarks && String(record.remarks).trim()) {
+        remarks = String(record.remarks).trim();
+      }
 
       // Check if record exists
       const [existing] = await connection.query(`
