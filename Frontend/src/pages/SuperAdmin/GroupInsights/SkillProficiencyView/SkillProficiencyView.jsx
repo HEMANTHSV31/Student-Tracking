@@ -428,8 +428,16 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 <BookOpen size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
                 <span style={{verticalAlign: 'middle'}}>Total Students</span>
               </div>
-              <div style={styles.statValue}>{skillStats.totalAssignedStudents || 0}</div>
-              <div style={styles.statSub}>Assigned to venues</div>
+              <div style={styles.statValue}>
+                {selectedVenueName === 'All Venues' 
+                  ? (skillStats.totalAssignedStudents || 0) 
+                  : (skillStats.totalVenueStudents || 0)}
+              </div>
+              <div style={styles.statSub}>
+                {selectedVenueName === 'All Venues' 
+                  ? 'Assigned to venues' 
+                  : `In ${selectedVenueName}`}
+              </div>
             </div>
           </div>
           <div style={styles.statBox}>
