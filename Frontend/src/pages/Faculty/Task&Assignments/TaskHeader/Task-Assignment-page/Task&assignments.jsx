@@ -706,8 +706,8 @@ const styles = {
     borderRadius: '12px',
     border: '1px solid #E9EDF2',
     display: 'flex',
-    flexDirection: 'column',
-  },
+    flexDirection: 'column',    maxHeight: 'calc(100vh - 180px)',
+    overflow: 'hidden'  },
   formHeader: {
     padding: '24px',
     borderBottom: '1px solid #F3F4F6',
@@ -850,7 +850,13 @@ const styles = {
     outline: 'none',
     color: '#374151'
   },
-  table: { display: 'flex', flexDirection: 'column', flex: 1 },
+  table: { 
+    display: 'flex', 
+    flexDirection: 'column', 
+    flex: 1,
+    overflowY: 'auto',
+    minHeight: 0
+  },
   tableHeaderRow: {
     display: 'flex',
     padding: '14px 30px',

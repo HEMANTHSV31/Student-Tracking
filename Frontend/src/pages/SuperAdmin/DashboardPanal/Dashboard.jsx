@@ -299,7 +299,7 @@ const EducationDashboard = () => {
                           <div style={styles.studentId}>ID: {row.id}</div>
                         </td>
                         <td style={styles.td}>
-                          <span style={styles.regularText}>{row.group}</span>
+                          <span style={styles.regularText}>{row.venue_name || row.group}</span>
                         </td>
                         <td style={styles.td}>
                           <span style={row.type === 'danger' ? styles.badgeDanger : styles.badgeWarning}>
