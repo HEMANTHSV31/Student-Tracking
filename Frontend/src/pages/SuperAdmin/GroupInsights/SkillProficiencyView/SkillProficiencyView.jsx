@@ -8,6 +8,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   const [selectedSkill, setSelectedSkill] = useState(initialSkill);
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [studentSearch, setStudentSearch] = useState('');
+  const [venueFilter, setVenueFilter] = useState(false); // Filter by venue-assigned students
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -230,25 +231,62 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     return [...attemptedStudents, ...notAttemptedStudents];
   }, [attemptedStudents, notAttemptedStudents, selectedSkill]);
 
+  // Calculate filtered statistics when venue filter is active
+  const filteredStats = useMemo(() => {
+    if (!venueFilter || venueStudents.length === 0) {
+      return skillStats;
+    }
+
+    const venueStudentIds = new Set(venueStudents.map(vs => vs.student_id));
+    
+    // Filter attempted students by venue
+    const venueAttemptedStudents = attemptedStudents.filter(s => venueStudentIds.has(s.studentId));
+    
+    // Calculate stats for venue-assigned students only
+    const cleared = venueAttemptedStudents.filter(s => s.status === 'Cleared').length;
+    const notCleared = venueAttemptedStudents.filter(s => s.status === 'Not Cleared').length;
+    const ongoing = venueAttemptedStudents.filter(s => s.status === 'Ongoing').length;
+    
+    // Not attempted = venue students who haven't attempted this skill
+    const attemptedIds = new Set(attemptedStudentIds);
+    const notAttempted = venueStudents.filter(vs => !attemptedIds.has(vs.student_id)).length;
+    
+    return {
+      ...skillStats,
+      cleared,
+      notCleared,
+      ongoing,
+      notAttempted,
+      totalStudents: venueAttemptedStudents.length
+    };
+  }, [venueFilter, venueStudents, attemptedStudents, attemptedStudentIds, skillStats]);
+
   // Memoize the transformed data to avoid expensive recalculations
   const displayData = useMemo(() => {
+    // If venue filter is active, filter to only show students in venueStudents
+    let dataToDisplay = attemptedStudents;
+    
     // If "Not Attempted" filter is selected, show paginated not attempted students
     if (statusFilter === 'Not Attempted' && selectedSkill) {
       const startIndex = (currentPage - 1) * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
-      return notAttemptedStudents.slice(startIndex, endIndex);
+      dataToDisplay = notAttemptedStudents.slice(startIndex, endIndex);
     }
-    
     // If "All Status" is selected, combine attempted and not attempted with pagination
-    if (statusFilter === 'All Status' && selectedSkill) {
+    else if (statusFilter === 'All Status' && selectedSkill) {
       const startIndex = (currentPage - 1) * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
-      return allStudents.slice(startIndex, endIndex);
+      dataToDisplay = allStudents.slice(startIndex, endIndex);
     }
     
-    // For other status filters (Cleared, Not Cleared, Ongoing), use server-paginated data
-    return attemptedStudents;
-  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, currentPage, itemsPerPage]);
+    // Apply venue filter if active
+    if (venueFilter && venueStudents.length > 0) {
+      const venueStudentIds = new Set(venueStudents.map(vs => vs.student_id));
+      dataToDisplay = dataToDisplay.filter(student => venueStudentIds.has(student.studentId));
+    }
+    
+    return dataToDisplay;
+  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, currentPage, itemsPerPage, venueFilter, venueStudents]);
 
   // Get correct pagination values based on filter
   const paginationInfo = useMemo(() => {
@@ -418,8 +456,24 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 <Users size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
                 <span style={{verticalAlign: 'middle'}}>Total Students</span>
               </div>
-              <div style={styles.statValue}>{skillStats.totalStudentsDB || 0}</div>
-              
+              <div 
+                style={{
+                  ...styles.statValue, 
+                  cursor: 'pointer', 
+                  backgroundColor: !venueFilter ? '#f0fdf4' : 'transparent',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={() => {
+                  setVenueFilter(false);
+                  setCurrentPage(1);
+                }}
+                title="Click to show all students"
+              >
+                {skillStats.totalStudentsDB || 0}
+              </div>
+              <div style={styles.statSub}>Click to show all</div>
             </div>
           </div>
           <div style={styles.statBox}>
@@ -428,15 +482,29 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 <BookOpen size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
                 <span style={{verticalAlign: 'middle'}}>Total Students</span>
               </div>
-              <div style={styles.statValue}>
+              <div 
+                style={{
+                  ...styles.statValue, 
+                  cursor: 'pointer',
+                  backgroundColor: venueFilter ? '#f0fdf4' : 'transparent',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={() => {
+                  setVenueFilter(true);
+                  setCurrentPage(1);
+                }}
+                title="Click to filter by venue-assigned students"
+              >
                 {selectedVenueName === 'All Venues' 
                   ? (skillStats.totalAssignedStudents || 0) 
                   : (skillStats.totalVenueStudents || 0)}
               </div>
               <div style={styles.statSub}>
                 {selectedVenueName === 'All Venues' 
-                  ? 'Assigned to venues' 
-                  : `In ${selectedVenueName}`}
+                  ? 'Assigned to venues (click to filter)' 
+                  : `In ${selectedVenueName} (click to filter)`}
               </div>
             </div>
           </div>
@@ -450,7 +518,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => setStatusFilter('Cleared')}
                 title="Click to filter by Cleared"
               >
-                {skillStats.cleared}
+                {filteredStats.cleared}
               </div>
               <div style={styles.statSub}>Click to filter</div>
             </div>
@@ -465,7 +533,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => setStatusFilter('Not Cleared')}
                 title="Click to filter by Not Cleared"
               >
-                {skillStats.notCleared}
+                {filteredStats.notCleared}
               </div>
               <div style={styles.statSub}>Click to filter</div>
             </div>
@@ -480,7 +548,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => setStatusFilter('Ongoing')}
                 title="Click to filter by Ongoing"
               >
-                {skillStats.ongoing}
+                {filteredStats.ongoing}
               </div>
               <div style={styles.statSub}>Click to filter</div>
             </div>
@@ -495,7 +563,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => setStatusFilter('Not Attempted')}
                 title="Click to filter by Not Attempted"
               >
-                {skillStats.notAttempted}
+                {filteredStats.notAttempted}
               </div>
               <div style={styles.statSub}>Click to filter</div>
             </div>

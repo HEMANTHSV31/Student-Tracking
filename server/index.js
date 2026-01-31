@@ -135,7 +135,7 @@ async function updateDailySchedule() {
         const [activeGroups] = await db.execute(`
             SELECT COUNT(DISTINCT g.group_id) as active_groups,
                    COUNT(DISTINCT CASE WHEN g.schedule_days IS NOT NULL THEN g.group_id END) as scheduled_groups
-            FROM groups g
+            FROM \`groups\` g
             WHERE g.status = 'Active'
         `);
         
