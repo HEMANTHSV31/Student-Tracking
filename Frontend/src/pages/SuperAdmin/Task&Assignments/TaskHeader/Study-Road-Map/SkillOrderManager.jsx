@@ -21,6 +21,8 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
   const [availableSkills, setAvailableSkills] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showCourseTypeModal, setShowCourseTypeModal] = useState(false);
+  const [newCourseType, setNewCourseType] = useState('');
   const [editingSkill, setEditingSkill] = useState(null);
   const [newSkill, setNewSkill] = useState({
     skill_name: '',
@@ -29,23 +31,41 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
   });
   const [message, setMessage] = useState({ show: false, type: '', text: '' });
   const [draggedItem, setDraggedItem] = useState(null);
+  const [courseTypes, setCourseTypes] = useState([]);
+  const [localSelectedCourse, setLocalSelectedCourse] = useState(selectedCourseType);
+
+  // Fetch course types
+  useEffect(() => {
+    const fetchCourseTypes = async () => {
+      try {
+        const response = await apiGet('/skill-order/course-types');
+        const data = await response.json();
+        if (data.success) {
+          setCourseTypes(data.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching course types:', err);
+      }
+    };
+    fetchCourseTypes();
+  }, []);
 
   // Fetch skill order
   useEffect(() => {
     fetchSkillOrder();
     fetchAvailableSkills();
-  }, [selectedCourseType]);
+  }, [localSelectedCourse]);
 
   const fetchSkillOrder = async () => {
     setLoading(true);
     try {
-      const url = `${API_URL}/skill-order?course_type=${selectedCourseType}`;
+      const url = `${API_URL}/skill-order?course_type=${localSelectedCourse}`;
 
-      const response = await apiGet(`/skill-order?course_type=${selectedCourseType}`);
+      const response = await apiGet(`/skill-order?course_type=${localSelectedCourse}`);
       const data = await response.json();
       if (data.success) {
         const filteredSkills = data.data
-          .filter(s => s.course_type === selectedCourseType)
+          .filter(s => s.course_type === localSelectedCourse)
           .sort((a, b) => a.display_order - b.display_order);
         setSkills(filteredSkills);
       }
@@ -75,6 +95,42 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
     setTimeout(() => setMessage({ show: false, type: '', text: '' }), 3000);
   };
 
+  const handleCreateCourseType = async () => {
+    if (!newCourseType.trim()) {
+      showMessage('error', 'Please enter a course type name');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const courseTypeSlug = newCourseType.trim().toLowerCase().replace(/\s+/g, '-');
+      
+      // Create a placeholder skill entry to establish the course type
+      const response = await apiPost('/skill-order', {
+        course_type: courseTypeSlug,
+        skill_name: 'Getting Started',
+        is_prerequisite: false,
+        description: 'First skill in ' + newCourseType.trim()
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        showMessage('success', 'Course type created successfully! Now add skills to it.');
+        setShowCourseTypeModal(false);
+        setNewCourseType('');
+        // Refresh the page or notify parent to refresh course types
+        window.location.reload();
+      } else {
+        showMessage('error', data.message || 'Failed to create course type');
+      }
+    } catch (error) {
+      console.error('Error creating course type:', error);
+      showMessage('error', 'Failed to create course type');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddSkill = async () => {
     if (!newSkill.skill_name.trim()) {
       showMessage('error', 'Please enter a skill name');
@@ -84,7 +140,7 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
     setSaving(true);
     try {
       const response = await apiPost('/skill-order', {
-        course_type: selectedCourseType,
+        course_type: localSelectedCourse,
         skill_name: newSkill.skill_name.trim(),
         is_prerequisite: newSkill.is_prerequisite,
         description: newSkill.description.trim() || null
@@ -233,14 +289,45 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
 
   return (
     <div style={styles.container}>
+      {/* Course Type Filters */}
+      {courseTypes.length > 0 && (
+        <div style={styles.courseFilterBar}>
+          <div style={styles.courseFilterLabel}>Course Type:</div>
+          <div style={styles.courseFilterButtons}>
+            {courseTypes.map(type => (
+              <button
+                key={type}
+                onClick={() => setLocalSelectedCourse(type)}
+                style={{
+                  ...styles.courseFilterBtn,
+                  ...(localSelectedCourse === type ? styles.courseFilterBtnActive : {})
+                }}
+              >
+                {type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Skill Order Configuration</h2>
+          <h2 style={styles.title}>
+            Skill Order - {localSelectedCourse.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+          </h2>
           <p style={styles.subtitle}>
             Define the order in which students must complete skills. Drag to reorder.
           </p>
         </div>
         <div style={styles.headerActions}>
+          <button
+            onClick={() => setShowCourseTypeModal(true)}
+            style={styles.secondaryButton}
+            title="Create new course type (main skill category)"
+          >
+            <Plus size={16} />
+            Create Course Type
+          </button>
           <button
             onClick={fetchSkillOrder}
             style={styles.iconButton}
@@ -507,6 +594,62 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
         </div>
       )}
 
+      {/* Create Course Type Modal */}
+      {showCourseTypeModal && (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <div>
+                <h3 style={styles.modalTitle}>Create New Course Type</h3>
+                <p style={styles.modalSubtitle}>Add a main skill category (e.g., Frontend, Backend, Database)</p>
+              </div>
+              <button
+                onClick={() => setShowCourseTypeModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  Course Type Name *
+                </label>
+                <input
+                  type="text"
+                  value={newCourseType}
+                  onChange={(e) => setNewCourseType(e.target.value)}
+                  style={styles.input}
+                  placeholder="e.g., Frontend, Backend, Mobile Development"
+                  autoFocus
+                  onKeyPress={(e) => e.key === 'Enter' && handleCreateCourseType()}
+                />
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  This will be converted to lowercase with hyphens (e.g., "Mobile Development" → "mobile-development")
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowCourseTypeModal(false)}
+                style={styles.cancelButton}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateCourseType}
+                style={styles.primaryButton}
+                disabled={saving}
+              >
+                {saving ? 'Creating...' : 'Create Course Type'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {saving && (
         <div style={styles.savingIndicator}>
           <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />
@@ -531,6 +674,46 @@ const styles = {
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     border: '1px solid #e5e7eb',
     padding: '24px',
+  },
+  courseFilterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '24px',
+    padding: '4px',
+    backgroundColor: '#f3f4f6',
+    borderRadius: '10px',
+    border: 'none',
+  },
+  courseFilterLabel: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#374151',
+    paddingLeft: '12px',
+    minWidth: '90px',
+  },
+  courseFilterButtons: {
+    display: 'flex',
+    gap: '4px',
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  courseFilterBtn: {
+    padding: '10px 18px',
+    fontSize: '13px',
+    fontWeight: '600',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: 'transparent',
+    color: '#6b7280',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  courseFilterBtnActive: {
+    backgroundColor: '#ffffff',
+    color: '#2563eb',
+    fontWeight: '700',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
   },
   header: {
     display: 'flex',
@@ -572,6 +755,19 @@ const styles = {
     gap: '8px',
     padding: '10px 16px',
     backgroundColor: '#3b82f6',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  secondaryButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 16px',
+    backgroundColor: '#10b981',
     color: '#ffffff',
     border: 'none',
     borderRadius: '8px',

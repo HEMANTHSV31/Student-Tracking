@@ -8,7 +8,9 @@ import {
   reorderSkills,
   deleteSkillOrder,
   getStudentSkillProgression,
-  getAvailableSkillNames
+  getAvailableSkillNames,
+  getCourseTypes,
+  validateCourseType
 } from '../controllers/skillOrder.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 
@@ -22,6 +24,9 @@ router.get('/', authenticate, getSkillOrders);
 // Get available skill names (for dropdowns)
 router.get('/available-skills', authenticate, getAvailableSkillNames);
 
+// Get unique course types from skill_order table
+router.get('/course-types', authenticate, getCourseTypes);
+
 // Get skill order for a specific venue (with fallback to global)
 router.get('/venue/:venue_id', authenticate, getSkillOrderForVenue);
 
@@ -32,6 +37,9 @@ router.get('/student/:student_id/progression', authenticate, getStudentSkillProg
 
 // Create new skill order entry
 router.post('/', authenticate, createSkillOrder);
+
+// Validate course type (check if it doesn't already exist)
+router.post('/course-type', authenticate, validateCourseType);
 
 // Update skill order entry
 router.put('/:id', authenticate, updateSkillOrder);

@@ -94,6 +94,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
             title: task.title,
             score: task.max_score,
             group: task.venue_name, // Displaying venue_name here
+            venueId: task.venue_id, // Store actual venue_id for navigation
             day: task.day,
             dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
             status: task.status,
@@ -118,9 +119,11 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     return assignments.filter(item => {
       const matchesSearch = item.title.toLowerCase().includes(search.toLowerCase());
       const matchesFilter = statusFilter === 'All' || item.status === statusFilter;
-      return matchesSearch && matchesFilter;
+      const matchesCourseType = !selectedCourseType || !item.skillFilter || item.skillFilter === '' || 
+        skillOptions.find(s => s.skill_name === item.skillFilter && s.course_type === selectedCourseType);
+      return matchesSearch && matchesFilter && matchesCourseType;
     });
-  }, [assignments, search, statusFilter]);
+  }, [assignments, search, statusFilter, selectedCourseType, skillOptions]);
 
   // Pagination logic
   const totalPages = Math.ceil(filteredAssignments.length / itemsPerPage);
@@ -223,9 +226,11 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
               title: task.title,
               score: task.max_score,
               group: task.venue_name,
+              venueId: task.venue_id,
               day: task.day,
               dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
               status: task.status,
+              skillFilter: task.skill_filter || '',
               totalSubmissions: task.total_submissions || 0,
               pendingSubmissions: task.pending_submissions || 0
             }));
@@ -288,11 +293,9 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
         setOpenMenuId(null);
         alert('Task deleted successfully');
       } else {
-        console.error('Delete failed:', data);
         alert(data.message || 'Failed to delete task');
       }
     } catch (error) {
-      console.error('Error deleting task:', error);
       alert('Error deleting task: ' + error.message);
     }
   };
@@ -302,7 +305,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
       state: {
         taskId: assignment.id,
         taskTitle: assignment.title,
-        venueId: selectedVenueId
+        venueId: assignment.venueId, // Use task's actual venue_id
+        autoSelectTask: true
       }
     });
   };

@@ -61,7 +61,13 @@ const ReportsAnalytics = () => {
 
         if (data.success && data.data.length > 0) {
           setVenues(data.data);
-          setSelectedVenueId(data.data[0].venue_id.toString());
+          
+          // Check if we have venue from navigation
+          if (location.state?.venueId) {
+            setSelectedVenueId(location.state.venueId.toString());
+          } else {
+            setSelectedVenueId(data.data[0].venue_id.toString());
+          }
         }
       } catch (err) {
         console.error("Error fetching venues:", err);
@@ -71,7 +77,7 @@ const ReportsAnalytics = () => {
     };
 
     fetchVenues();
-  }, [user]);
+  }, [user, location.state]);
 
   // Fetch tasks when venue changes
   useEffect(() => {
@@ -86,8 +92,23 @@ const ReportsAnalytics = () => {
 
         if (data.success && data.data.length > 0) {
           setTasks(data.data);
-          setSelectedTaskId(data.data[0].task_id.toString());
-          setSelectedTaskTitle(data.data[0].title);
+          
+          // Check if we have location state with task info
+          if (location.state?.autoSelectTask && location.state?.taskId) {
+            const taskFromNav = data.data.find(t => t.task_id.toString() === location.state.taskId.toString());
+            if (taskFromNav) {
+              setSelectedTaskId(taskFromNav.task_id.toString());
+              setSelectedTaskTitle(taskFromNav.title);
+              // Clear location state after using it
+              window.history.replaceState({}, document.title);
+            } else {
+              setSelectedTaskId(data.data[0].task_id.toString());
+              setSelectedTaskTitle(data.data[0].title);
+            }
+          } else {
+            setSelectedTaskId(data.data[0].task_id.toString());
+            setSelectedTaskTitle(data.data[0].title);
+          }
         } else {
           setTasks([]);
           setSelectedTaskId("");
@@ -101,7 +122,7 @@ const ReportsAnalytics = () => {
     };
 
     fetchTasks();
-  }, [selectedVenueId]);
+  }, [selectedVenueId, location.state]);
 
   // Fetch submissions when task changes
   useEffect(() => {
@@ -871,7 +892,6 @@ const ReportsAnalytics = () => {
                               className="file-attachment"
                               target="_blank"
                               rel="noopener noreferrer"
-                              download
                             >
                               {getFileIcon(student.type)} {student.file}
                             </a>
