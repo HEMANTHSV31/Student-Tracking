@@ -341,7 +341,7 @@ export const getAlerts = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error fetching alerts:', error);
+    console.error(' Error fetching alerts:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch alerts',
@@ -375,3 +375,281 @@ function formatDate(dateString) {
     });
   }
 }
+
+// Get venues that haven't marked attendance for today's sessions (45 mins after session start)
+export const getUnmarkedAttendanceVenues = async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 2;
+    
+    console.log(`📊 Checking unmarked attendance - Current time: ${currentHour}:${currentMinute} (${currentTimeInMinutes} minutes), Date: ${today}`);
+    
+    // Define the 4 standard sessions with start times in minutes from midnight
+    // Sessions become "overdue" 45 minutes after they start
+    const sessions = [
+      { id: 'S1', name: 'Session 1', time: '09:00 AM - 10:30 AM', startMinutes: 9 * 60, deadlineMinutes: 9 * 60 + 45 },      // 9:00 AM, deadline 9:45 AM
+      { id: 'S2', name: 'Session 2', time: '10:30 AM - 12:30 PM', startMinutes: 10 * 60 + 30, deadlineMinutes: 10 * 60 + 30 + 45 }, // 10:30 AM, deadline 11:15 AM
+      { id: 'S3', name: 'Session 3', time: '01:30 PM - 03:00 PM', startMinutes: 13 * 60 + 30, deadlineMinutes: 13 * 60 + 30 + 45 }, // 1:30 PM, deadline 2:15 PM
+      { id: 'S4', name: 'Session 4', time: '03:00 PM - 04:30 PM', startMinutes: 15 * 60, deadlineMinutes: 15 * 60 + 45 }      // 3:00 PM, deadline 3:45 PM
+    ];
+
+    // Filter sessions that are past their 45-minute deadline
+    const overdueSessionIds = sessions
+      .filter(session => currentTimeInMinutes >= session.deadlineMinutes)
+      .map(session => session.id);
+
+    console.log(`📊 Overdue sessions (45 min past start): ${overdueSessionIds.join(', ') || 'None'}`);
+
+    // If no sessions are overdue yet, return empty
+    if (overdueSessionIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: {
+          currentPage: 1,
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: limit
+        },
+        date: today,
+        current_time: `${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
+        message: 'No sessions have passed their 45-minute attendance marking deadline yet',
+        total_venues: 0,
+        venues_with_unmarked: 0
+      });
+    }
+
+    // Get all active venues with their faculty info
+    const [venues] = await db.query(`
+      SELECT 
+        v.venue_id,
+        v.venue_name,
+        v.location,
+        u.name as faculty_name,
+        COUNT(DISTINCT gs.student_id) as student_count
+      FROM venue v
+      LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
+      LEFT JOIN users u ON f.user_id = u.user_id
+      LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id AND g.status = 'Active'
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      WHERE v.status = 'Active'
+      GROUP BY v.venue_id, v.venue_name, v.location, u.name
+      ORDER BY v.venue_name
+    `);
+
+    console.log(`📊 Total active venues found: ${venues.length}`);
+
+    // Get attendance sessions that have been created for today
+    // Session name format: S1_Venue{venueId}_{date} e.g., S1_Venue1_2026-01-31
+    const [markedSessions] = await db.query(`
+      SELECT 
+        session_name
+      FROM attendance_session
+      WHERE session_name LIKE ?
+    `, [`%_${today}`]);
+
+    console.log(`📊 Marked sessions today: ${markedSessions.length}`, markedSessions.map(s => s.session_name));
+
+    // Parse marked sessions to identify venue/session combinations
+    const markedSet = new Set();
+    markedSessions.forEach(s => {
+      // Session name format: S1_Venue1_2026-01-31
+      const parts = s.session_name.split('_');
+      if (parts.length >= 3) {
+        const sessionId = parts[0]; // S1, S2, etc.
+        const venueIdPart = parts[1].replace('Venue', ''); // Extract venue ID
+        const key = `${venueIdPart}_${sessionId}`;
+        markedSet.add(key);
+        console.log(`📊 Parsed marked: venue ${venueIdPart}, session ${sessionId}`);
+      }
+    });
+
+    console.log(`📊 Marked venue-session combinations: ${[...markedSet].join(', ')}`);
+
+    // Build unmarked venues list - only for sessions that are past their deadline
+    const unmarkedVenues = [];
+    const overdueSessions = sessions.filter(s => overdueSessionIds.includes(s.id));
+    
+    venues.forEach(venue => {
+      // Only check sessions that are past their 45-minute deadline
+      const unmarkedOverdueSessions = overdueSessions.filter(session => {
+        const key = `${venue.venue_id}_${session.id}`;
+        const isMarked = markedSet.has(key);
+        console.log(`📊 Checking venue ${venue.venue_id} (${venue.venue_name}), session ${session.id}: ${isMarked ? 'MARKED' : 'NOT MARKED'}`);
+        return !isMarked;
+      });
+      
+      if (unmarkedOverdueSessions.length > 0) {
+        // Calculate how late the attendance is for each session
+        const sessionsWithDelay = unmarkedOverdueSessions.map(session => ({
+          ...session,
+          minutes_overdue: currentTimeInMinutes - session.deadlineMinutes
+        }));
+
+        unmarkedVenues.push({
+          venue_id: venue.venue_id,
+          venue_name: venue.venue_name,
+          location: venue.location,
+          faculty_name: venue.faculty_name || 'Not Assigned',
+          student_count: venue.student_count || 0,
+          unmarked_sessions: sessionsWithDelay,
+          total_overdue_sessions: overdueSessions.length,
+          marked_count: overdueSessions.length - unmarkedOverdueSessions.length
+        });
+      }
+    });
+
+    console.log(`📊 Venues with unmarked overdue attendance: ${unmarkedVenues.length}`);
+
+    // Apply pagination
+    const totalItems = unmarkedVenues.length;
+    const totalPages = Math.ceil(totalItems / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedVenues = unmarkedVenues.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      success: true,
+      data: paginatedVenues,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        itemsPerPage: limit
+      },
+      date: today,
+      current_time: `${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
+      total_venues: venues.length,
+      venues_with_unmarked: unmarkedVenues.length,
+      sessions_checked: overdueSessionIds
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching unmarked attendance venues:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch unmarked attendance venues',
+      error: error.message
+    });
+  }
+};
+
+// Get venues without task assignments for today (if past 12:30 PM and no task assigned today)
+export const getPendingTaskAssignments = async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 2;
+    
+    // Task assignment deadline is 12:30 PM (12 * 60 + 30 = 750 minutes from midnight)
+    const taskDeadlineMinutes = 12 * 60 + 30; // 12:30 PM
+    
+    // If it's before 12:30 PM, no venues are overdue yet
+    if (currentTimeInMinutes < taskDeadlineMinutes) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: {
+          currentPage: 1,
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: limit
+        },
+        stats: {
+          total_venues: 0,
+          venues_without_tasks_today: 0,
+          venues_with_tasks_today: 0
+        },
+        message: `Task assignment deadline is 12:30 PM. Current time: ${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
+        deadline_passed: false
+      });
+    }
+
+    // Get all active venues with their task assignment status for TODAY
+    const [venues] = await db.query(`
+      SELECT 
+        v.venue_id,
+        v.venue_name,
+        v.location,
+        u.name as faculty_name,
+        COUNT(DISTINCT gs.student_id) as student_count,
+        COUNT(DISTINCT CASE WHEN DATE(t.created_at) = CURDATE() THEN t.task_id END) as tasks_assigned_today,
+        MAX(CASE WHEN DATE(t.created_at) = CURDATE() THEN t.created_at END) as last_task_today
+      FROM venue v
+      LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
+      LEFT JOIN users u ON f.user_id = u.user_id
+      LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id AND g.status = 'Active'
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      LEFT JOIN tasks t ON t.group_id = g.group_id AND t.status = 'Active'
+      WHERE v.status = 'Active'
+      GROUP BY v.venue_id, v.venue_name, v.location, u.name
+      ORDER BY tasks_assigned_today ASC, v.venue_name
+    `);
+
+    // Filter venues that have NOT assigned any task today
+    const venuesWithoutTasksToday = venues.filter(v => v.tasks_assigned_today === 0);
+    const venuesWithTasksToday = venues.filter(v => v.tasks_assigned_today > 0);
+
+    // Calculate how late each venue is (time since 12:30 PM)
+    const minutesOverdue = currentTimeInMinutes - taskDeadlineMinutes;
+    const hoursOverdue = Math.floor(minutesOverdue / 60);
+    const minsOverdue = minutesOverdue % 60;
+
+    const venuesWithOverdueInfo = venuesWithoutTasksToday.map(v => ({
+      ...v,
+      minutes_overdue: minutesOverdue,
+      overdue_display: hoursOverdue > 0 
+        ? `${hoursOverdue}h ${minsOverdue}m overdue` 
+        : `${minsOverdue}m overdue`
+    }));
+
+    // Apply pagination
+    const totalItems = venuesWithOverdueInfo.length;
+    const totalPages = Math.ceil(totalItems / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedVenues = venuesWithOverdueInfo.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      success: true,
+      data: paginatedVenues,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        itemsPerPage: limit
+      },
+      stats: {
+        total_venues: venues.length,
+        venues_without_tasks_today: venuesWithoutTasksToday.length,
+        venues_with_tasks_today: venuesWithTasksToday.length
+      },
+      date: today,
+      current_time: `${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
+      deadline: '12:30 PM',
+      deadline_passed: true,
+      minutes_since_deadline: minutesOverdue
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching venues without task assignments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch venues without task assignments',
+      error: error.message
+    });
+  }
+};
