@@ -8,7 +8,8 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   const [selectedSkill, setSelectedSkill] = useState(initialSkill);
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [studentSearch, setStudentSearch] = useState('');
-  const [venueFilter, setVenueFilter] = useState(false); // Filter by venue-assigned students
+  // Default to venue filter when a specific venue is selected (not 'all')
+  const [venueFilter, setVenueFilter] = useState(selectedVenue && selectedVenue !== 'all');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,6 +96,13 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       else if (statusFilter === 'Not Cleared') statusParam = 'Not Cleared';
       else if (statusFilter === 'Ongoing') statusParam = 'Ongoing';
       
+      console.log('[SKILL REPORTS] Sending request with:', { 
+        venueId: selectedVenue, 
+        skill: selectedSkill, 
+        filterByVenue: venueFilter,
+        statusFilter: statusParam
+      });
+      
       const response = await apiPost('/skill-reports/faculty/venue/reports', {
         venueId: selectedVenue,
         page: currentPage,
@@ -104,6 +112,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         skill: selectedSkill, // Pass selected skill for server-side filtering
         status: statusParam,
         search: debouncedSearch || undefined,
+        filterByVenue: venueFilter, // Send venue filter to backend
       });
       
       if (!response.ok) {
@@ -163,7 +172,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     } finally {
       setLoading(false);
     }
-  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch]);
+  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch, venueFilter]);
 
   // Fetch data when dependencies change
   useEffect(() => {
@@ -174,6 +183,11 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedVenue, selectedSkill, statusFilter]);
+
+  // Reset venueFilter when venue changes
+  useEffect(() => {
+    setVenueFilter(selectedVenue && selectedVenue !== 'all');
+  }, [selectedVenue]);
 
   // Update selectedSkill when initialSkill changes
   useEffect(() => {
@@ -231,81 +245,47 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     return [...attemptedStudents, ...notAttemptedStudents];
   }, [attemptedStudents, notAttemptedStudents, selectedSkill]);
 
-  // Calculate filtered statistics when venue filter is active
+  // Use backend statistics directly (backend handles venue filtering when filterByVenue is sent)
   const filteredStats = useMemo(() => {
-    if (!venueFilter || venueStudents.length === 0) {
-      return skillStats;
-    }
-
-    const venueStudentIds = new Set(venueStudents.map(vs => vs.student_id));
-    
-    // Filter attempted students by venue
-    const venueAttemptedStudents = attemptedStudents.filter(s => venueStudentIds.has(s.studentId));
-    
-    // Calculate stats for venue-assigned students only
-    const cleared = venueAttemptedStudents.filter(s => s.status === 'Cleared').length;
-    const notCleared = venueAttemptedStudents.filter(s => s.status === 'Not Cleared').length;
-    const ongoing = venueAttemptedStudents.filter(s => s.status === 'Ongoing').length;
-    
-    // Not attempted = venue students who haven't attempted this skill
-    const attemptedIds = new Set(attemptedStudentIds);
-    const notAttempted = venueStudents.filter(vs => !attemptedIds.has(vs.student_id)).length;
-    
-    return {
-      ...skillStats,
-      cleared,
-      notCleared,
-      ongoing,
-      notAttempted,
-      totalStudents: venueAttemptedStudents.length
-    };
-  }, [venueFilter, venueStudents, attemptedStudents, attemptedStudentIds, skillStats]);
+    return skillStats;
+  }, [skillStats]);
 
   // Memoize the transformed data to avoid expensive recalculations
   const displayData = useMemo(() => {
-    // If venue filter is active, filter to only show students in venueStudents
-    let dataToDisplay = attemptedStudents;
+    let baseData = attemptedStudents;
     
-    // If "Not Attempted" filter is selected, show paginated not attempted students
+    // Determine base data based on status filter
     if (statusFilter === 'Not Attempted' && selectedSkill) {
-      const startIndex = (currentPage - 1) * itemsPerPage;
-      const endIndex = startIndex + itemsPerPage;
-      dataToDisplay = notAttemptedStudents.slice(startIndex, endIndex);
-    }
-    // If "All Status" is selected, combine attempted and not attempted with pagination
-    else if (statusFilter === 'All Status' && selectedSkill) {
-      const startIndex = (currentPage - 1) * itemsPerPage;
-      const endIndex = startIndex + itemsPerPage;
-      dataToDisplay = allStudents.slice(startIndex, endIndex);
+      baseData = notAttemptedStudents;
+    } else if (statusFilter === 'All Status' && selectedSkill) {
+      baseData = allStudents;
     }
     
-    // Apply venue filter if active
-    if (venueFilter && venueStudents.length > 0) {
-      const venueStudentIds = new Set(venueStudents.map(vs => vs.student_id));
-      dataToDisplay = dataToDisplay.filter(student => venueStudentIds.has(student.studentId));
-    }
-    
-    return dataToDisplay;
-  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, currentPage, itemsPerPage, venueFilter, venueStudents]);
+    // Apply pagination (backend already filtered by venue if filterByVenue=true)
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return baseData.slice(startIndex, endIndex);
+  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, currentPage, itemsPerPage]);
 
   // Get correct pagination values based on filter
   const paginationInfo = useMemo(() => {
+    let total = 0;
+    
+    // Calculate total based on status filter
     if (statusFilter === 'Not Attempted' && selectedSkill) {
-      const total = notAttemptedStudents.length;
-      return {
-        totalRecords: total,
-        totalPages: Math.ceil(total / itemsPerPage) || 1
-      };
+      total = notAttemptedStudents.length;
+    } else if (statusFilter === 'All Status' && selectedSkill) {
+      total = allStudents.length;
+    } else {
+      // Backend returns correct totalRecords based on filterByVenue
+      total = totalRecords;
     }
-    if (statusFilter === 'All Status' && selectedSkill) {
-      const total = allStudents.length;
-      return {
-        totalRecords: total,
-        totalPages: Math.ceil(total / itemsPerPage) || 1
-      };
-    }
-    return { totalRecords, totalPages };
-  }, [statusFilter, selectedSkill, notAttemptedStudents, allStudents, totalRecords, totalPages, itemsPerPage]);
+    
+    return {
+      totalRecords: total,
+      totalPages: Math.ceil(total / itemsPerPage) || 1
+    };
+  }, [statusFilter, selectedSkill, notAttemptedStudents, allStudents, totalRecords, itemsPerPage]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -463,6 +443,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => {
                   setVenueFilter(false);
                   setCurrentPage(1);
+                  // Reset status filter if it's "Not Attempted" since it's not valid for all students
+                  if (statusFilter === 'Not Attempted') {
+                    setStatusFilter('All Status');
+                  }
                 }}
                 title="Click to show all students"
               >
@@ -554,13 +538,25 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 <AlertCircle size={16} style={{verticalAlign: 'middle', marginRight: '6px'}} />
                 <span style={{verticalAlign: 'middle'}}>Not Attempted</span>
               </div>
-              <div style={{...styles.statValue, color: '#6b7280', cursor: 'pointer', transition: 'all 0.2s ease'}}
-                onClick={() => setStatusFilter('Not Attempted')}
-                title="Click to filter by Not Attempted"
+              <div 
+                style={{
+                  ...styles.statValue, 
+                  color: '#6b7280', 
+                  cursor: venueFilter ? 'pointer' : 'default', 
+                  transition: 'all 0.2s ease',
+                  opacity: venueFilter ? 1 : 0.7
+                }}
+                onClick={() => {
+                  if (!venueFilter) {
+                    return; // Don't do anything when showing all students
+                  }
+                  setStatusFilter('Not Attempted');
+                }}
+                title={venueFilter ? 'Click to filter by Not Attempted' : 'Not Attempted count (click venue card to filter)'}
               >
                 {filteredStats.notAttempted}
               </div>
-              <div style={styles.statSub}>Click to filter</div>
+              <div style={styles.statSub}>{venueFilter ? 'Click to filter' : 'View only'}</div>
             </div>
           </div>
           <div style={styles.statBox}>
