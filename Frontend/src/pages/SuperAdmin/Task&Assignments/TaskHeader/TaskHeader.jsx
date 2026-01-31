@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
+import { Plus } from 'lucide-react';
 import AssignmentDashboard from './Task-Assignment-page/Task&assignments';
 import StudyRoadmap from './Study-Road-Map/RoadMap';
 import SkillOrderManager from './Study-Road-Map/SkillOrderManager';
 import useAuthStore from '../../../../store/useAuthStore'; // FIXED PATH - 3 levels up
-import { apiGet } from '../../../../utils/api';
+import { apiGet, apiPost } from '../../../../utils/api';
 
 const TaskHeader = () => {
   const { user } = useAuthStore();
@@ -18,6 +19,7 @@ const TaskHeader = () => {
   const [addDayTrigger, setAddDayTrigger] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [courseTypes, setCourseTypes] = useState([]);
 
   // TaskHeader.jsx
 
@@ -60,6 +62,26 @@ useEffect(() => {
 
   fetchVenues();
 }, [user, API_URL]);
+
+  // Fetch available course types
+  useEffect(() => {
+    const fetchCourseTypes = async () => {
+      try {
+        const response = await apiGet('/skill-order/course-types');
+        const data = await response.json();
+        if (data.success) {
+          setCourseTypes(data.data || []);
+          // Set first course type as selected if available
+          if (data.data.length > 0 && !selectedCourse) {
+            setSelectedCourse(data.data[0]);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching course types:', err);
+      }
+    };
+    fetchCourseTypes();
+  }, []);
 
   const EyeIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}>
@@ -175,10 +197,11 @@ useEffect(() => {
                 onChange={(e) => setSelectedCourse(e.target.value)}
                 style={styles.dropdownSelect}
               >
-                <option value="frontend">Frontend</option>
-                <option value="backend">Backend</option>
-                <option value="react-native">React Native</option>
-                <option value="devops">DevOps</option>
+                {courseTypes.map(type => (
+                  <option key={type} value={type}>
+                    {type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                  </option>
+                ))}
               </select>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', right: '12px', pointerEvents: 'none' }}>
                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -265,6 +288,98 @@ const styles = {
     padding: '4px',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
+  },
+  courseFilterContainer: {
+    display: 'flex',
+    gap: '8px',
+    marginRight: '16px',
+    padding: '4px',
+    backgroundColor: '#F8FAFC',
+    borderRadius: '8px',
+  },
+  courseFilterBtn: {
+    padding: '6px 14px',
+    fontSize: '12px',
+    fontWeight: '600',
+    border: 'none',
+    borderRadius: '6px',
+    backgroundColor: 'transparent',
+    color: '#64748B',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  courseFilterBtnActive: {
+    backgroundColor: '#3B82F6',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)',
+  },
+  addCourseBtn: {
+    backgroundColor: '#10B981',
+    color: '#FFFFFF',
+    display: 'flex',
+    alignItems: 'center',
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '12px',
+    padding: '24px',
+    width: '90%',
+    maxWidth: '400px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: '16px',
+  },
+  modalInput: {
+    width: '100%',
+    padding: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    fontSize: '14px',
+    marginBottom: '16px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  modalButtons: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+  },
+  cancelBtn: {
+    padding: '10px 20px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    backgroundColor: '#FFFFFF',
+    color: '#64748b',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  confirmBtn: {
+    padding: '10px 20px',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: '#3B82F6',
+    color: '#FFFFFF',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
   },
   tab: {
     padding: '8px 16px',

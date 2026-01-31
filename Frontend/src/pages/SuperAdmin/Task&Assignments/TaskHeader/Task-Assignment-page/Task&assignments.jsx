@@ -25,6 +25,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Active');
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   /* -------- FORM STATE -------- */
   const [title, setTitle] = useState('');
@@ -92,6 +94,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
             title: task.title,
             score: task.max_score,
             group: task.venue_name, // Displaying venue_name here
+            venueId: task.venue_id, // Store actual venue_id for navigation
             day: task.day,
             dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
             status: task.status,
@@ -116,9 +119,23 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     return assignments.filter(item => {
       const matchesSearch = item.title.toLowerCase().includes(search.toLowerCase());
       const matchesFilter = statusFilter === 'All' || item.status === statusFilter;
-      return matchesSearch && matchesFilter;
+      const matchesCourseType = !selectedCourseType || !item.skillFilter || item.skillFilter === '' || 
+        skillOptions.find(s => s.skill_name === item.skillFilter && s.course_type === selectedCourseType);
+      return matchesSearch && matchesFilter && matchesCourseType;
     });
-  }, [assignments, search, statusFilter]);
+  }, [assignments, search, statusFilter, selectedCourseType, skillOptions]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredAssignments.length / itemsPerPage);
+  const paginatedAssignments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredAssignments.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredAssignments, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
 
   /* -------- FORM ACTIONS -------- */
   const resetForm = () => {
@@ -209,9 +226,11 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
               title: task.title,
               score: task.max_score,
               group: task.venue_name,
+              venueId: task.venue_id,
               day: task.day,
               dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
               status: task.status,
+              skillFilter: task.skill_filter || '',
               totalSubmissions: task.total_submissions || 0,
               pendingSubmissions: task.pending_submissions || 0
             }));
@@ -274,11 +293,9 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
         setOpenMenuId(null);
         alert('Task deleted successfully');
       } else {
-        console.error('Delete failed:', data);
         alert(data.message || 'Failed to delete task');
       }
     } catch (error) {
-      console.error('Error deleting task:', error);
       alert('Error deleting task: ' + error.message);
     }
   };
@@ -288,7 +305,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
       state: {
         taskId: assignment.id,
         taskTitle: assignment.title,
-        venueId: selectedVenueId
+        venueId: assignment.venueId, // Use task's actual venue_id
+        autoSelectTask: true
       }
     });
   };
@@ -542,8 +560,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
 
             {loading && assignments.length === 0 ? (
               <div style={styles.emptyState}>Loading assignments...</div>
-            ) : filteredAssignments.length > 0 ? (
-              filteredAssignments.map(row => (
+            ) : paginatedAssignments.length > 0 ? (
+              paginatedAssignments.map(row => (
                 <div
                   key={row.id}
                   style={{ ...styles.tableRow, cursor: 'pointer' }}
@@ -610,6 +628,40 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
               </div>
             )}
           </div>
+
+          {/* Pagination Controls */}
+          {filteredAssignments.length > 0 && (
+            <div style={styles.paginationContainer}>
+              <div style={styles.paginationInfo}>
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredAssignments.length)} of {filteredAssignments.length} tasks
+              </div>
+              <div style={styles.paginationButtons}>
+                <button
+                  style={{
+                    ...styles.paginationBtn,
+                    opacity: currentPage === 1 ? 0.5 : 1,
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                  }}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </button>
+                <span style={styles.pageNumber}>Page {currentPage} of {totalPages}</span>
+                <button
+                  style={{
+                    ...styles.paginationBtn,
+                    opacity: currentPage === totalPages ? 0.5 : 1,
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                  }}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div> {/* Close layoutGrid div */}
     </div> // Close container div
@@ -819,6 +871,41 @@ const styles = {
     color: '#94A3B8',
     fontSize: '14px',
     fontStyle: 'italic'
+  },
+  paginationContainer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px 30px',
+    borderTop: '1px solid #F3F4F6',
+    backgroundColor: '#FAFBFC'
+  },
+  paginationInfo: {
+    fontSize: '13px',
+    color: '#6B7280',
+    fontWeight: '500'
+  },
+  paginationButtons: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center'
+  },
+  paginationBtn: {
+    padding: '8px 16px',
+    borderRadius: '6px',
+    border: '1px solid #E2E8F0',
+    backgroundColor: '#FFFFFF',
+    color: '#4B5563',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  },
+  pageNumber: {
+    fontSize: '13px',
+    color: '#1F2937',
+    fontWeight: '600',
+    padding: '0 12px'
   }
 };
 

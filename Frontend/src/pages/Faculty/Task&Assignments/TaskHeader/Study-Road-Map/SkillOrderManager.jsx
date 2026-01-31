@@ -26,22 +26,40 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
   });
   const [message, setMessage] = useState({ show: false, type: '', text: '' });
   const [draggedItem, setDraggedItem] = useState(null);
+  const [courseTypes, setCourseTypes] = useState([]);
+  const [localSelectedCourse, setLocalSelectedCourse] = useState(selectedCourseType);
+
+  // Fetch course types
+  useEffect(() => {
+    const fetchCourseTypes = async () => {
+      try {
+        const response = await apiGet('/skill-order/course-types');
+        const data = await response.json();
+        if (data.success) {
+          setCourseTypes(data.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching course types:', err);
+      }
+    };
+    fetchCourseTypes();
+  }, []);
 
   // Fetch skill order
   useEffect(() => {
     fetchSkillOrder();
     fetchAvailableSkills();
-  }, [selectedCourseType]);
+  }, [localSelectedCourse]);
 
   const fetchSkillOrder = async () => {
     setLoading(true);
     try {
-      const response = await apiGet(`/skill-order?course_type=${selectedCourseType}`);
+      const response = await apiGet(`/skill-order?course_type=${localSelectedCourse}`);
 
       const data = await response.json();
       if (data.success) {
         const filteredSkills = data.data
-          .filter(s => s.course_type === selectedCourseType)
+          .filter(s => s.course_type === localSelectedCourse)
           .sort((a, b) => a.display_order - b.display_order);
         setSkills(filteredSkills);
       }
@@ -80,7 +98,7 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
     setSaving(true);
     try {
       const response = await apiPost('/skill-order', {
-        course_type: selectedCourseType,
+        course_type: localSelectedCourse,
         skill_name: newSkill.skill_name.trim(),
         is_prerequisite: newSkill.is_prerequisite,
         description: newSkill.description.trim() || null
@@ -198,9 +216,32 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend' }) => {
 
   return (
     <div style={styles.container}>
+      {/* Course Type Filters */}
+      {courseTypes.length > 0 && (
+        <div style={styles.courseFilterBar}>
+          <div style={styles.courseFilterLabel}>Course Type:</div>
+          <div style={styles.courseFilterButtons}>
+            {courseTypes.map(type => (
+              <button
+                key={type}
+                onClick={() => setLocalSelectedCourse(type)}
+                style={{
+                  ...styles.courseFilterBtn,
+                  ...(localSelectedCourse === type ? styles.courseFilterBtnActive : {})
+                }}
+              >
+                {type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Skill Order Configuration</h2>
+          <h2 style={styles.title}>
+            Skill Order - {localSelectedCourse.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+          </h2>
           <p style={styles.subtitle}>
             Define the order in which students must complete skills. Drag to reorder.
           </p>
@@ -402,6 +443,46 @@ const styles = {
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     border: '1px solid #e5e7eb',
     padding: '24px',
+  },
+  courseFilterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '24px',
+    padding: '4px',
+    backgroundColor: '#f3f4f6',
+    borderRadius: '10px',
+    border: 'none',
+  },
+  courseFilterLabel: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#374151',
+    paddingLeft: '12px',
+    minWidth: '90px',
+  },
+  courseFilterButtons: {
+    display: 'flex',
+    gap: '4px',
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  courseFilterBtn: {
+    padding: '10px 18px',
+    fontSize: '13px',
+    fontWeight: '600',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: 'transparent',
+    color: '#6b7280',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  courseFilterBtnActive: {
+    backgroundColor: '#ffffff',
+    color: '#2563eb',
+    fontWeight: '700',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
   },
   header: {
     display: 'flex',

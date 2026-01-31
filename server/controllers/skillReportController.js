@@ -603,9 +603,9 @@ export const getFacultyVenues = async (req, res) => {
  */
 export const getSkillReportsForFaculty = async (req, res) => {
   try {
-    const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC' } = req.body;
+    const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC', filterByVenue = false } = req.body;
     
-    // console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, userRole: req.user.role });
+    console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, filterByVenue, userRole: req.user.role });
     
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
@@ -690,27 +690,37 @@ export const getSkillReportsForFaculty = async (req, res) => {
 
     const params = [];
     
-    // Venue filter - Filter by students who are ENROLLED in groups for the selected venue
-    // This ensures we only show skill data for students actually assigned to the venue
-    // If admin selects "all", skip venue filtering
-    if (venueId && !isAllVenues) {
-      query += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
-      params.push(parseInt(venueId));
-    } else if (facultyVenueIds.length > 0 && !isAllVenues) {
-      // Filter by students enrolled in any of faculty's venues
-      query += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
+    // Venue filter - Only apply venue-based filtering when filterByVenue is true
+    // This allows showing all students with skill data (first card) vs only venue students (second card)
+    if (filterByVenue) {
+      if (isAllVenues) {
+        // For 'All Venues' + filterByVenue: Show only students assigned to ANY venue
+        query += ` AND ss.student_id IN (
+          SELECT DISTINCT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      } else if (venueId) {
+        // For specific venue + filterByVenue: Show only students in this venue
+        query += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+        params.push(parseInt(venueId));
+      } else if (facultyVenueIds.length > 0) {
+        // For faculty: Show only students in their assigned venues
+        query += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      }
     }
-    // If isAllVenues is true (admin), no venue filter is applied
+    // If filterByVenue is false, show all students regardless of venue enrollment
 
     // Skill/course filter
     if (skill && skill.trim().length > 0) {
@@ -746,9 +756,12 @@ export const getSkillReportsForFaculty = async (req, res) => {
 
     query += ` ORDER BY ss.${sortColumn} ${order} LIMIT ${limitNum} OFFSET ${offsetNum}`;
 
+    console.log('[SKILL REPORTS] Filter applied:', { filterByVenue, venueId, hasParams: params.length > 0 });
+
     let reports = [];
     try {
       [reports] = await db.execute(query, params);
+      console.log('[SKILL REPORTS] Query returned', reports.length, 'records');
     } catch (queryError) {
       console.error('Query execution error:', queryError);
       console.error('Query:', query);
@@ -775,22 +788,32 @@ export const getSkillReportsForFaculty = async (req, res) => {
       WHERE 1=1`;
     const countParams = [];
     
-    // Venue filter - same logic as main query (filter by group membership)
-    if (venueId && !isAllVenues) {
-      countQuery += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
-      countParams.push(parseInt(venueId));
-    } else if (facultyVenueIds.length > 0 && !isAllVenues) {
-      countQuery += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
+    // Venue filter - apply only if filterByVenue is true
+    if (filterByVenue) {
+      if (isAllVenues) {
+        // For 'All Venues' + filterByVenue: Count only students assigned to ANY venue
+        countQuery += ` AND ss.student_id IN (
+          SELECT DISTINCT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      } else if (venueId) {
+        countQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+        countParams.push(parseInt(venueId));
+      } else if (facultyVenueIds.length > 0) {
+        countQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      }
     }
 
     // Skill filter for count
@@ -846,25 +869,34 @@ export const getSkillReportsForFaculty = async (req, res) => {
       WHERE 1=1`;
     const statsParams = [];
     
-    // Venue filter - MUST match the main query venue filter
-    if (venueId && !isAllVenues) {
-      statsQuery += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
-      statsParams.push(parseInt(venueId));
-    } else if (!isAllVenues && facultyVenueIds.length > 0) {
-      // Faculty non-admin: filter by their assigned venues
-      statsQuery += ` AND ss.student_id IN (
-        SELECT gs.student_id 
-        FROM group_students gs
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
-      )`;
+    // Venue filter - apply only if filterByVenue is true
+    if (filterByVenue) {
+      if (isAllVenues) {
+        // For 'All Venues' + filterByVenue: Stats for students assigned to ANY venue
+        statsQuery += ` AND ss.student_id IN (
+          SELECT DISTINCT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      } else if (venueId) {
+        statsQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+        statsParams.push(parseInt(venueId));
+      } else if (facultyVenueIds.length > 0) {
+        statsQuery += ` AND ss.student_id IN (
+          SELECT gs.student_id 
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
+        )`;
+      }
     }
-    // If isAllVenues=true (admin), no venue filter
+    // If filterByVenue is false, stats include all students
 
     // Skill filter - MUST be applied to stats
     if (skill && skill.trim().length > 0) {
@@ -875,31 +907,76 @@ export const getSkillReportsForFaculty = async (req, res) => {
 
     const [stats] = await db.execute(statsQuery, statsParams);
 
-    // Get ALL students enrolled in groups for this venue (for "Not Attempted" filter)
-    // For "all" venues (admin), get ALL students from ALL groups
+    // Get students for "Not Attempted" calculation
+    // - If filterByVenue is true: get students in the venue (or all venues)
+    // - If filterByVenue is false: get all students in the system
     let venueStudents = [];
-    if (venueId && !isAllVenues) {
-      const [students] = await db.execute(`
-        SELECT DISTINCT
-          s.student_id,
-          u.ID as roll_number,
-          u.name as student_name,
-          u.email,
-          u.department,
-          st.year
-        FROM group_students gs
-        INNER JOIN students st ON gs.student_id = st.student_id
-        INNER JOIN users u ON st.user_id = u.user_id
-        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-        INNER JOIN students s ON gs.student_id = s.student_id
-        WHERE g.venue_id = ?
-          AND gs.status = 'Active'
-          AND g.status = 'Active'
-        ORDER BY u.name
-      `, [parseInt(venueId)]);
-      venueStudents = students;
-    } else if (isAllVenues) {
-      // For "all" venues (admin), get ALL students including those not in any venue/group
+    if (filterByVenue) {
+      if (isAllVenues) {
+        // For "all" venues WITH filter: get students assigned to ANY venue
+        const [students] = await db.execute(`
+          SELECT DISTINCT
+            s.student_id,
+            u.ID as roll_number,
+            u.name as student_name,
+            u.email,
+            u.department,
+            st.year
+          FROM group_students gs
+          INNER JOIN students st ON gs.student_id = st.student_id
+          INNER JOIN users u ON st.user_id = u.user_id
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          INNER JOIN students s ON gs.student_id = s.student_id
+          WHERE gs.status = 'Active'
+            AND g.status = 'Active'
+          ORDER BY u.name
+        `);
+        venueStudents = students;
+      } else if (venueId) {
+        // For specific venue: get students in this venue
+        const [students] = await db.execute(`
+          SELECT DISTINCT
+            s.student_id,
+            u.ID as roll_number,
+            u.name as student_name,
+            u.email,
+            u.department,
+            st.year
+          FROM group_students gs
+          INNER JOIN students st ON gs.student_id = st.student_id
+          INNER JOIN users u ON st.user_id = u.user_id
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          INNER JOIN students s ON gs.student_id = s.student_id
+          WHERE g.venue_id = ?
+            AND gs.status = 'Active'
+            AND g.status = 'Active'
+          ORDER BY u.name
+        `, [parseInt(venueId)]);
+        venueStudents = students;
+      } else if (facultyVenueIds.length > 0) {
+        // For faculty: get students in their assigned venues
+        const [students] = await db.execute(`
+          SELECT DISTINCT
+            s.student_id,
+            u.ID as roll_number,
+            u.name as student_name,
+            u.email,
+            u.department,
+            st.year
+          FROM group_students gs
+          INNER JOIN students st ON gs.student_id = st.student_id
+          INNER JOIN users u ON st.user_id = u.user_id
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          INNER JOIN students s ON gs.student_id = s.student_id
+          WHERE g.venue_id IN (${facultyVenueIds.join(',')})
+            AND gs.status = 'Active'
+            AND g.status = 'Active'
+          ORDER BY u.name
+        `);
+        venueStudents = students;
+      }
+    } else {
+      // When filterByVenue is false: get ALL students in the system (for calculating not attempted against total population)
       const [students] = await db.execute(`
         SELECT DISTINCT
           s.student_id,
@@ -961,22 +1038,32 @@ export const getSkillReportsForFaculty = async (req, res) => {
         WHERE ss.course_name = ?`;
       const attemptedParams = [skill.trim()];
       
-      // Apply same venue filter
-      if (venueId && !isAllVenues) {
-        attemptedQuery += ` AND ss.student_id IN (
-          SELECT gs.student_id 
-          FROM group_students gs
-          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-          WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
-        )`;
-        attemptedParams.push(parseInt(venueId));
-      } else if (facultyVenueIds.length > 0 && !isAllVenues) {
-        attemptedQuery += ` AND ss.student_id IN (
-          SELECT gs.student_id 
-          FROM group_students gs
-          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-          WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
-        )`;
+      // Apply same venue filter only if filterByVenue is true
+      if (filterByVenue) {
+        if (isAllVenues) {
+          // For 'All Venues' + filterByVenue: Students in ANY venue
+          attemptedQuery += ` AND ss.student_id IN (
+            SELECT DISTINCT gs.student_id 
+            FROM group_students gs
+            INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+            WHERE gs.status = 'Active' AND g.status = 'Active'
+          )`;
+        } else if (venueId) {
+          attemptedQuery += ` AND ss.student_id IN (
+            SELECT gs.student_id 
+            FROM group_students gs
+            INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+            WHERE g.venue_id = ? AND gs.status = 'Active' AND g.status = 'Active'
+          )`;
+          attemptedParams.push(parseInt(venueId));
+        } else if (facultyVenueIds.length > 0) {
+          attemptedQuery += ` AND ss.student_id IN (
+            SELECT gs.student_id 
+            FROM group_students gs
+            INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+            WHERE g.venue_id IN (${facultyVenueIds.join(',')}) AND gs.status = 'Active' AND g.status = 'Active'
+          )`;
+        }
       }
       
       const [attemptedStudents] = await db.execute(attemptedQuery, attemptedParams);

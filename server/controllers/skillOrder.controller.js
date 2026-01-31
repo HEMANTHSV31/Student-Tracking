@@ -409,3 +409,65 @@ export const getAvailableSkillNames = async (req, res) => {
     });
   }
 };
+
+// Get unique course types from skill_order table
+export const getCourseTypes = async (req, res) => {
+  try {
+    const [courseTypes] = await db.query(`
+      SELECT DISTINCT course_type
+      FROM skill_order
+      WHERE course_type IS NOT NULL AND course_type != ''
+      ORDER BY course_type
+    `);
+
+    res.status(200).json({
+      success: true,
+      data: courseTypes.map(ct => ct.course_type)
+    });
+  } catch (error) {
+    console.error('Error getting course types:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get course types'
+    });
+  }
+};
+
+// Validate course type (checks if it exists in skill_order table)
+export const validateCourseType = async (req, res) => {
+  try {
+    const { course_type } = req.body;
+
+    if (!course_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course type is required'
+      });
+    }
+
+    // Check if course type exists in skill_order table
+    const [existing] = await db.query(`
+      SELECT COUNT(*) as count
+      FROM skill_order
+      WHERE course_type = ?
+    `, [course_type]);
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'This course type already exists'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Course type is available'
+    });
+  } catch (error) {
+    console.error('Error validating course type:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to validate course type'
+    });
+  }
+};
