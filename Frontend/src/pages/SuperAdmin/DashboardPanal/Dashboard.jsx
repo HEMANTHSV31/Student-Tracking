@@ -10,7 +10,13 @@ import {
   FilterList,
   Search,
   ArrowDownward,
-  ArrowUpward
+  ArrowUpward,
+  LocationOn,
+  Assignment,
+  WarningAmber,
+  CheckCircleOutline,
+  AccessTime,
+  Person
 } from '@mui/icons-material';
 import useAuthStore from '../../../store/useAuthStore';
 import { encodeIdSimple } from '../../../utils/idEncoder';
@@ -36,7 +42,9 @@ const EducationDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState({
     metrics: false,
-    alerts: false
+    alerts: false,
+    unmarkedAttendance: false,
+    pendingTasks: false
   });
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -46,11 +54,28 @@ const EducationDashboard = () => {
   // State for data
   const [metrics, setMetrics] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [unmarkedAttendance, setUnmarkedAttendance] = useState([]);
+  const [venuesWithoutTasks, setVenuesWithoutTasks] = useState([]);
+  const [taskStats, setTaskStats] = useState({});
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
     itemsPerPage: 10
+  });
+  
+  // Pagination for attendance and tasks sections
+  const [attendancePagination, setAttendancePagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 2
+  });
+  const [tasksPagination, setTasksPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 2
   });
 
   // Filter states
@@ -116,10 +141,64 @@ const EducationDashboard = () => {
     }
   };
 
+  // Fetch unmarked attendance venues
+  const fetchUnmarkedAttendance = async (page = 1) => {
+    try {
+      setLoading(prev => ({ ...prev, unmarkedAttendance: true }));
+      const response = await apiGet(`/dashboard/unmarked-attendance?page=${page}&limit=2`);
+      
+      if (!response.ok) throw new Error('Failed to fetch unmarked attendance');
+      
+      const data = await response.json();
+      if (data.success) {
+        setUnmarkedAttendance(data.data || []);
+        setAttendancePagination(data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: data.data?.length || 0,
+          itemsPerPage: 2
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching unmarked attendance:', err);
+    } finally {
+      setLoading(prev => ({ ...prev, unmarkedAttendance: false }));
+    }
+  };
+
+  // Fetch venues without task assignments
+  const fetchVenuesWithoutTasks = async (page = 1) => {
+    try {
+      setLoading(prev => ({ ...prev, pendingTasks: true }));
+
+      const response = await apiGet(`/dashboard/pending-tasks?page=${page}&limit=2`);
+      
+      if (!response.ok) throw new Error('Failed to fetch venues without tasks');
+      
+      const data = await response.json();
+      if (data.success) {
+        setVenuesWithoutTasks(data.data || []);
+        setTaskStats({ ...data.stats, deadline_passed: data.deadline_passed, message: data.message });
+        setTasksPagination(data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: data.data?.length || 0,
+          itemsPerPage: 2
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching venues without tasks:', err);
+    } finally {
+      setLoading(prev => ({ ...prev, pendingTasks: false }));
+    }
+  };
+
   // Load all data on component mount
   useEffect(() => {
     fetchDashboardMetrics();
     fetchAlerts(1);
+    fetchUnmarkedAttendance();
+    fetchVenuesWithoutTasks();
   }, []);
 
   // Handle page change
@@ -203,7 +282,325 @@ const EducationDashboard = () => {
           ))}
         </div>
 
-        {/* 2. Alerts Table with Filters and Pagination */}
+        {/* Side by Side Container for Attendance & Tasks */}
+        <div style={{
+          display: 'flex',
+          gap: '24px',
+          marginTop: '24px',
+          flexWrap: isMobile ? 'wrap' : 'nowrap'
+        }}>
+          {/* 2. Unmarked Attendance Section */}
+          <div style={{ ...styles.card, padding: 0, overflow: 'hidden', flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
+          <div style={{ ...styles.tableHeader, borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '10px', 
+                backgroundColor: '#fef2f2', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center' 
+              }}>
+                <LocationOn sx={{ fontSize: 22, color: '#ef4444' }} />
+              </div>
+              <div>
+                <h3 style={{ ...styles.sectionTitle, marginBottom: '2px' }}>Attendance Overdue</h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  {attendancePagination?.totalItems || 0} venue(s) overdue • 45 min after session start
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={() => fetchUnmarkedAttendance(1)}
+              style={{ ...styles.actionBtn, padding: '6px 12px', fontSize: '13px' }}
+              disabled={loading.unmarkedAttendance}
+            >
+              {loading.unmarkedAttendance ? '...' : '↻ Refresh'}
+            </button>
+          </div>
+
+          {loading.unmarkedAttendance ? (
+            <div style={styles.loadingContainer}>
+              <div style={styles.loadingSpinner}></div>
+              <span>Loading...</span>
+            </div>
+          ) : unmarkedAttendance.length > 0 ? (
+            <div style={{ padding: '0' }}>
+              {/* Venue Cards */}
+              {unmarkedAttendance.map((venue, index) => (
+                <div key={venue.venue_id} style={{
+                  padding: '16px',
+                  borderBottom: index < unmarkedAttendance.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  backgroundColor: index % 2 === 0 ? '#fff' : '#fafbfc'
+                }}>
+                  {/* Venue Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>{venue.venue_name}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{venue.location || 'No location'}</div>
+                    </div>
+                    <button 
+                      onClick={() => navigate('/attendance')} 
+                      style={{ 
+                        ...styles.actionBtn, 
+                        padding: '6px 12px', 
+                        fontSize: '12px',
+                        backgroundColor: '#ef4444',
+                        color: '#fff',
+                        border: 'none'
+                      }}
+                    >
+                      Mark Now
+                    </button>
+                  </div>
+                  
+                  {/* Faculty & Students Row */}
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Person sx={{ fontSize: 14, color: '#64748b' }} />
+                      <span style={{ fontSize: '12px', color: '#475569' }}>{venue.faculty_name}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <PeopleAltOutlined sx={{ fontSize: 14, color: '#64748b' }} />
+                      <span style={{ fontSize: '12px', color: '#475569' }}>{venue.student_count} students</span>
+                    </div>
+                  </div>
+
+                  {/* Unmarked Sessions */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {venue.unmarked_sessions.map(session => (
+                      <span key={session.id} style={{ 
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#fef2f2',
+                        color: '#dc2626',
+                        fontSize: '11px',
+                        fontWeight: '500'
+                      }}>
+                        <AccessTime sx={{ fontSize: 12 }} />
+                        {session.name} • {session.minutes_overdue}m late
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Pagination */}
+              {(attendancePagination?.totalPages || 0) > 1 && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  padding: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc'
+                }}>
+                  <button
+                    onClick={() => fetchUnmarkedAttendance((attendancePagination?.currentPage || 1) - 1)}
+                    disabled={(attendancePagination?.currentPage || 1) === 1}
+                    style={{
+                      padding: '6px 10px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: (attendancePagination?.currentPage || 1) === 1 ? '#f1f5f9' : '#fff',
+                      color: (attendancePagination?.currentPage || 1) === 1 ? '#94a3b8' : '#475569',
+                      cursor: (attendancePagination?.currentPage || 1) === 1 ? 'not-allowed' : 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <ChevronLeft sx={{ fontSize: 16 }} />
+                  </button>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>
+                    Page {attendancePagination?.currentPage || 1} of {attendancePagination?.totalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => fetchUnmarkedAttendance((attendancePagination?.currentPage || 1) + 1)}
+                    disabled={(attendancePagination?.currentPage || 1) === (attendancePagination?.totalPages || 1)}
+                    style={{
+                      padding: '6px 10px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: (attendancePagination?.currentPage || 1) === (attendancePagination?.totalPages || 1) ? '#f1f5f9' : '#fff',
+                      color: (attendancePagination?.currentPage || 1) === (attendancePagination?.totalPages || 1) ? '#94a3b8' : '#475569',
+                      cursor: (attendancePagination?.currentPage || 1) === (attendancePagination?.totalPages || 1) ? 'not-allowed' : 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <ChevronRight sx={{ fontSize: 16 }} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={styles.successContainer}>
+              <CheckCircleOutline sx={{ fontSize: 48, color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontWeight: '600' }}>No attendance overdue! All venues on track.</span>
+            </div>
+          )}
+          </div>
+
+          {/* 3. Pending Task Assignments Section */}
+          <div style={{ ...styles.card, padding: 0, overflow: 'hidden', flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
+          <div style={{ ...styles.tableHeader, borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '10px', 
+                backgroundColor: '#fffbeb', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center' 
+              }}>
+                <Assignment sx={{ fontSize: 22, color: '#f59e0b' }} />
+              </div>
+              <div>
+                <h3 style={{ ...styles.sectionTitle, marginBottom: '2px' }}>Task Assignments Overdue</h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  {tasksPagination?.totalItems || 0} venue(s) overdue • Deadline 12:30 PM
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={() => fetchVenuesWithoutTasks(1)}
+              style={{ ...styles.actionBtn, padding: '6px 12px', fontSize: '13px' }}
+              disabled={loading.pendingTasks}
+            >
+              {loading.pendingTasks ? '...' : '↻ Refresh'}
+            </button>
+          </div>
+
+          {loading.pendingTasks ? (
+            <div style={styles.loadingContainer}>
+              <div style={styles.loadingSpinner}></div>
+              <span>Loading...</span>
+            </div>
+          ) : venuesWithoutTasks.length > 0 ? (
+            <div style={{ padding: '0' }}>
+              {/* Venue Cards */}
+              {venuesWithoutTasks.map((venue, index) => (
+                <div key={venue.venue_id} style={{
+                  padding: '16px',
+                  borderBottom: index < venuesWithoutTasks.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  backgroundColor: index % 2 === 0 ? '#fff' : '#fafbfc'
+                }}>
+                  {/* Venue Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>{venue.venue_name}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{venue.location || 'No location'}</div>
+                    </div>
+                    <button 
+                      onClick={() => navigate('/tasks')} 
+                      style={{ 
+                        ...styles.actionBtn, 
+                        padding: '6px 12px', 
+                        fontSize: '12px',
+                        backgroundColor: '#f59e0b',
+                        color: '#fff',
+                        border: 'none'
+                      }}
+                    >
+                      Assign Now
+                    </button>
+                  </div>
+                  
+                  {/* Faculty & Students Row */}
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Person sx={{ fontSize: 14, color: '#64748b' }} />
+                      <span style={{ fontSize: '12px', color: '#475569' }}>{venue.faculty_name || 'Not Assigned'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <PeopleAltOutlined sx={{ fontSize: 14, color: '#64748b' }} />
+                      <span style={{ fontSize: '12px', color: '#475569' }}>{venue.student_count} students</span>
+                    </div>
+                  </div>
+
+                  {/* Overdue Status */}
+                  <span style={{ 
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    backgroundColor: '#fffbeb',
+                    color: '#d97706',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}>
+                    <AccessTime sx={{ fontSize: 12 }} />
+                    {venue.overdue_display || 'No Tasks Today'}
+                  </span>
+                </div>
+              ))}
+
+              {/* Pagination */}
+              {(tasksPagination?.totalPages || 0) > 1 && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  padding: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc'
+                }}>
+                  <button
+                    onClick={() => fetchVenuesWithoutTasks((tasksPagination?.currentPage || 1) - 1)}
+                    disabled={(tasksPagination?.currentPage || 1) === 1}
+                    style={{
+                      padding: '6px 10px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: (tasksPagination?.currentPage || 1) === 1 ? '#f1f5f9' : '#fff',
+                      color: (tasksPagination?.currentPage || 1) === 1 ? '#94a3b8' : '#475569',
+                      cursor: (tasksPagination?.currentPage || 1) === 1 ? 'not-allowed' : 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <ChevronLeft sx={{ fontSize: 16 }} />
+                  </button>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>
+                    Page {tasksPagination?.currentPage || 1} of {tasksPagination?.totalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => fetchVenuesWithoutTasks((tasksPagination?.currentPage || 1) + 1)}
+                    disabled={(tasksPagination?.currentPage || 1) === (tasksPagination?.totalPages || 1)}
+                    style={{
+                      padding: '6px 10px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: (tasksPagination?.currentPage || 1) === (tasksPagination?.totalPages || 1) ? '#f1f5f9' : '#fff',
+                      color: (tasksPagination?.currentPage || 1) === (tasksPagination?.totalPages || 1) ? '#94a3b8' : '#475569',
+                      cursor: (tasksPagination?.currentPage || 1) === (tasksPagination?.totalPages || 1) ? 'not-allowed' : 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <ChevronRight sx={{ fontSize: 16 }} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={styles.successContainer}>
+              <CheckCircleOutline sx={{ fontSize: 48, color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontWeight: '600' }}>
+                {taskStats.deadline_passed === false 
+                  ? 'Task deadline (12:30 PM) not yet reached' 
+                  : 'All venues have assigned tasks today!'}
+              </span>
+            </div>
+          )}
+          </div>
+        </div>
+
+        {/* 4. Alerts Table with Filters and Pagination */}
         <div style={{ ...styles.card, padding: 0, marginTop: '24px', overflow: 'hidden' }}>
           <div style={styles.tableHeader}>
             <h3 style={styles.sectionTitle}>Recent Alerts & Attention Needed</h3>
@@ -719,6 +1116,88 @@ const styles = {
     color: '#94a3b8', 
     fontSize: '14px', 
     padding: '0 4px' 
+  },
+
+  // New Styles for Unmarked Attendance & Pending Tasks
+  sessionBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontWeight: '500'
+  },
+  progressContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  progressBar: {
+    width: '60px',
+    height: '6px',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '3px',
+    overflow: 'hidden'
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease'
+  },
+  progressText: {
+    fontSize: '12px',
+    color: '#64748b',
+    fontWeight: '600'
+  },
+  successContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '60px 20px',
+    gap: '16px'
+  },
+  statsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '16px',
+    padding: '16px 24px',
+    backgroundColor: '#f8fafc',
+    borderBottom: '1px solid #e2e8f0'
+  },
+  statItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '12px 24px',
+    backgroundColor: '#ffffff',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+    flex: '1',
+    minWidth: '150px'
+  },
+  statValue: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#1e293b'
+  },
+  statLabel: {
+    fontSize: '12px',
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: '4px'
+  },
+  badgeInfo: {
+    backgroundColor: '#dbeafe',
+    color: '#1d4ed8',
+    padding: '6px 16px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '600',
+    display: 'inline-block'
   }
 };
 
