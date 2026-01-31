@@ -80,8 +80,12 @@ app.use((req, res, next) => {
 // Optional API prefix (e.g. "/pbl" in production)
 const API_PREFIX = process.env.API_PREFIX || '';
 
-// Serve uploaded files statically
-app.use(`${API_PREFIX}/api/uploads`, express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files statically with inline disposition for preview
+app.use(`${API_PREFIX}/api/uploads`, (req, res, next) => {
+  // Set Content-Disposition to inline for preview instead of download
+  res.setHeader('Content-Disposition', 'inline');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 app.use(`${API_PREFIX}/api/auth`, authRoutes);
 app.use(`${API_PREFIX}/api/faculty`, facultyRoutes);

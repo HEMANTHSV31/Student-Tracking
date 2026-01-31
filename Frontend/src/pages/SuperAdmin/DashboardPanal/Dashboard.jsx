@@ -69,13 +69,13 @@ const EducationDashboard = () => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 2
+    itemsPerPage: 1
   });
   const [tasksPagination, setTasksPagination] = useState({
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 2
+    itemsPerPage: 1
   });
 
   // Filter states
@@ -145,7 +145,7 @@ const EducationDashboard = () => {
   const fetchUnmarkedAttendance = async (page = 1) => {
     try {
       setLoading(prev => ({ ...prev, unmarkedAttendance: true }));
-      const response = await apiGet(`/dashboard/unmarked-attendance?page=${page}&limit=2`);
+      const response = await apiGet(`/dashboard/unmarked-attendance?page=${page}&limit=1`);
       
       if (!response.ok) throw new Error('Failed to fetch unmarked attendance');
       
@@ -156,7 +156,7 @@ const EducationDashboard = () => {
           currentPage: 1,
           totalPages: 1,
           totalItems: data.data?.length || 0,
-          itemsPerPage: 2
+          itemsPerPage: 1
         });
       }
     } catch (err) {
@@ -171,7 +171,7 @@ const EducationDashboard = () => {
     try {
       setLoading(prev => ({ ...prev, pendingTasks: true }));
 
-      const response = await apiGet(`/dashboard/pending-tasks?page=${page}&limit=2`);
+      const response = await apiGet(`/dashboard/pending-tasks?page=${page}&limit=1`);
       
       if (!response.ok) throw new Error('Failed to fetch venues without tasks');
       
@@ -183,7 +183,7 @@ const EducationDashboard = () => {
           currentPage: 1,
           totalPages: 1,
           totalItems: data.data?.length || 0,
-          itemsPerPage: 2
+          itemsPerPage: 1
         });
       }
     } catch (err) {
@@ -290,7 +290,7 @@ const EducationDashboard = () => {
           flexWrap: isMobile ? 'wrap' : 'nowrap'
         }}>
           {/* 2. Unmarked Attendance Section */}
-          <div style={{ ...styles.card, padding: 0, overflow: 'hidden', flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
+          <div style={{ ...styles.card, padding: 0, flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
           <div style={{ ...styles.tableHeader, borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ 
@@ -326,7 +326,7 @@ const EducationDashboard = () => {
               <span>Loading...</span>
             </div>
           ) : unmarkedAttendance.length > 0 ? (
-            <div style={{ padding: '0' }}>
+            <div>
               {/* Venue Cards */}
               {unmarkedAttendance.map((venue, index) => (
                 <div key={venue.venue_id} style={{
@@ -445,7 +445,7 @@ const EducationDashboard = () => {
           </div>
 
           {/* 3. Pending Task Assignments Section */}
-          <div style={{ ...styles.card, padding: 0, overflow: 'hidden', flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
+          <div style={{ ...styles.card, padding: 0, flex: isMobile ? '1 1 100%' : '1 1 50%', minWidth: isMobile ? '100%' : '0' }}>
           <div style={{ ...styles.tableHeader, borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ 
@@ -481,7 +481,7 @@ const EducationDashboard = () => {
               <span>Loading...</span>
             </div>
           ) : venuesWithoutTasks.length > 0 ? (
-            <div style={{ padding: '0' }}>
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
               {/* Venue Cards */}
               {venuesWithoutTasks.map((venue, index) => (
                 <div key={venue.venue_id} style={{

@@ -212,7 +212,7 @@ export const getAlerts = async (req, res) => {
         s.student_id as id,
         u.name,
         u.ID as roll_number,
-        t.title as group_name,
+        v.venue_name as group_name,
         CONCAT('Task Overdue: ', t.title) as issue,
         'warning' as type,
         t.due_date as last_date
@@ -220,6 +220,8 @@ export const getAlerts = async (req, res) => {
       INNER JOIN students s ON ts.student_id = s.student_id
       INNER JOIN users u ON s.user_id = u.user_id
       INNER JOIN tasks t ON ts.task_id = t.task_id
+      INNER JOIN \`groups\` g ON t.group_id = g.group_id
+      INNER JOIN venue v ON g.venue_id = v.venue_id
       WHERE ts.status = 'Pending Review'
         AND t.due_date < NOW()
         AND t.status = 'Active'
@@ -552,7 +554,7 @@ export const getPendingTaskAssignments = async (req, res) => {
     
     // Pagination parameters
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 2;
+    const limit = parseInt(req.query.limit) || 1;
     
     // Task assignment deadline is 12:30 PM (12 * 60 + 30 = 750 minutes from midnight)
     const taskDeadlineMinutes = 12 * 60 + 30; // 12:30 PM
