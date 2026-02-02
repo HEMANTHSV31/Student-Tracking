@@ -384,18 +384,33 @@ export const lookupStudentByRollNumber = async (req, res) => {
 
 // ===== VENUE MANAGEMENT =====
 
+// Get all unique group specifications
+export const getGroupSpecifications = async (req, res) => {
+  try {
+    const [specifications] = await db.query(`
+      SELECT DISTINCT group_specification
+      FROM venue
+      WHERE group_specification IS NOT NULL AND group_specification != ''
+      ORDER BY group_specification ASC
+    `);
+    
+    const specList = specifications.map(s => s.group_specification);
+    res.status(200).json({ success: true, data: specList });
+  } catch (error) {
+    console.error('Error fetching group specifications:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch group specifications' });
+  }
+};
+
 // Get all venues (only Active venues)
 export const getAllVenues = async (req, res) => {
   try {
     // console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
     const { year } = req.query; // Year filter parameter
     
-    // Build year filter for student count
-    const yearJoin = year ? `
-      LEFT JOIN students s ON gs.student_id = s.student_id
-    ` : '';
-    const yearCondition = year ? `AND s.year = ${parseInt(year)}` : '';
-    const yearHaving = year ? `HAVING current_students > 0` : '';
+    // Build year filter - can filter by venue's assigned year OR student year
+    const yearCondition = year ? `AND (v.year = ${parseInt(year)} OR v.year IS NULL)` : '';
+    const studentYearCondition = year ? `AND s.year = ${parseInt(year)}` : '';
     
     // Admin sees all venues
     if (req.user.role === 'admin') {
@@ -405,22 +420,23 @@ export const getAllVenues = async (req, res) => {
           v.venue_name,
           v.capacity,
           v.location,
+          v.year as venue_year,
+          v.group_specification,
           v.status,
           v.created_at,
           f.faculty_id,
           u.name as faculty_name,
           u.email as faculty_email,
           u.department as faculty_department,
-          COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as current_students
+          COUNT(DISTINCT CASE WHEN gs.status = 'Active' THEN gs.student_id END) as current_students
         FROM venue v
         LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        ${year ? `LEFT JOIN students s ON gs.student_id = s.student_id` : ''}
         WHERE v.status = 'Active'
+        ${yearCondition}
         GROUP BY v.venue_id
-        ${yearHaving}
         ORDER BY v.venue_name
       `);
       
@@ -451,23 +467,24 @@ export const getAllVenues = async (req, res) => {
         v.venue_name,
         v.capacity,
         v.location,
+        v.year as venue_year,
+        v.group_specification,
         v.status,
         v.created_at,
         f.faculty_id,
         u.name as faculty_name,
         u.email as faculty_email,
         u.department as faculty_department,
-        COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as current_students
+        COUNT(DISTINCT CASE WHEN gs.status = 'Active' THEN gs.student_id END) as current_students
       FROM venue v
       LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
       LEFT JOIN group_students gs ON g.group_id = gs.group_id
-      ${year ? `LEFT JOIN students s ON gs.student_id = s.student_id` : ''}
       WHERE v.status = 'Active'
         AND v.assigned_faculty_id = ?
+        ${yearCondition}
       GROUP BY v.venue_id
-      ${yearHaving}
       ORDER BY v.venue_name
     `, [facultyId]);
     
@@ -484,12 +501,20 @@ export const createVenue = async (req, res) => {
   const connection = await db.getConnection();
   
   try {
-    const { venue_name, capacity, location, assigned_faculty_id } = req.body;
+    const { venue_name, capacity, location, assigned_faculty_id, year, group_specification } = req.body;
 
     if (!venue_name || !capacity) {
       return res.status(400).json({ 
         success: false, 
         message: 'Venue name and capacity are required' 
+      });
+    }
+
+    // Validate year if provided
+    if (year && ![1, 2, 3, 4].includes(parseInt(year))) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year must be 1, 2, 3, or 4' 
       });
     }
 
@@ -505,8 +530,8 @@ export const createVenue = async (req, res) => {
         await connection.beginTransaction();
         
         await connection.query(
-          `UPDATE venue SET status = 'Active', capacity = ?, location = ?, assigned_faculty_id = ? WHERE venue_id = ?`,
-          [capacity, location || '', assigned_faculty_id || null, existing[0].venue_id]
+          `UPDATE venue SET status = 'Active', capacity = ?, location = ?, assigned_faculty_id = ?, year = ?, group_specification = ? WHERE venue_id = ?`,
+          [capacity, location || '', assigned_faculty_id || null, year || null, group_specification || null, existing[0].venue_id]
         );
         
         // Reactivate associated groups
@@ -552,9 +577,9 @@ export const createVenue = async (req, res) => {
     await connection.beginTransaction();
 
     const [result] = await connection.query(`
-      INSERT INTO venue (venue_name, capacity, location, assigned_faculty_id, status, created_at) 
-      VALUES (?, ?, ?, ?, 'Active', NOW())
-    `, [venue_name, capacity, location || '', assigned_faculty_id || null]);
+      INSERT INTO venue (venue_name, capacity, location, assigned_faculty_id, year, group_specification, status, created_at) 
+      VALUES (?, ?, ?, ?, ?, ?, 'Active', NOW())
+    `, [venue_name, capacity, location || '', assigned_faculty_id || null, year || null, group_specification || null]);
 
     const venueId = result.insertId;
 
@@ -1079,7 +1104,10 @@ export const updateVenue = async (req, res) => {
   
   try {
     const { venueId } = req.params;
-    const { venue_name, capacity, location, assigned_faculty_id, status } = req.body;
+    const { venue_name, capacity, location, assigned_faculty_id, status, year, group_specification } = req.body;
+
+    console.log('[UPDATE VENUE] Request body:', req.body);
+    console.log('[UPDATE VENUE] Year value:', year, 'Type:', typeof year);
 
     // Check if venue name already exists (excluding current venue)
     const [existing] = await connection.query(
@@ -1094,13 +1122,28 @@ export const updateVenue = async (req, res) => {
       });
     }
 
+    // Parse year value - convert to number or null
+    const yearValue = year ? parseInt(year, 10) : null;
+    
+    // Validate year if provided
+    if (yearValue !== null && ![1, 2, 3, 4].includes(yearValue)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year must be 1, 2, 3, or 4' 
+      });
+    }
+
+    console.log('[UPDATE VENUE] Parsed year value:', yearValue);
+
     await connection.beginTransaction();
 
     await connection.query(`
       UPDATE venue 
-      SET venue_name = ?, capacity = ?, location = ?, assigned_faculty_id = ?, status = ?  
+      SET venue_name = ?, capacity = ?, location = ?, assigned_faculty_id = ?, status = ?, year = ?, group_specification = ?  
       WHERE venue_id = ?
-    `, [venue_name, capacity, location, assigned_faculty_id, status, venueId]);
+    `, [venue_name, capacity, location, assigned_faculty_id, status, yearValue, group_specification || null, venueId]);
+    
+    console.log('[UPDATE VENUE] Update executed for venue_id:', venueId);
 
     await connection.commit();
 
