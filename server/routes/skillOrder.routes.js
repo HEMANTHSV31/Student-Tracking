@@ -10,7 +10,8 @@ import {
   getStudentSkillProgression,
   getAvailableSkillNames,
   getCourseTypes,
-  validateCourseType
+  validateCourseType,
+  updateSkillOrderAssociations
 } from '../controllers/skillOrder.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 
@@ -43,6 +44,9 @@ router.post('/course-type', authenticate, validateCourseType);
 
 // Update skill order entry
 router.put('/:id', authenticate, updateSkillOrder);
+
+// Update venue and year associations for a skill order
+router.put('/:id/associations', authenticate, updateSkillOrderAssociations);
 
 // Bulk reorder skills
 router.put('/reorder/bulk', authenticate, reorderSkills);

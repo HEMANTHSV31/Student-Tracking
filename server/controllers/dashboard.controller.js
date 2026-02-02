@@ -222,7 +222,7 @@ export const getAlerts = async (req, res) => {
       INNER JOIN tasks t ON ts.task_id = t.task_id
       INNER JOIN \`groups\` g ON t.group_id = g.group_id
       INNER JOIN venue v ON g.venue_id = v.venue_id
-      WHERE ts.status = 'Pending Review'
+      WHERE (ts.status = 'Pending Review' OR ts.status = 'Not Submitted')
         AND t.due_date < NOW()
         AND t.status = 'Active'
       ORDER BY t.due_date ASC

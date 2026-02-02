@@ -603,9 +603,9 @@ export const getFacultyVenues = async (req, res) => {
  */
 export const getSkillReportsForFaculty = async (req, res) => {
   try {
-    const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC', filterByVenue = false } = req.body;
+    const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC', filterByVenue = false, year } = req.body;
     
-    console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, filterByVenue, userRole: req.user.role });
+    // console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, filterByVenue, year, userRole: req.user.role });
     
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
@@ -756,12 +756,12 @@ export const getSkillReportsForFaculty = async (req, res) => {
 
     query += ` ORDER BY ss.${sortColumn} ${order} LIMIT ${limitNum} OFFSET ${offsetNum}`;
 
-    console.log('[SKILL REPORTS] Filter applied:', { filterByVenue, venueId, hasParams: params.length > 0 });
+    // console.log('[SKILL REPORTS] Filter applied:', { filterByVenue, venueId, hasParams: params.length > 0 });
 
     let reports = [];
     try {
       [reports] = await db.execute(query, params);
-      console.log('[SKILL REPORTS] Query returned', reports.length, 'records');
+      // console.log('[SKILL REPORTS] Query returned', reports.length, 'records');
     } catch (queryError) {
       console.error('Query execution error:', queryError);
       console.error('Query:', query);
@@ -844,6 +844,10 @@ export const getSkillReportsForFaculty = async (req, res) => {
     // Get statistics (only for latest records per student/course)
     // Statistics SHOULD be affected by venue and skill filters but NOT by status/date/search
     // This gives accurate counts for all statuses within the filtered context
+    // Build year filter condition for subqueries
+    const yearCondition = (year && year !== 'All Years') ? `AND s.year = ${parseInt(year)}` : '';
+    const yearConditionSt = (year && year !== 'All Years') ? `AND st.year = ${parseInt(year)}` : '';
+    
     let statsQuery = `
       SELECT 
         COUNT(*) as total,
@@ -851,11 +855,12 @@ export const getSkillReportsForFaculty = async (req, res) => {
         SUM(CASE WHEN ss.status = 'Not Cleared' THEN 1 ELSE 0 END) as not_cleared,
         SUM(CASE WHEN ss.status = 'Ongoing' THEN 1 ELSE 0 END) as ongoing,
         ROUND(AVG(ss.best_score), 2) as avg_best_score,
-        (SELECT COUNT(*) FROM students) as total_students,
+        (SELECT COUNT(*) FROM students s WHERE 1=1 ${yearCondition}) as total_students,
         (SELECT COUNT(DISTINCT gs.student_id) 
          FROM group_students gs 
          INNER JOIN \`groups\` g ON gs.group_id = g.group_id 
-         WHERE gs.status = 'Active' AND g.status = 'Active') as total_assigned_students
+         INNER JOIN students st ON gs.student_id = st.student_id
+         WHERE gs.status = 'Active' AND g.status = 'Active' ${yearConditionSt}) as total_assigned_students
       FROM student_skills ss
       INNER JOIN (
         SELECT student_id, course_name, MAX(last_slot_date) as max_date
@@ -902,6 +907,12 @@ export const getSkillReportsForFaculty = async (req, res) => {
     if (skill && skill.trim().length > 0) {
       statsQuery += ' AND ss.course_name = ?';
       statsParams.push(skill.trim());
+    }
+    
+    // Year filter - apply to stats if provided
+    if (year && year !== 'All Years') {
+      statsQuery += ' AND s.year = ?';
+      statsParams.push(parseInt(year));
     }
     // DO NOT apply status/date/search filters to statistics
 
@@ -992,6 +1003,52 @@ export const getSkillReportsForFaculty = async (req, res) => {
       venueStudents = students;
     }
 
+    // Always get venue-assigned students separately (for year filtering on second card)
+    // This is needed when filterByVenue is false but we still need venue counts by year
+    let assignedVenueStudents = [];
+    if (isAllVenues || !venueId) {
+      // Get students assigned to ANY venue
+      const [assigned] = await db.execute(`
+        SELECT DISTINCT
+          s.student_id,
+          u.ID as roll_number,
+          u.name as student_name,
+          u.email,
+          u.department,
+          st.year
+        FROM group_students gs
+        INNER JOIN students st ON gs.student_id = st.student_id
+        INNER JOIN users u ON st.user_id = u.user_id
+        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+        INNER JOIN students s ON gs.student_id = s.student_id
+        WHERE gs.status = 'Active'
+          AND g.status = 'Active'
+        ORDER BY u.name
+      `);
+      assignedVenueStudents = assigned;
+    } else if (venueId) {
+      // Get students assigned to specific venue
+      const [assigned] = await db.execute(`
+        SELECT DISTINCT
+          s.student_id,
+          u.ID as roll_number,
+          u.name as student_name,
+          u.email,
+          u.department,
+          st.year
+        FROM group_students gs
+        INNER JOIN students st ON gs.student_id = st.student_id
+        INNER JOIN users u ON st.user_id = u.user_id
+        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+        INNER JOIN students s ON gs.student_id = s.student_id
+        WHERE g.venue_id = ?
+          AND gs.status = 'Active'
+          AND g.status = 'Active'
+        ORDER BY u.name
+      `, [parseInt(venueId)]);
+      assignedVenueStudents = assigned;
+    }
+
     // Get available skills for this venue (distinct course names)
     let availableSkillsQuery = `
       SELECT DISTINCT ss.course_name 
@@ -1079,6 +1136,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
           : { venue_name: 'All Venues' },
       reports: reports || [],
       venueStudents: venueStudents, // All students in the venue for "Not Attempted" filter
+      assignedVenueStudents: assignedVenueStudents, // Students assigned to venue(s) - for year filtering on second card
       attemptedStudentIds: attemptedStudentIds, // All student IDs who have attempted the selected skill
       availableSkills: availableSkills, // List of skill names for dropdown
       statistics: stats[0] || {

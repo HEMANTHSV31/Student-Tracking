@@ -390,7 +390,7 @@ export const createStudent = async (req, res) => {
 
     await connection.query(
       'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, ?)',
-      [userId, year, semester, assigned_faculty_id || 0]
+      [userId, year, semester, assigned_faculty_id || null]
     );
 
     await connection.commit();
@@ -465,7 +465,7 @@ export const updateStudent = async (req, res) => {
 
     await connection.query(
       'UPDATE students SET year = ?, semester = ?, assigned_faculty_id = ?  WHERE student_id = ?',
-      [year, semester, assigned_faculty_id || 0, studentId]
+      [year, semester, assigned_faculty_id || null, studentId]
     );
 
     await connection.commit();
@@ -1138,6 +1138,7 @@ export const bulkUploadStudents = async (req, res) => {
     let studentsAdded = 0;
     let studentsSkipped = 0;
     const errors = [];
+    const skippedStudents = [];
     const successfulStudents = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -1176,11 +1177,13 @@ export const bulkUploadStudents = async (req, res) => {
 
         if (existingUser.length > 0) {
           const existing = existingUser[0];
+          let skipReason = '';
           if (existing.email === email) {
-            errors.push({ row: rowIndex, message: `Email already exists: ${email}` });
+            skipReason = `Email already exists: ${email}`;
           } else {
-            errors.push({ row: rowIndex, message: `Roll number already exists: ${rollNumber}` });
+            skipReason = `Roll number already exists: ${rollNumber}`;
           }
+          skippedStudents.push({ row: rowIndex, name, email, rollNumber, reason: skipReason });
           studentsSkipped++;
           continue;
         }
@@ -1196,7 +1199,7 @@ export const bulkUploadStudents = async (req, res) => {
 
         // Insert student record
         const [studentResult] = await connection.query(
-          'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, 0)',
+          'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, NULL)',
           [userId, year, semester]
         );
 
@@ -1226,13 +1229,14 @@ export const bulkUploadStudents = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Bulk upload completed! Added: ${studentsAdded} students, Skipped: ${studentsSkipped}`,
+      message: `Bulk upload completed! Added: ${studentsAdded} students, Skipped: ${studentsSkipped} (already exist)`,
       summary: {
         totalRecords: data.length,
         added: studentsAdded,
         skipped: studentsSkipped,
         errors: errors.length,
         errorDetails: errors.slice(0, 50),
+        skippedDetails: skippedStudents.slice(0, 50),
         successfulStudents: successfulStudents.slice(0, 10)
       }
     });

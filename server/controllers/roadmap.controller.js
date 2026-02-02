@@ -382,15 +382,23 @@ export const createRoadmapModule = async (req, res) => {
   const connection = await db.getConnection();
   
   try {
-    const { venue_id, day, title, description, status, course_type, learning_objectives, apply_to_all_venues } = req.body;
+    const { venue_id, venue_ids, day, title, description, status, course_type, learning_objectives, apply_to_all_venues } = req.body;
     const user_id = req.user.user_id; // Get user_id from JWT
 
-    // console.log('Creating module:', { venue_id, day, title, course_type, user_id, apply_to_all_venues });
+    // console.log('Creating module:', { venue_id, venue_ids, day, title, course_type, user_id, apply_to_all_venues });
 
-    if (!venue_id || !day || !title) {
+    if (!day || !title) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide venue_id, day, and title'
+        message: 'Please provide day and title'
+      });
+    }
+
+    // Validate venue selection
+    if (!venue_id && !venue_ids && !apply_to_all_venues) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select at least one venue or enable apply_to_all_venues'
       });
     }
 
@@ -471,9 +479,21 @@ export const createRoadmapModule = async (req, res) => {
       
       // Generate unique group_id for this batch
       group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    } else {
-      // Single venue
+    } else if (venue_ids && Array.isArray(venue_ids) && venue_ids.length > 0) {
+      // Multiple selected venues
+      targetVenues = venue_ids.map(id => parseInt(id));
+      
+      // Generate unique group_id for this batch
+      group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } else if (venue_id) {
+      // Single venue (backward compatibility)
       targetVenues = [parseInt(venue_id)];
+    } else {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'No valid venues specified'
+      });
     }
 
     const createdRoadmaps = [];
@@ -502,7 +522,7 @@ export const createRoadmapModule = async (req, res) => {
       `, [target_venue_id, day, course_type || 'frontend']);
 
       if (existing.length > 0) {
-        if (!apply_to_all_venues) {
+        if (!apply_to_all_venues && (!venue_ids || venue_ids.length === 1)) {
           // For single venue, return error
           await connection.rollback();
           return res.status(400).json({
@@ -510,7 +530,7 @@ export const createRoadmapModule = async (req, res) => {
             message: `Module ${day} already exists for this course in this venue`
           });
         } else {
-          // For all venues, skip this venue and continue
+          // For multiple venues, skip this venue and continue
           skippedVenues.push(target_venue_id);
           continue;
         }
@@ -537,7 +557,7 @@ export const createRoadmapModule = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: apply_to_all_venues 
+      message: (apply_to_all_venues || (venue_ids && venue_ids.length > 1))
         ? `Roadmap module created for ${createdRoadmaps.length} venue(s)${skippedVenues.length > 0 ? `, skipped ${skippedVenues.length} (already exists)` : ''}!`
         : 'Roadmap module created successfully!',
       data: { 

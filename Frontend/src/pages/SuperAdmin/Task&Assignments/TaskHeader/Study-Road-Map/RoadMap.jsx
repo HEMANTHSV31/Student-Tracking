@@ -44,6 +44,12 @@ const StudyRoadmap = ({
     type: "success",
   });
 
+  // Venue selection modal state
+  const [showVenueSelectionModal, setShowVenueSelectionModal] = useState(false);
+  const [selectedVenuesForCreate, setSelectedVenuesForCreate] = useState([]);
+  const [selectAllVenues, setSelectAllVenues] = useState(false);
+  const [roadmapVenueSearch, setRoadmapVenueSearch] = useState('');
+
   // Resource Modal State
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [currentModuleId, setCurrentModuleId] = useState(null);
@@ -138,6 +144,23 @@ const StudyRoadmap = ({
 
     const isAllVenues = selectedVenueId === "all";
 
+    // If creating for "all venues" or if user wants to select specific venues
+    if (isAllVenues) {
+      // Show venue selection modal
+      setSelectedVenuesForCreate([]);
+      setSelectAllVenues(false);
+      setShowVenueSelectionModal(true);
+      return;
+    }
+
+    // Single venue creation - proceed directly
+    await createRoadmapModule([selectedVenueId], false);
+  };
+
+  const createRoadmapModule = async (venue_ids_to_create, apply_to_all) => {
+    // Calculate next day number based on course type
+    let nextDay = 1;
+  const createRoadmapModule = async (venue_ids_to_create, apply_to_all) => {
     // Calculate next day number based on course type
     let nextDay = 1;
     if (selectedVenueId === "all") {
@@ -156,12 +179,16 @@ const StudyRoadmap = ({
       }
     }
 
-    if (isAllVenues) {
+    const isMultipleVenues = venue_ids_to_create.length > 1 || apply_to_all;
+
+    if (isMultipleVenues) {
       const confirmed = await new Promise((resolve) => {
         setMessageModal({
           show: true,
           title: "Confirm Creation",
-          message: `This will create a new ${selectedCourseType} module (Day ${nextDay}) for ALL active venues.\n\nAre you sure you want to continue?`,
+          message: apply_to_all 
+            ? `This will create a new ${selectedCourseType} module (Day ${nextDay}) for ALL active venues.\n\nAre you sure you want to continue?`
+            : `This will create a new ${selectedCourseType} module (Day ${nextDay}) for ${venue_ids_to_create.length} selected venue(s).\n\nAre you sure you want to continue?`,
           type: "confirm",
           onConfirm: () => {
             setMessageModal({
@@ -191,16 +218,25 @@ const StudyRoadmap = ({
 
     try {
       const newDay = {
-        venue_id: isAllVenues ? venues[0]?.venue_id : selectedVenueId,
         day: nextDay,
-        title: isAllVenues
-          ? `All Venues - ${selectedCourseType} Day ${nextDay}`
+        title: isMultipleVenues
+          ? `${apply_to_all ? 'All Venues' : 'Selected Venues'} - ${selectedCourseType} Day ${nextDay}`
           : `${venueName} - ${selectedCourseType} Day ${nextDay}`,
         description: "Enter module description here...",
         status: "draft",
         course_type: selectedCourseType,
-        apply_to_all_venues: isAllVenues,
       };
+
+      // Add venue selection
+      if (apply_to_all) {
+        newDay.apply_to_all_venues = true;
+        newDay.venue_id = venues[0]?.venue_id; // Fallback for backend
+      } else if (venue_ids_to_create.length === 1) {
+        newDay.venue_id = venue_ids_to_create[0];
+      } else {
+        newDay.venue_ids = venue_ids_to_create;
+        newDay.venue_id = venue_ids_to_create[0]; // Fallback for backend
+      }
 
       // Send to backend
       const response = await apiPost('/roadmap', newDay);
@@ -208,7 +244,10 @@ const StudyRoadmap = ({
       const data = await response.json();
 
       if (data.success) {
-        if (data.data.venues_count > 1 || isAllVenues) {
+        // Close venue selection modal if open
+        setShowVenueSelectionModal(false);
+        
+        if (data.data.venues_count > 1 || isMultipleVenues) {
           // Multi-venue creation
           let message = `Roadmap module created for ${data.data.venues_count} venue(s) successfully!`;
           if (data.data.skipped_count > 0) {
@@ -221,7 +260,7 @@ const StudyRoadmap = ({
             type: "success",
           });
           // Refresh all venues modules
-          if (isAllVenues) {
+          if (selectedVenueId === "all") {
             const response = await apiGet('/roadmap/all-venues');
             const refreshData = await response.json();
             if (refreshData.success) {
@@ -1582,7 +1621,23 @@ const StudyRoadmap = ({
                               placeholder="Enter module title..."
                             />
                           ) : (
-                            <h3 style={styles.cardTitle}>{module.title}</h3>
+                            <>
+                              <h3 style={styles.cardTitle}>{module.title}</h3>
+                              {selectedVenueId && selectedVenueId !== "all" && venueName && (
+                                <span style={{
+                                  marginLeft: '12px',
+                                  padding: '4px 10px',
+                                  backgroundColor: '#EFF6FF',
+                                  color: '#1E40AF',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  borderRadius: '6px',
+                                  border: '1px solid #BFDBFE'
+                                }}>
+                                  📍 {venueName}
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                         <div style={styles.headerActions}>
@@ -2024,6 +2079,296 @@ Tutorial Video"
               </button>
               <button style={styles.confirmBtn} onClick={handleAddResource}>
                 Add Resource
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Venue Selection Modal */}
+      {showVenueSelectionModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "28px",
+              width: "90%",
+              maxWidth: "550px",
+              maxHeight: "80vh",
+              overflow: "auto",
+              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div style={{ marginBottom: "24px" }}>
+              <h3
+                style={{
+                  margin: "0 0 8px 0",
+                  fontSize: "20px",
+                  fontWeight: "700",
+                  color: "#111827",
+                }}
+              >
+                Select Venues for Roadmap Module
+              </h3>
+              <p style={{ margin: 0, fontSize: "14px", color: "#6b7280" }}>
+                Choose which venues should receive this roadmap module
+              </p>
+            </div>
+
+            {/* Select All Checkbox */}
+            <div
+              style={{
+                padding: "12px 16px",
+                backgroundColor: "#f3f4f6",
+                borderRadius: "8px",
+                marginBottom: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selectAllVenues}
+                onChange={(e) => {
+                  setSelectAllVenues(e.target.checked);
+                  if (e.target.checked) {
+                    setSelectedVenuesForCreate(
+                      venues
+                        .filter((v) => v.venue_id !== "all")
+                        .map((v) => v.venue_id)
+                    );
+                  } else {
+                    setSelectedVenuesForCreate([]);
+                  }
+                }}
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  cursor: "pointer",
+                  accentColor: "#0066FF",
+                }}
+              />
+              <label
+                style={{
+                  fontSize: "15px",
+                  fontWeight: "600",
+                  color: "#111827",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  const newValue = !selectAllVenues;
+                  setSelectAllVenues(newValue);
+                  if (newValue) {
+                    setSelectedVenuesForCreate(
+                      venues
+                        .filter((v) => v.venue_id !== "all")
+                        .map((v) => v.venue_id)
+                    );
+                  } else {
+                    setSelectedVenuesForCreate([]);
+                  }
+                }}
+              >
+                Select All Venues
+              </label>
+            </div>
+
+            {/* Search Box */}
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                placeholder="🔍 Search venues..."
+                value={roadmapVenueSearch}
+                onChange={(e) => setRoadmapVenueSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  transition: 'border-color 0.15s ease'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#0066FF'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+              />
+            </div>
+
+            {/* Venue List */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                marginBottom: "24px",
+                maxHeight: "300px",
+                overflowY: "auto",
+              }}
+            >
+              {venues
+                .filter((venue) => venue.venue_id !== "all")
+                .filter((venue) => venue.venue_name.toLowerCase().includes(roadmapVenueSearch.toLowerCase()))
+                .sort((a, b) => a.venue_name.localeCompare(b.venue_name))
+                .map((venue) => (
+                  <div
+                    key={venue.venue_id}
+                    onClick={() => {
+                      if (selectedVenuesForCreate.includes(venue.venue_id)) {
+                        setSelectedVenuesForCreate(
+                          selectedVenuesForCreate.filter(
+                            (id) => id !== venue.venue_id
+                          )
+                        );
+                        setSelectAllVenues(false);
+                      } else {
+                        const newSelection = [
+                          ...selectedVenuesForCreate,
+                          venue.venue_id,
+                        ];
+                        setSelectedVenuesForCreate(newSelection);
+                        if (
+                          newSelection.length ===
+                          venues.filter((v) => v.venue_id !== "all").length
+                        ) {
+                          setSelectAllVenues(true);
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: "8px",
+                      border: selectedVenuesForCreate.includes(venue.venue_id)
+                        ? "2px solid #0066FF"
+                        : "2px solid #e5e7eb",
+                      backgroundColor: selectedVenuesForCreate.includes(
+                        venue.venue_id
+                      )
+                        ? "#f0f7ff"
+                        : "#ffffff",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedVenuesForCreate.includes(
+                        venue.venue_id
+                      )}
+                      onChange={() => {}}
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        cursor: "pointer",
+                        accentColor: "#0066FF",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: selectedVenuesForCreate.includes(
+                          venue.venue_id
+                        )
+                          ? "600"
+                          : "500",
+                        color: selectedVenuesForCreate.includes(venue.venue_id)
+                          ? "#0066FF"
+                          : "#374151",
+                      }}
+                    >
+                      {venue.venue_name}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            {/* Selection Summary */}
+            <div
+              style={{
+                padding: "12px",
+                backgroundColor: "#fef3c7",
+                borderRadius: "8px",
+                marginBottom: "20px",
+                fontSize: "13px",
+                color: "#92400e",
+              }}
+            >
+              <strong>{selectedVenuesForCreate.length}</strong> venue(s) selected
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => {
+                  setShowVenueSelectionModal(false);
+                  setSelectedVenuesForCreate([]);
+                  setSelectAllVenues(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: "1px solid #e5e7eb",
+                  backgroundColor: "#ffffff",
+                  color: "#374151",
+                  fontWeight: "600",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedVenuesForCreate.length === 0) {
+                    setMessageModal({
+                      show: true,
+                      title: "No Venues Selected",
+                      message: "Please select at least one venue",
+                      type: "error",
+                    });
+                    return;
+                  }
+                  createRoadmapModule(selectedVenuesForCreate, false);
+                }}
+                disabled={selectedVenuesForCreate.length === 0}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  backgroundColor:
+                    selectedVenuesForCreate.length === 0
+                      ? "#d1d5db"
+                      : "#0066FF",
+                  color: "#ffffff",
+                  fontWeight: "600",
+                  fontSize: "14px",
+                  cursor:
+                    selectedVenuesForCreate.length === 0
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                Create Module for {selectedVenuesForCreate.length} Venue(s)
               </button>
             </div>
           </div>
@@ -2734,5 +3079,5 @@ const styles = {
     color: "#6B7280",
   },
 };
-
+}
 export default StudyRoadmap;

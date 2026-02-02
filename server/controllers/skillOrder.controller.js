@@ -1,7 +1,7 @@
 // controllers/skillOrder.controller.js
 import db from '../config/db.js';
 
-// Get all skill orders (GLOBAL - no venue dependency)
+// Get all skill orders (with venue and year associations)
 export const getSkillOrders = async (req, res) => {
   try {
     const { course_type } = req.query;
@@ -34,6 +34,37 @@ export const getSkillOrders = async (req, res) => {
     query += ` ORDER BY so.course_type, so.display_order ASC`;
 
     const [skillOrders] = await db.query(query, params);
+
+    // Fetch associated venues and years for each skill order (if tables exist)
+    for (const skillOrder of skillOrders) {
+      try {
+        // Get venues
+        const [venues] = await db.query(`
+          SELECT sov.venue_id, v.venue_name
+          FROM skill_order_venues sov
+          JOIN venue v ON sov.venue_id = v.venue_id
+          WHERE sov.skill_order_id = ?
+        `, [skillOrder.id]);
+        
+        skillOrder.venues = venues;
+
+        // Get years
+        const [years] = await db.query(`
+          SELECT year
+          FROM skill_order_years
+          WHERE skill_order_id = ?
+          ORDER BY year ASC
+        `, [skillOrder.id]);
+        
+        skillOrder.years = years.map(y => y.year);
+      } catch (err) {
+        // Tables might not exist yet - set defaults
+        skillOrder.venues = [];
+        skillOrder.years = [];
+        skillOrder.apply_to_all_venues = true;
+        skillOrder.apply_to_all_years = true;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -89,10 +120,22 @@ export const getSkillOrderForVenue = async (req, res) => {
   }
 };
 
-// Create a new skill order entry (GLOBAL)
+// Create a new skill order entry (with optional venue/year targeting)
 export const createSkillOrder = async (req, res) => {
+  const connection = await db.getConnection();
+  
   try {
-    const { course_type, skill_name, display_order, is_prerequisite, description } = req.body;
+    const { 
+      course_type, 
+      skill_name, 
+      display_order, 
+      is_prerequisite, 
+      description,
+      venue_ids,  // Array of venue IDs
+      years,       // Array of years (1,2,3,4)
+      apply_to_all_venues,
+      apply_to_all_years
+    } = req.body;
     const user_id = req.user.user_id;
 
     if (!course_type || !skill_name) {
@@ -104,13 +147,13 @@ export const createSkillOrder = async (req, res) => {
 
     // Get faculty_id from user_id
     let created_by = null;
-    const [faculty] = await db.query('SELECT faculty_id FROM faculties WHERE user_id = ?', [user_id]);
+    const [faculty] = await connection.query('SELECT faculty_id FROM faculties WHERE user_id = ?', [user_id]);
     if (faculty.length > 0) {
       created_by = faculty[0].faculty_id;
     }
 
     // Check for duplicate
-    const [existing] = await db.query(`
+    const [existing] = await connection.query(`
       SELECT id FROM skill_order 
       WHERE course_type = ? AND skill_name = ?
     `, [course_type, skill_name]);
@@ -125,7 +168,7 @@ export const createSkillOrder = async (req, res) => {
     // Get max display_order if not provided
     let orderValue = display_order;
     if (!orderValue) {
-      const [maxOrder] = await db.query(`
+      const [maxOrder] = await connection.query(`
         SELECT MAX(display_order) as max_order 
         FROM skill_order 
         WHERE course_type = ?
@@ -133,22 +176,114 @@ export const createSkillOrder = async (req, res) => {
       orderValue = (maxOrder[0].max_order || 0) + 1;
     }
 
-    const [result] = await db.query(`
-      INSERT INTO skill_order (course_type, skill_name, display_order, is_prerequisite, description, created_by)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [course_type, skill_name, orderValue, is_prerequisite !== false ? 1 : 0, description || null, created_by]);
+    await connection.beginTransaction();
+
+    // Check if new columns exist
+    let hasNewColumns = false;
+    try {
+      await connection.query('SELECT apply_to_all_venues FROM skill_order LIMIT 1');
+      hasNewColumns = true;
+    } catch (err) {
+      // Columns don't exist yet
+      hasNewColumns = false;
+    }
+
+    // Insert skill order
+    let insertQuery, insertParams;
+    if (hasNewColumns) {
+      insertQuery = `
+        INSERT INTO skill_order (
+          course_type, 
+          skill_name, 
+          display_order, 
+          is_prerequisite, 
+          description, 
+          created_by,
+          apply_to_all_venues,
+          apply_to_all_years
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      insertParams = [
+        course_type, 
+        skill_name, 
+        orderValue, 
+        is_prerequisite !== false ? 1 : 0, 
+        description || null, 
+        created_by,
+        apply_to_all_venues !== false,
+        apply_to_all_years !== false
+      ];
+    } else {
+      insertQuery = `
+        INSERT INTO skill_order (
+          course_type, 
+          skill_name, 
+          display_order, 
+          is_prerequisite, 
+          description, 
+          created_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      insertParams = [
+        course_type, 
+        skill_name, 
+        orderValue, 
+        is_prerequisite !== false ? 1 : 0, 
+        description || null, 
+        created_by
+      ];
+    }
+
+    const [result] = await connection.query(insertQuery, insertParams);
+
+    const skillOrderId = result.insertId;
+
+    // Insert venue associations if specified (and tables exist)
+    if (hasNewColumns && !apply_to_all_venues && venue_ids && Array.isArray(venue_ids) && venue_ids.length > 0) {
+      try {
+        for (const venueId of venue_ids) {
+          await connection.query(
+            'INSERT INTO skill_order_venues (skill_order_id, venue_id) VALUES (?, ?)',
+            [skillOrderId, venueId]
+          );
+        }
+      } catch (err) {
+        console.log('skill_order_venues table not found, skipping venue associations');
+      }
+    }
+
+    // Insert year associations if specified (and tables exist)
+    if (hasNewColumns && !apply_to_all_years && years && Array.isArray(years) && years.length > 0) {
+      try {
+        for (const year of years) {
+          await connection.query(
+            'INSERT INTO skill_order_years (skill_order_id, year) VALUES (?, ?)',
+            [skillOrderId, year]
+          );
+        }
+      } catch (err) {
+        console.log('skill_order_years table not found, skipping year associations');
+      }
+    }
+
+    await connection.commit();
 
     res.status(201).json({
       success: true,
       message: 'Skill order created successfully',
-      data: { id: result.insertId }
+      data: { id: skillOrderId }
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Error creating skill order:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create skill order'
     });
+  } finally {
+    connection.release();
   }
 };
 
@@ -407,6 +542,63 @@ export const getAvailableSkillNames = async (req, res) => {
       success: false,
       message: 'Failed to get skill names'
     });
+  }
+};
+
+// Update venue and year associations for a skill order
+export const updateSkillOrderAssociations = async (req, res) => {
+  const connection = await db.getConnection();
+  
+  try {
+    const { id } = req.params;
+    const { venue_ids, years, apply_to_all_venues, apply_to_all_years } = req.body;
+
+    await connection.beginTransaction();
+
+    // Update apply_to_all flags
+    await connection.query(`
+      UPDATE skill_order 
+      SET apply_to_all_venues = ?, apply_to_all_years = ?
+      WHERE id = ?
+    `, [apply_to_all_venues !== false, apply_to_all_years !== false, id]);
+
+    // Update venue associations
+    await connection.query('DELETE FROM skill_order_venues WHERE skill_order_id = ?', [id]);
+    if (!apply_to_all_venues && venue_ids && Array.isArray(venue_ids) && venue_ids.length > 0) {
+      for (const venueId of venue_ids) {
+        await connection.query(
+          'INSERT INTO skill_order_venues (skill_order_id, venue_id) VALUES (?, ?)',
+          [id, venueId]
+        );
+      }
+    }
+
+    // Update year associations
+    await connection.query('DELETE FROM skill_order_years WHERE skill_order_id = ?', [id]);
+    if (!apply_to_all_years && years && Array.isArray(years) && years.length > 0) {
+      for (const year of years) {
+        await connection.query(
+          'INSERT INTO skill_order_years (skill_order_id, year) VALUES (?, ?)',
+          [id, year]
+        );
+      }
+    }
+
+    await connection.commit();
+
+    res.status(200).json({
+      success: true,
+      message: 'Associations updated successfully'
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error updating associations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update associations'
+    });
+  } finally {
+    connection.release();
   }
 };
 

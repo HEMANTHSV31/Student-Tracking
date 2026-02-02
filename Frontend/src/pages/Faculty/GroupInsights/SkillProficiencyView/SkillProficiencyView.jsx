@@ -8,6 +8,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   const [selectedSkill, setSelectedSkill] = useState(initialSkill);
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [studentSearch, setStudentSearch] = useState('');
+  const [yearFilter, setYearFilter] = useState('All Years');
   // Default to venue filter when a specific venue is selected (not 'all')
   const [venueFilter, setVenueFilter] = useState(selectedVenue && selectedVenue !== 'all');
   
@@ -20,6 +21,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   // Backend data states
   const [skillReports, setSkillReports] = useState([]);
   const [venueStudents, setVenueStudents] = useState([]); // All students in venue for "Not Attempted"
+  const [assignedVenueStudents, setAssignedVenueStudents] = useState([]); // Students assigned to venue(s) for year filtering
   const [attemptedStudentIds, setAttemptedStudentIds] = useState([]); // All student IDs who attempted the skill
   const [availableSkills, setAvailableSkills] = useState([]); // Skills list from API
   const [skillStats, setSkillStats] = useState({
@@ -96,12 +98,13 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       else if (statusFilter === 'Not Cleared') statusParam = 'Not Cleared';
       else if (statusFilter === 'Ongoing') statusParam = 'Ongoing';
       
-      console.log('[SKILL REPORTS] Sending request with:', { 
-        venueId: selectedVenue, 
-        skill: selectedSkill, 
-        filterByVenue: venueFilter,
-        statusFilter: statusParam
-      });
+      // console.log('[SKILL REPORTS] Sending request with:', { 
+      //   venueId: selectedVenue, 
+      //   skill: selectedSkill, 
+      //   filterByVenue: venueFilter,
+      //   statusFilter: statusParam,
+      //   year: yearFilter
+      // });
       
       const response = await apiPost('/skill-reports/faculty/venue/reports', {
         venueId: selectedVenue,
@@ -113,6 +116,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         status: statusParam,
         search: debouncedSearch || undefined,
         filterByVenue: venueFilter, // Send venue filter to backend
+        year: yearFilter !== 'All Years' ? yearFilter : undefined, // Send year filter to backend
       });
       
       if (!response.ok) {
@@ -140,6 +144,11 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         setVenueStudents(data.venueStudents);
       }
       
+      // Store assigned venue students for year filtering on second card
+      if (data.assignedVenueStudents) {
+        setAssignedVenueStudents(data.assignedVenueStudents);
+      }
+      
       // Store attempted student IDs (all students who have attempted the skill, not paginated)
       if (data.attemptedStudentIds) {
         setAttemptedStudentIds(data.attemptedStudentIds);
@@ -158,7 +167,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
           totalStudentsDB: data.statistics.total_students || 0, // All students in DB
           totalAssignedStudents: data.statistics.total_assigned_students || 0, // Always show total assigned
           totalVenueStudents: totalVenueStudents,
-          totalStudents: attemptedCount, // Keep for percentage calculation
+          totalStudents: attemptedCount + notAttemptedCount, // Total includes attempted + not attempted
           cleared: data.statistics.cleared || 0,
           notCleared: data.statistics.not_cleared || 0,
           ongoing: data.statistics.ongoing || 0,
@@ -172,7 +181,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     } finally {
       setLoading(false);
     }
-  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch, venueFilter]);
+  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch, venueFilter, yearFilter]);
 
   // Fetch data when dependencies change
   useEffect(() => {
@@ -182,7 +191,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedVenue, selectedSkill, statusFilter]);
+  }, [selectedVenue, selectedSkill, statusFilter, venueFilter, yearFilter]);
 
   // Reset venueFilter when venue changes
   useEffect(() => {
@@ -245,10 +254,30 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     return [...attemptedStudents, ...notAttemptedStudents];
   }, [attemptedStudents, notAttemptedStudents, selectedSkill]);
 
-  // Use backend statistics directly (backend handles venue filtering when filterByVenue is sent)
+  // filteredStats - backend now handles year filtering, so we just use skillStats directly
+  // The only exception is for Not Attempted count which is calculated on frontend
   const filteredStats = useMemo(() => {
-    return skillStats;
-  }, [skillStats]);
+    // Backend now returns year-filtered statistics
+    // We still need to calculate notAttempted from frontend data for accuracy
+    const filteredVenueStudents = yearFilter === 'All Years' 
+      ? venueStudents 
+      : venueStudents.filter(vs => String(vs.year || '') === yearFilter);
+    
+    const filteredAssignedVenueStudents = yearFilter === 'All Years'
+      ? assignedVenueStudents
+      : assignedVenueStudents.filter(vs => String(vs.year || '') === yearFilter);
+    
+    // Calculate not attempted from venue students minus attempted IDs
+    const attemptedIdsSet = new Set(attemptedStudentIds);
+    const notAttemptedCount = filteredVenueStudents.filter(vs => !attemptedIdsSet.has(vs.student_id)).length;
+    
+    return {
+      ...skillStats,
+      totalVenueStudents: filteredVenueStudents.length,
+      totalAssignedStudents: filteredAssignedVenueStudents.length,
+      notAttempted: notAttemptedCount,
+    };
+  }, [skillStats, yearFilter, venueStudents, assignedVenueStudents, attemptedStudentIds]);
 
   // Memoize the transformed data to avoid expensive recalculations
   const displayData = useMemo(() => {
@@ -261,31 +290,48 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       baseData = allStudents;
     }
     
+    // Apply year filter
+    if (yearFilter !== 'All Years') {
+      baseData = baseData.filter(student => {
+        const studentYear = student.year?.toString();
+        return studentYear === yearFilter;
+      });
+    }
+    
     // Apply pagination (backend already filtered by venue if filterByVenue=true)
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return baseData.slice(startIndex, endIndex);
-  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, currentPage, itemsPerPage]);
+  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, yearFilter, currentPage, itemsPerPage]);
 
   // Get correct pagination values based on filter
   const paginationInfo = useMemo(() => {
-    let total = 0;
+    let baseData = attemptedStudents;
     
-    // Calculate total based on status filter
+    // Determine base data based on status filter
     if (statusFilter === 'Not Attempted' && selectedSkill) {
-      total = notAttemptedStudents.length;
+      baseData = notAttemptedStudents;
     } else if (statusFilter === 'All Status' && selectedSkill) {
-      total = allStudents.length;
+      baseData = allStudents;
     } else {
-      // Backend returns correct totalRecords based on filterByVenue
-      total = totalRecords;
+      baseData = attemptedStudents;
     }
+    
+    // Apply year filter for count
+    if (yearFilter !== 'All Years') {
+      baseData = baseData.filter(student => {
+        const studentYear = student.year?.toString();
+        return studentYear === yearFilter;
+      });
+    }
+    
+    const total = baseData.length;
     
     return {
       totalRecords: total,
       totalPages: Math.ceil(total / itemsPerPage) || 1
     };
-  }, [statusFilter, selectedSkill, notAttemptedStudents, allStudents, totalRecords, itemsPerPage]);
+  }, [statusFilter, selectedSkill, yearFilter, notAttemptedStudents, allStudents, attemptedStudents, itemsPerPage]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -345,6 +391,22 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
             <option>Not Cleared</option>
             <option>Ongoing</option>
             <option>Not Attempted</option>
+          </select>
+        </div>
+
+        <div style={styles.filterGroup}>
+          <label style={styles.label}>Year Filter</label>
+          <select 
+            style={styles.select} 
+            value={yearFilter} 
+            onChange={(e) => setYearFilter(e.target.value)}
+            disabled={!selectedSkill}
+          >
+            <option>All Years</option>
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
           </select>
         </div>
 
@@ -477,8 +539,8 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 title="Click to filter by venue-assigned students"
               >
                 {selectedVenueName === 'All Venues' 
-                  ? (skillStats.totalAssignedStudents || 0) 
-                  : (skillStats.totalVenueStudents || 0)}
+                  ? (filteredStats.totalAssignedStudents || 0) 
+                  : (filteredStats.totalVenueStudents || 0)}
               </div>
               <div style={styles.statSub}>
                 {selectedVenueName === 'All Venues' 
@@ -566,8 +628,8 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
                 onClick={() => setStatusFilter('Cleared')}
                 title="Click to filter by Cleared"
               >
-                {skillStats.totalStudents > 0 
-                  ? ((skillStats.cleared / (skillStats.cleared + skillStats.notCleared + skillStats.ongoing)) * 100).toFixed(1)
+                {filteredStats.totalStudents > 0 
+                  ? ((filteredStats.cleared / filteredStats.totalStudents) * 100).toFixed(1)
                   : '0.0'}%
               </div>
               <div style={styles.statSub}>Click to filter</div>

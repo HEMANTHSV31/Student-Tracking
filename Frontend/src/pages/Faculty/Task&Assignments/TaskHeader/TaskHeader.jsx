@@ -268,6 +268,7 @@ useEffect(() => {
             ) : (
               <SkillOrderManager 
                 selectedCourseType={selectedCourse}
+                venues={venues}
               />
             )
           )}
