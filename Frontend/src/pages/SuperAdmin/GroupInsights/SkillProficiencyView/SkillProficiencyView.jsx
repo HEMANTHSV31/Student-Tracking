@@ -2,14 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CheckCircle, XCircle, Clock, AlertCircle, TrendingUp, Award, Target, Plus, X, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
 import { apiPost } from '../../../../utils/api';
 
-const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '', selectedYear }) => {
+const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '', selectedYear, selectedSpecification }) => {
   
   // Selected skill (single dropdown selection)
   const [selectedSkill, setSelectedSkill] = useState(initialSkill);
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [studentSearch, setStudentSearch] = useState('');
-  // Use parent year filter if provided, otherwise default to 'All Years'
-  const [yearFilter, setYearFilter] = useState(selectedYear ? `Year ${selectedYear}` : 'All Years');
   // Default to venue filter when a specific venue is selected (not 'all')
   const [venueFilter, setVenueFilter] = useState(selectedVenue && selectedVenue !== 'all');
   
@@ -99,14 +97,6 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       else if (statusFilter === 'Not Cleared') statusParam = 'Not Cleared';
       else if (statusFilter === 'Ongoing') statusParam = 'Ongoing';
       
-      // console.log('[SKILL REPORTS] Sending request with:', { 
-      //   venueId: selectedVenue, 
-      //   skill: selectedSkill, 
-      //   filterByVenue: venueFilter,
-      //   statusFilter: statusParam,
-      //   year: yearFilter
-      // });
-      
       const response = await apiPost('/skill-reports/faculty/venue/reports', {
         venueId: selectedVenue,
         page: currentPage,
@@ -117,7 +107,8 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         status: statusParam,
         search: debouncedSearch || undefined,
         filterByVenue: venueFilter, // Send venue filter to backend
-        year: yearFilter !== 'All Years' ? yearFilter : undefined, // Send year filter to backend
+        year: selectedYear || undefined, // Use global year filter from parent
+        specification: selectedSpecification || undefined, // Use global specification filter from parent
       });
       
       if (!response.ok) {
@@ -182,7 +173,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     } finally {
       setLoading(false);
     }
-  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch, venueFilter, yearFilter]);
+  }, [selectedVenue, selectedSkill, currentPage, itemsPerPage, statusFilter, debouncedSearch, venueFilter, selectedYear, selectedSpecification]);
 
   // Fetch data when dependencies change
   useEffect(() => {
@@ -192,21 +183,12 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedVenue, selectedSkill, statusFilter, venueFilter, yearFilter]);
+  }, [selectedVenue, selectedSkill, statusFilter, venueFilter, selectedYear, selectedSpecification]);
 
   // Reset venueFilter when venue changes
   useEffect(() => {
     setVenueFilter(selectedVenue && selectedVenue !== 'all');
   }, [selectedVenue]);
-
-  // Sync yearFilter with parent selectedYear prop
-  useEffect(() => {
-    if (selectedYear) {
-      setYearFilter(`Year ${selectedYear}`);
-    } else {
-      setYearFilter('All Years');
-    }
-  }, [selectedYear]);
 
   // Update selectedSkill when initialSkill changes
   useEffect(() => {
@@ -269,13 +251,13 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   const filteredStats = useMemo(() => {
     // Backend now returns year-filtered statistics
     // We still need to calculate notAttempted from frontend data for accuracy
-    const filteredVenueStudents = yearFilter === 'All Years' 
-      ? venueStudents 
-      : venueStudents.filter(vs => String(vs.year || '') === yearFilter);
+const filteredVenueStudents = !selectedYear 
+      ? venueStudents
+      : venueStudents.filter(vs => String(vs.year || '') === selectedYear);
     
-    const filteredAssignedVenueStudents = yearFilter === 'All Years'
+    const filteredAssignedVenueStudents = !selectedYear
       ? assignedVenueStudents
-      : assignedVenueStudents.filter(vs => String(vs.year || '') === yearFilter);
+      : assignedVenueStudents.filter(vs => String(vs.year || '') === selectedYear);
     
     // Calculate not attempted from venue students minus attempted IDs
     const attemptedIdsSet = new Set(attemptedStudentIds);
@@ -287,7 +269,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       totalAssignedStudents: filteredAssignedVenueStudents.length,
       notAttempted: notAttemptedCount,
     };
-  }, [skillStats, yearFilter, venueStudents, assignedVenueStudents, attemptedStudentIds]);
+  }, [skillStats, selectedYear, venueStudents, assignedVenueStudents, attemptedStudentIds]);
 
   // Memoize the transformed data to avoid expensive recalculations
   const displayData = useMemo(() => {
@@ -301,10 +283,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     }
     
     // Apply year filter
-    if (yearFilter !== 'All Years') {
+    if (selectedYear) {
       baseData = baseData.filter(student => {
         const studentYear = student.year?.toString();
-        return studentYear === yearFilter;
+        return studentYear === selectedYear;
       });
     }
     
@@ -312,7 +294,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return baseData.slice(startIndex, endIndex);
-  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, yearFilter, currentPage, itemsPerPage]);
+  }, [attemptedStudents, notAttemptedStudents, allStudents, statusFilter, selectedSkill, selectedYear, currentPage, itemsPerPage]);
 
   // Get correct pagination values based on filter
   const paginationInfo = useMemo(() => {
@@ -328,10 +310,10 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
     }
     
     // Apply year filter for count
-    if (yearFilter !== 'All Years') {
+    if (selectedYear) {
       baseData = baseData.filter(student => {
         const studentYear = student.year?.toString();
-        return studentYear === yearFilter;
+        return studentYear === selectedYear;
       });
     }
     
@@ -341,7 +323,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       totalRecords: total,
       totalPages: Math.ceil(total / itemsPerPage) || 1
     };
-  }, [statusFilter, selectedSkill, yearFilter, notAttemptedStudents, allStudents, attemptedStudents, itemsPerPage]);
+  }, [statusFilter, selectedSkill, selectedYear, notAttemptedStudents, allStudents, attemptedStudents, itemsPerPage]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -432,22 +414,6 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
             <option disabled={!venueFilter} title={!venueFilter ? 'Only available for venue-assigned students' : ''}>
               Not Attempted {!venueFilter ? '(Venue filter required)' : ''}
             </option>
-          </select>
-        </div>
-
-        <div style={styles.filterGroup}>
-          <label style={styles.label}>Year Filter</label>
-          <select 
-            style={styles.select} 
-            value={yearFilter} 
-            onChange={(e) => setYearFilter(e.target.value)}
-            disabled={!selectedSkill}
-          >
-            <option>All Years</option>
-            <option>1</option>
-            <option>2</option>
-            <option>3</option>
-            <option>4</option>
           </select>
         </div>
 

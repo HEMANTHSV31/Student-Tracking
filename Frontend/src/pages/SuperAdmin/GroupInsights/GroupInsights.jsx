@@ -22,13 +22,31 @@ const GroupInsights = () => {
   const [activeTab, setActiveTab] = useState(urlTab === 'skills' ? 'skills' : 'attendance');
   const [selectedVenue, setSelectedVenue] = useState(urlVenue || '');
   const [selectedYear, setSelectedYear] = useState(urlYear || ''); // Year filter state
+  const [selectedSpecification, setSelectedSpecification] = useState(''); // Specification filter state
   const [venues, setVenues] = useState([]);
+  const [groupSpecifications, setGroupSpecifications] = useState([]);
   const [venuesLoading, setVenuesLoading] = useState(true);
   const [selectedSkill, setSelectedSkill] = useState(urlSkill || '');
   
   // Date picker state for attendance
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSession, setSelectedSession] = useState('');
+
+  // Fetch group specifications
+  useEffect(() => {
+    const fetchSpecifications = async () => {
+      try {
+        const response = await apiGet('/groups/venues/group-specifications');
+        const data = await response.json();
+        if (data.success) {
+          setGroupSpecifications(data.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching group specifications:', err);
+      }
+    };
+    fetchSpecifications();
+  }, []);
 
   // Fetch venues based on role (admin sees all, faculty sees only assigned)
   useEffect(() => {
@@ -45,11 +63,24 @@ const GroupInsights = () => {
         const data = await response.json();
         
         // Handle different response structures
-        const venueList = user?.role === 'admin'
+        let venueList = user?.role === 'admin'
           ? data.data || []
           : data.venues || [];
         
+        // Filter by specification if selected
+        if (selectedSpecification) {
+          venueList = venueList.filter(v => v.group_specification === selectedSpecification);
+        }
+        
         setVenues(venueList);
+        
+        // Clear selected venue if it's not in the filtered list
+        if (selectedVenue && selectedVenue !== 'all') {
+          const venueStillExists = venueList.some(v => v.venue_id.toString() === selectedVenue);
+          if (!venueStillExists) {
+            setSelectedVenue('');
+          }
+        }
         
         // Auto-select first venue for faculty if they have only one
         if (user?.role === 'faculty' && venueList.length === 1) {
@@ -63,7 +94,7 @@ const GroupInsights = () => {
     };
     
     fetchVenues();
-  }, [user?.role, selectedYear]); // Re-fetch when year changes
+  }, [user?.role, selectedYear, selectedSpecification]); // Re-fetch when year or specification changes
 
   // Clear URL parameters after initial load
   useEffect(() => {
@@ -111,6 +142,23 @@ const GroupInsights = () => {
             </select>
           </div>
 
+          {/* Specification Filter */}
+          <div style={styles.headerFilterGroup}>
+            <label style={styles.headerLabel}>Group Specification</label>
+            <select
+              style={styles.headerSelect}
+              value={selectedSpecification}
+              onChange={(e) => setSelectedSpecification(e.target.value)}
+            >
+              <option value="">All Specifications</option>
+              {groupSpecifications.map((spec) => (
+                <option key={spec} value={spec}>
+                  {spec}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Venue Selector */}
           <div style={styles.headerFilterGroup}>
             <label style={styles.headerLabel}>
@@ -135,20 +183,6 @@ const GroupInsights = () => {
               ))}
             </select>
           </div>
-
-          {/* Show selected year badge */}
-          {selectedYear && (
-            <div style={styles.yearBadge}>
-              <Calendar size={14} style={{ marginRight: '4px' }} />
-              {selectedYear === '1' ? '1st' : selectedYear === '2' ? '2nd' : selectedYear === '3' ? '3rd' : '4th'} Year
-              <button 
-                onClick={() => setSelectedYear('')}
-                style={styles.clearYearBtn}
-              >
-                ×
-              </button>
-            </div>
-          )}
         </div>
 
         <div style={styles.topBarTabs}>
@@ -199,6 +233,7 @@ const GroupInsights = () => {
             initialSkill={selectedSkill}
             userRole={user?.role}
             selectedYear={selectedYear}
+            selectedSpecification={selectedSpecification}
           />
         )}
       </div>
