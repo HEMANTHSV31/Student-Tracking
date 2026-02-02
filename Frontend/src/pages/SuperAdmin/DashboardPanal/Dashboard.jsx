@@ -16,11 +16,13 @@ import {
   WarningAmber,
   CheckCircleOutline,
   AccessTime,
-  Person
+  Person,
+  CalendarMonth
 } from '@mui/icons-material';
 import useAuthStore from '../../../store/useAuthStore';
 import { encodeIdSimple } from '../../../utils/idEncoder';
 import { apiGet } from '../../../utils/api';
+import YearSelector, { YearBadge } from '../../../components/YearSelector/YearSelector';
 
 // --- Custom Hook for Responsive Logic ---
 const useWindowSize = () => {
@@ -48,6 +50,9 @@ const EducationDashboard = () => {
   });
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  
+  // Year filter state
+  const [selectedYear, setSelectedYear] = useState('');
   
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -90,10 +95,11 @@ const EducationDashboard = () => {
   const isTablet = width <= 1024 && width > 768;
 
   // Fetch dashboard metrics
-  const fetchDashboardMetrics = async () => {
+  const fetchDashboardMetrics = async (year = selectedYear) => {
     try {
       setLoading(prev => ({ ...prev, metrics: true }));
-      const response = await apiGet('/dashboard/metrics');
+      const yearParam = year ? `?year=${year}` : '';
+      const response = await apiGet(`/dashboard/metrics${yearParam}`);
       
       if (!response.ok) throw new Error('Failed to fetch metrics');
       
@@ -110,7 +116,7 @@ const EducationDashboard = () => {
   };
 
   // Fetch alerts with pagination and filters
-  const fetchAlerts = async (page = 1, filterParams = filters) => {
+  const fetchAlerts = async (page = 1, filterParams = filters, year = selectedYear) => {
     try {
       setLoading(prev => ({ ...prev, alerts: true }));
       
@@ -122,9 +128,11 @@ const EducationDashboard = () => {
         issueType: filterParams.issueType,
         sortBy: filterParams.sortBy,
         sortOrder: filterParams.sortOrder
-      }).toString();
+      });
+      
+      if (year) queryParams.append('year', year);
 
-      const response = await apiGet(`/dashboard/alerts?${queryParams}`);
+      const response = await apiGet(`/dashboard/alerts?${queryParams.toString()}`);
       
       if (!response.ok) throw new Error('Failed to fetch alerts');
       
@@ -142,10 +150,11 @@ const EducationDashboard = () => {
   };
 
   // Fetch unmarked attendance venues
-  const fetchUnmarkedAttendance = async (page = 1) => {
+  const fetchUnmarkedAttendance = async (page = 1, year = selectedYear) => {
     try {
       setLoading(prev => ({ ...prev, unmarkedAttendance: true }));
-      const response = await apiGet(`/dashboard/unmarked-attendance?page=${page}&limit=1`);
+      const yearParam = year ? `&year=${year}` : '';
+      const response = await apiGet(`/dashboard/unmarked-attendance?page=${page}&limit=1${yearParam}`);
       
       if (!response.ok) throw new Error('Failed to fetch unmarked attendance');
       
@@ -167,11 +176,11 @@ const EducationDashboard = () => {
   };
 
   // Fetch venues without task assignments
-  const fetchVenuesWithoutTasks = async (page = 1) => {
+  const fetchVenuesWithoutTasks = async (page = 1, year = selectedYear) => {
     try {
       setLoading(prev => ({ ...prev, pendingTasks: true }));
-
-      const response = await apiGet(`/dashboard/pending-tasks?page=${page}&limit=1`);
+      const yearParam = year ? `&year=${year}` : '';
+      const response = await apiGet(`/dashboard/pending-tasks?page=${page}&limit=1${yearParam}`);
       
       if (!response.ok) throw new Error('Failed to fetch venues without tasks');
       
@@ -200,6 +209,20 @@ const EducationDashboard = () => {
     fetchUnmarkedAttendance();
     fetchVenuesWithoutTasks();
   }, []);
+
+  // Refresh data when year changes
+  useEffect(() => {
+    fetchDashboardMetrics(selectedYear);
+    fetchAlerts(1, filters, selectedYear);
+    fetchUnmarkedAttendance(1, selectedYear);
+    fetchVenuesWithoutTasks(1, selectedYear);
+  }, [selectedYear]);
+
+  // Handle year change
+  const handleYearChange = (year) => {
+    setSelectedYear(year);
+    setCurrentPage(1);
+  };
 
   // Handle page change
   const handlePageChange = (pageNumber) => {
@@ -242,6 +265,25 @@ const EducationDashboard = () => {
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
+        {/* Year Filter Header */}
+        <div style={styles.yearFilterHeader}>
+          <h1 style={styles.pageTitle}>Dashboard Overview</h1>
+          <div style={styles.yearFilterRight}>
+            {selectedYear && (
+              <YearBadge 
+                year={selectedYear} 
+                onClear={() => setSelectedYear('')} 
+              />
+            )}
+            <YearSelector
+              selectedYear={selectedYear}
+              onYearChange={handleYearChange}
+              label="Filter by Year"
+              showAllOption={true}
+            />
+          </div>
+        </div>
+
         {/* Error Message */}
         {error && (
           <div style={styles.errorBanner}>
@@ -398,7 +440,12 @@ const EducationDashboard = () => {
                   gap: '8px',
                   padding: '12px',
                   borderTop: '1px solid #e2e8f0',
-                  backgroundColor: '#f8fafc'
+                  backgroundColor: '#fafafa',
+                  borderBottomLeftRadius: '12px',
+                  borderBottomRightRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  borderTopLeftRadius: '0',
+                  borderTopRightRadius: '0'
                 }}>
                   <button
                     onClick={() => fetchUnmarkedAttendance((attendancePagination?.currentPage || 1) - 1)}
@@ -549,7 +596,12 @@ const EducationDashboard = () => {
                   gap: '8px',
                   padding: '12px',
                   borderTop: '1px solid #e2e8f0',
-                  backgroundColor: '#f8fafc'
+                  backgroundColor: '#fafafa',
+                  borderBottomLeftRadius: '12px',
+                  borderBottomRightRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  borderTopLeftRadius: '0',
+                  borderTopRightRadius: '0'
                 }}>
                   <button
                     onClick={() => fetchVenuesWithoutTasks((tasksPagination?.currentPage || 1) - 1)}
@@ -833,6 +885,27 @@ const EducationDashboard = () => {
 const styles = {
   container: { width: '100%', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: '-apple-system, sans-serif', display: 'flex', justifyContent: 'center' },
   wrapper: { width: '100%', boxSizing: 'border-box' },
+  
+  // Year Filter Header
+  yearFilterHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+    gap: '12px'
+  },
+  yearFilterRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px'
+  },
+  pageTitle: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#1e293b',
+    margin: 0
+  },
   
   // Error Banner
   errorBanner: {

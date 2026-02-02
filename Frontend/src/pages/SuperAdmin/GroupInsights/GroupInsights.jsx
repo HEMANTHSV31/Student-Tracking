@@ -4,7 +4,8 @@ import AttendanceView from './AttendanceView/AttendanceView';
 import SkillProficiencyView from './SkillProficiencyView/SkillProficiencyView';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet } from '../../../utils/api';
-import { MapPin, BarChart3 } from 'lucide-react';
+import { MapPin, BarChart3, Calendar } from 'lucide-react';
+import YearSelector, { YearBadge } from '../../../components/YearSelector/YearSelector';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -16,9 +17,11 @@ const GroupInsights = () => {
   const urlVenue = searchParams.get('venue');
   const urlSkill = searchParams.get('skill');
   const urlTab = searchParams.get('tab');
+  const urlYear = searchParams.get('year');
   
   const [activeTab, setActiveTab] = useState(urlTab === 'skills' ? 'skills' : 'attendance');
   const [selectedVenue, setSelectedVenue] = useState(urlVenue || '');
+  const [selectedYear, setSelectedYear] = useState(urlYear || ''); // Year filter state
   const [venues, setVenues] = useState([]);
   const [venuesLoading, setVenuesLoading] = useState(true);
   const [selectedSkill, setSelectedSkill] = useState(urlSkill || '');
@@ -37,7 +40,8 @@ const GroupInsights = () => {
           ? '/groups/venues'
           : '/skill-reports/faculty/venues';
         
-        const response = await apiGet(endpoint);
+        const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+        const response = await apiGet(`${endpoint}${yearParam}`);
         const data = await response.json();
         
         // Handle different response structures
@@ -59,7 +63,7 @@ const GroupInsights = () => {
     };
     
     fetchVenues();
-  }, [user?.role]);
+  }, [user?.role, selectedYear]); // Re-fetch when year changes
 
   // Clear URL parameters after initial load
   useEffect(() => {
@@ -91,6 +95,22 @@ const GroupInsights = () => {
       {/* Top Header Bar */}
       <div style={styles.topBar}>
         <div style={styles.topBarLeft}>
+          {/* Year Selector */}
+          <div style={styles.headerFilterGroup}>
+            <label style={styles.headerLabel}>Academic Year</label>
+            <select
+              style={styles.headerSelect}
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+            >
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </div>
+
           {/* Venue Selector */}
           <div style={styles.headerFilterGroup}>
             <label style={styles.headerLabel}>
@@ -116,13 +136,19 @@ const GroupInsights = () => {
             </select>
           </div>
 
-          {/* Show selected venue name badge
-          {selectedVenueName && (
-            <div style={styles.venueBadge}>
-              <MapPin size={16} style={{ marginRight: '6px' }} />
-              {selectedVenueName}
+          {/* Show selected year badge */}
+          {selectedYear && (
+            <div style={styles.yearBadge}>
+              <Calendar size={14} style={{ marginRight: '4px' }} />
+              {selectedYear === '1' ? '1st' : selectedYear === '2' ? '2nd' : selectedYear === '3' ? '3rd' : '4th'} Year
+              <button 
+                onClick={() => setSelectedYear('')}
+                style={styles.clearYearBtn}
+              >
+                ×
+              </button>
             </div>
-          )} */}
+          )}
         </div>
 
         <div style={styles.topBarTabs}>
@@ -163,6 +189,7 @@ const GroupInsights = () => {
             selectedSession={selectedSession}
             setSelectedSession={setSelectedSession}
             userRole={user?.role}
+            selectedYear={selectedYear}
           />
         ) : (
           <SkillProficiencyView 
@@ -171,6 +198,7 @@ const GroupInsights = () => {
             facultyName={selectedFacultyName}
             initialSkill={selectedSkill}
             userRole={user?.role}
+            selectedYear={selectedYear}
           />
         )}
       </div>
@@ -231,8 +259,29 @@ const styles = {
     color: '#1f2937',
     outline: 'none',
     backgroundColor: '#fff',
-    minWidth: '250px',
+    minWidth: '180px',
     cursor: 'pointer',
+  },
+  yearBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '6px 12px',
+    backgroundColor: '#dbeafe',
+    color: '#1d4ed8',
+    borderRadius: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    border: '1px solid #bfdbfe',
+  },
+  clearYearBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    marginLeft: '6px',
+    color: '#1d4ed8',
+    fontSize: '16px',
+    lineHeight: 1,
+    padding: '0 2px',
   },
   venueBadge: {
     padding: '6px 12px',

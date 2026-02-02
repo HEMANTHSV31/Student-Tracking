@@ -27,6 +27,7 @@ const GroupsClasses = () => {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [selectedYear, setSelectedYear] = useState(""); // Year filter state
   const [currentPage, setCurrentPage] = useState(1);
   const [activeMenu, setActiveMenu] = useState(null);
   const [editingVenue, setEditingVenue] = useState(null);
@@ -97,7 +98,8 @@ const GroupsClasses = () => {
     setLoading(true);
     setError("");
     try {
-      const response = await apiGet('/groups/venues');
+      const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+      const response = await apiGet(`/groups/venues${yearParam}`);
       const data = await response.json();
       if (data.success) {
         setVenues(data.data);
@@ -150,7 +152,7 @@ const GroupsClasses = () => {
   useEffect(() => {
     fetchVenues();
     fetchFaculties();
-  }, []);
+  }, [selectedYear]); // Re-fetch when year changes
 
   useEffect(() => {
     if (showAssignFacultyModal) {
@@ -676,7 +678,7 @@ const GroupsClasses = () => {
           </button>
         </div>
       )}
-      <div></div>
+      
       <div style={s.topBar}>
         <div style={s.searchWrapper}>
           <Search sx={{ color: "#94a3b8", fontSize: 22 }} />
@@ -692,6 +694,25 @@ const GroupsClasses = () => {
           />
         </div>
         <div style={s.filtersWrapper}>
+          {/* Year Filter */}
+          <div style={s.selectWrapper}>
+            <select
+              style={s.select}
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+            <KeyboardArrowDown style={s.selectArrow} sx={{ fontSize: 20 }} />
+          </div>
+          {/* Status Filter */}
           <div style={s.selectWrapper}>
             <select
               style={s.select}
@@ -1782,6 +1803,32 @@ const s = {
     fontSize: "16px",
     fontWeight: "600",
     color: "#3b82f6",
+  },
+  // Page Header with Year Filter
+  pageHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "16px",
+    flexWrap: "wrap",
+    gap: "12px",
+  },
+  yearFilterSection: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
+  pageHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+  pageTitle: {
+    fontSize: "24px",
+    fontWeight: "700",
+    color: "#1e293b",
+    margin: 0,
   },
   topBar: {
     display: "flex",

@@ -75,6 +75,7 @@ export const getVenueAllocations = async (req, res) => {
   try {
     // Get user ID from JWT token
     const userId = req.user.user_id;
+    const { year } = req.query; // Year filter parameter
     // console.log(`[ATTENDANCE VENUES] user_id: ${userId}, role: ${req.user.role}`);
 
     // Get user info
@@ -87,6 +88,11 @@ export const getVenueAllocations = async (req, res) => {
       });
     }
 
+    // Build year filter condition
+    const yearJoin = year ? `LEFT JOIN students st ON gs.student_id = st.student_id` : '';
+    const yearCondition = year ? `AND st.year = ${parseInt(year)}` : '';
+    const yearHaving = year ? `HAVING student_count > 0` : '';
+
     let allocations;
     
     // If user is admin, show all venues
@@ -97,15 +103,17 @@ export const getVenueAllocations = async (req, res) => {
           v.venue_name,
           v.capacity,
           v.assigned_faculty_id,
-          COUNT(DISTINCT gs.student_id) as student_count,
+          COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as student_count,
           u.name as assigned_faculty_name
         FROM venue v
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
-        LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+        LEFT JOIN group_students gs ON g.group_id = gs.group_id
+        ${year ? `LEFT JOIN students st ON gs.student_id = st.student_id` : ''}
         LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
         LEFT JOIN users u ON f.user_id = u.user_id
         WHERE v.status = 'Active'
         GROUP BY v.venue_id
+        ${yearHaving}
         ORDER BY v.venue_name
       `);
     } else {
@@ -134,16 +142,18 @@ export const getVenueAllocations = async (req, res) => {
           v.venue_name,
           v.capacity,
           v.assigned_faculty_id,
-          COUNT(DISTINCT gs.student_id) as student_count,
+          COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as student_count,
           u.name as assigned_faculty_name
         FROM venue v
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
-        LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+        LEFT JOIN group_students gs ON g.group_id = gs.group_id
+        ${year ? `LEFT JOIN students st ON gs.student_id = st.student_id` : ''}
         LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
         LEFT JOIN users u ON f.user_id = u.user_id
         WHERE v.status = 'Active'
           AND v.assigned_faculty_id = ?
         GROUP BY v.venue_id
+        ${yearHaving}
         ORDER BY v.venue_name
       `, [facultyId]);
       
@@ -176,6 +186,11 @@ export const getVenueAllocations = async (req, res) => {
 export const getStudentsForVenue = async (req, res) => {
   try {
     const { venueId } = req.params;
+    const { year } = req.query; // Year filter parameter
+    
+    // Build year filter condition
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
+    
     const [students] = await db.query(`
       SELECT 
         s.student_id,
@@ -184,6 +199,7 @@ export const getStudentsForVenue = async (req, res) => {
         u.ID as roll_number,
         u.email,
         u.department,
+        s.year as student_year,
         gs.group_id,
         g.group_name
       FROM group_students gs
@@ -193,6 +209,7 @@ export const getStudentsForVenue = async (req, res) => {
       WHERE g.venue_id = ?  
         AND gs.status = 'Active'
         AND u.is_active = 1
+        ${yearFilter}
       ORDER BY u.name
     `, [venueId]);
 
@@ -821,7 +838,7 @@ export const getStudentAttendanceDashboard = async (req, res) => {
 export const getVenueAttendanceDetails = async (req, res) => {
   try {
     const { venueId } = req.params;
-    const { date, session } = req.query;
+    const { date, session, year } = req.query;
     
     if (!venueId) {
       return res.status(400).json({ 
@@ -832,6 +849,9 @@ export const getVenueAttendanceDetails = async (req, res) => {
 
     const selectedDate = date || new Date().toISOString().split('T')[0];
     const isAllVenues = venueId === 'all';
+    
+    // Build year filter condition
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
 
     // First, get all students enrolled in groups for this venue (or all venues)
     let allStudents;
@@ -852,6 +872,7 @@ export const getVenueAttendanceDetails = async (req, res) => {
         INNER JOIN \`groups\` g ON gs.group_id = g.group_id
         WHERE gs.status = 'Active'
           AND g.status = 'Active'
+          ${yearFilter}
         ORDER BY u.name
       `);
     } else {
@@ -871,6 +892,7 @@ export const getVenueAttendanceDetails = async (req, res) => {
         WHERE g.venue_id = ?
           AND gs.status = 'Active'
           AND g.status = 'Active'
+          ${yearFilter}
         ORDER BY u.name
       `, [venueId]);
     }

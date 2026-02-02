@@ -5,7 +5,8 @@ import AttendanceView from './AttendanceView/AttendanceView';
 import SkillProficiencyView from './SkillProficiencyView/SkillProficiencyView';
 import useAuthStore from '../../../store/useAuthStore';
 import axios from 'axios';
-import { MapPin, BarChart3 } from 'lucide-react';
+import { MapPin, BarChart3, Calendar } from 'lucide-react';
+import YearSelector from '../../../components/YearSelector/YearSelector';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -27,6 +28,9 @@ const GroupInsights = () => {
   // Date picker state for attendance
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSession, setSelectedSession] = useState('');
+  
+  // Year filter state
+  const [selectedYear, setSelectedYear] = useState('');
 
   // Fetch venues based on role (admin sees all, faculty sees only assigned)
   useEffect(() => {
@@ -142,6 +146,22 @@ const GroupInsights = () => {
             Skill Proficiency
           </button>
         </div>
+        
+        {/* Year Selector */}
+        <div style={styles.yearSelectWrapper}>
+          <YearSelector
+            value={selectedYear}
+            onChange={setSelectedYear}
+            showLabel={false}
+            compact={true}
+          />
+          {selectedYear && (
+            <span style={styles.yearBadge}>
+              <Calendar size={14} style={{ marginRight: '4px' }} />
+              Year {selectedYear}
+            </span>
+          )}
+        </div>
       </div>
 
       <div style={styles.contentContainer}>
@@ -166,6 +186,7 @@ const GroupInsights = () => {
             selectedSession={selectedSession}
             setSelectedSession={setSelectedSession}
             userRole={user?.role}
+            selectedYear={selectedYear}
           />
         ) : (
           <SkillProficiencyView 
@@ -174,6 +195,7 @@ const GroupInsights = () => {
             facultyName={selectedFacultyName}
             initialSkill={selectedSkill}
             userRole={user?.role}
+            selectedYear={selectedYear}
           />
         )}
       </div>
@@ -310,6 +332,22 @@ const styles = {
     color: '#6b7280',
     margin: 0,
     maxWidth: '400px',
+  },
+  yearSelectWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  yearBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    backgroundColor: '#f0fdf4',
+    color: '#15803d',
+    borderRadius: '16px',
+    fontSize: '12px',
+    fontWeight: '500',
+    border: '1px solid #bbf7d0',
   },
 };
 

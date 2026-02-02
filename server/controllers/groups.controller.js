@@ -388,6 +388,14 @@ export const lookupStudentByRollNumber = async (req, res) => {
 export const getAllVenues = async (req, res) => {
   try {
     // console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
+    const { year } = req.query; // Year filter parameter
+    
+    // Build year filter for student count
+    const yearJoin = year ? `
+      LEFT JOIN students s ON gs.student_id = s.student_id
+    ` : '';
+    const yearCondition = year ? `AND s.year = ${parseInt(year)}` : '';
+    const yearHaving = year ? `HAVING current_students > 0` : '';
     
     // Admin sees all venues
     if (req.user.role === 'admin') {
@@ -403,14 +411,16 @@ export const getAllVenues = async (req, res) => {
           u.name as faculty_name,
           u.email as faculty_email,
           u.department as faculty_department,
-          COUNT(DISTINCT gs.student_id) as current_students
+          COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as current_students
         FROM venue v
         LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
-        LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+        LEFT JOIN group_students gs ON g.group_id = gs.group_id
+        ${year ? `LEFT JOIN students s ON gs.student_id = s.student_id` : ''}
         WHERE v.status = 'Active'
         GROUP BY v.venue_id
+        ${yearHaving}
         ORDER BY v.venue_name
       `);
       
@@ -447,15 +457,17 @@ export const getAllVenues = async (req, res) => {
         u.name as faculty_name,
         u.email as faculty_email,
         u.department as faculty_department,
-        COUNT(DISTINCT gs.student_id) as current_students
+        COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearCondition} THEN gs.student_id END) as current_students
       FROM venue v
       LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
-      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id
+      ${year ? `LEFT JOIN students s ON gs.student_id = s.student_id` : ''}
       WHERE v.status = 'Active'
         AND v.assigned_faculty_id = ?
       GROUP BY v.venue_id
+      ${yearHaving}
       ORDER BY v.venue_name
     `, [facultyId]);
     

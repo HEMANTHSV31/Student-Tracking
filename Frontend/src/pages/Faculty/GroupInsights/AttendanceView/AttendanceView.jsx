@@ -13,7 +13,7 @@ const SESSIONS = [
   { id: 4, name: 'Session 4', startTime: '15:15', endTime: '16:45', displayTime: '3:15 PM - 4:45 PM' },
 ];
 
-const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSelectedDate, selectedSession, setSelectedSession }) => {
+const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSelectedDate, selectedSession, setSelectedSession, selectedYear }) => {
   
   // State for attendance data
   const [attendanceData, setAttendanceData] = useState(null);
@@ -127,6 +127,11 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
           session: selectedSession
         });
         
+        // Add year filter if selected
+        if (selectedYear) {
+          params.append('year', selectedYear);
+        }
+        
         const response = await apiGet(
           `/attendance/venue/${selectedVenue}/details?${params}`
         );
@@ -147,7 +152,7 @@ const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSel
     };
 
     fetchAttendanceData();
-  }, [selectedVenue, selectedDate, selectedSession]);
+  }, [selectedVenue, selectedDate, selectedSession, selectedYear]);
 
   // Calculate stats from students data
   const attendanceStats = attendanceData || {

@@ -6,17 +6,28 @@ export const getDashboardMetrics = async (req, res) => {
     
     // Get user info from request (added by auth middleware)
     const userId = req.user?.userId || req.user?.user_id || req.user?.id;
+    const { year } = req.query; // Year filter parameter
+    
+    // Build year filter condition
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
+    const yearFilterGroups = year ? `AND EXISTS (
+      SELECT 1 FROM group_students gs2 
+      INNER JOIN students s2 ON gs2.student_id = s2.student_id 
+      WHERE gs2.group_id = g.group_id AND s2.year = ${parseInt(year)} AND gs2.status = 'Active'
+    )` : '';
     
     // 1. Total Students Count - Count directly from students table
     const [totalStudentsResult] = await db.query(`
-      SELECT COUNT(student_id) as total_count FROM students 
+      SELECT COUNT(s.student_id) as total_count FROM students s
+      WHERE 1=1 ${yearFilter}
     `);
 
     const totalStudents = totalStudentsResult[0]?.total_count;
 
     // 2. Active Groups Count - Count from groups table where status is Active
     const [activeGroupsResult] = await db.query(`
-      SELECT COUNT(*) as total_count FROM \`groups\` WHERE status = 'Active'
+      SELECT COUNT(*) as total_count FROM \`groups\` g 
+      WHERE g.status = 'Active' ${yearFilterGroups}
     `);
     const activeGroups = activeGroupsResult[0]?.total_count || 0;
 
@@ -24,19 +35,23 @@ export const getDashboardMetrics = async (req, res) => {
     const [attendanceResult] = await db.query(`
       SELECT 
         COUNT(*) as total_sessions,
-        SUM(is_present) as present_count,
-        ROUND((SUM(is_present) / COUNT(*)) * 100, 1) as avg_attendance
-      FROM attendance
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        SUM(a.is_present) as present_count,
+        ROUND((SUM(a.is_present) / COUNT(*)) * 100, 1) as avg_attendance
+      FROM attendance a
+      ${year ? `INNER JOIN students s ON a.student_id = s.student_id` : ''}
+      WHERE a.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+      ${yearFilter}
     `);
     const avgAttendance = attendanceResult[0]?.avg_attendance || 0;
     const attendanceTrend = 0; // You can calculate trend by comparing with previous period
 
     // 4. Tasks Due (within next 2 days)
     const [tasksDueResult] = await db.query(`
-      SELECT COUNT(*) as due_count FROM tasks
-      WHERE due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 2 DAY)
-      AND status = 'Active'
+      SELECT COUNT(*) as due_count FROM tasks t
+      ${year ? `INNER JOIN \`groups\` g ON t.group_id = g.group_id` : ''}
+      WHERE t.due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 2 DAY)
+      AND t.status = 'Active'
+      ${yearFilterGroups}
     `);
     const tasksDue = tasksDueResult[0]?.due_count || 0;
 
@@ -179,10 +194,13 @@ export const getTaskCompletion = async (req, res) => {
 // Get alerts with pagination - FIXED VERSION
 export const getAlerts = async (req, res) => {
   try {
-    const { page = 1, limit = 3, search = '', issueType = 'all', sortBy = 'date', sortOrder = 'desc' } = req.query;
+    const { page = 1, limit = 3, search = '', issueType = 'all', sortBy = 'date', sortOrder = 'desc', year } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
+
+    // Build year filter condition
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
 
     // Get all alerts without pagination first (simpler approach)
     const [lowAttendanceAlerts] = await db.query(`
@@ -202,6 +220,7 @@ export const getAlerts = async (req, res) => {
       INNER JOIN attendance a ON s.student_id = a.student_id
       WHERE gs.status = 'Active'
         AND a.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ${yearFilter}
       GROUP BY s.student_id, u.name, u.ID, v.venue_name, g.group_name
       HAVING attendance_percentage < 60
       ORDER BY attendance_percentage ASC
@@ -225,6 +244,7 @@ export const getAlerts = async (req, res) => {
       WHERE (ts.status = 'Pending Review' OR ts.status = 'Not Submitted')
         AND t.due_date < NOW()
         AND t.status = 'Active'
+        ${yearFilter}
       ORDER BY t.due_date ASC
     `);
 
@@ -243,6 +263,7 @@ export const getAlerts = async (req, res) => {
       INNER JOIN venue v ON a.venue_id = v.venue_id
       WHERE a.is_present = 0
         AND a.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ${yearFilter}
       GROUP BY s.student_id, u.name, u.ID, v.venue_name
       HAVING COUNT(*) >= 3
       ORDER BY last_date DESC
@@ -387,11 +408,15 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
     
-    // Pagination parameters
+    // Pagination and filter parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 2;
+    const { year } = req.query;
     
-    console.log(`📊 Checking unmarked attendance - Current time: ${currentHour}:${currentMinute} (${currentTimeInMinutes} minutes), Date: ${today}`);
+    // Build year filter for student count
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
+    
+    console.log(`📊 Checking unmarked attendance - Current time: ${currentHour}:${currentMinute} (${currentTimeInMinutes} minutes), Date: ${today}, Year filter: ${year || 'All'}`);
     
     // Define the 4 standard sessions with start times in minutes from midnight
     // Sessions become "overdue" 45 minutes after they start
@@ -435,14 +460,16 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
         v.venue_name,
         v.location,
         u.name as faculty_name,
-        COUNT(DISTINCT gs.student_id) as student_count
+        COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearFilter ? `AND s.year = ${parseInt(year)}` : ''} THEN gs.student_id END) as student_count
       FROM venue v
       LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id AND g.status = 'Active'
-      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id
+      LEFT JOIN students s ON gs.student_id = s.student_id
       WHERE v.status = 'Active'
       GROUP BY v.venue_id, v.venue_name, v.location, u.name
+      ${year ? `HAVING student_count > 0` : ''}
       ORDER BY v.venue_name
     `);
 
@@ -552,9 +579,13 @@ export const getPendingTaskAssignments = async (req, res) => {
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
     
-    // Pagination parameters
+    // Pagination and filter parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 1;
+    const { year } = req.query;
+    
+    // Build year filter
+    const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
     
     // Task assignment deadline is 12:30 PM (12 * 60 + 30 = 750 minutes from midnight)
     const taskDeadlineMinutes = 12 * 60 + 30; // 12:30 PM
@@ -587,17 +618,19 @@ export const getPendingTaskAssignments = async (req, res) => {
         v.venue_name,
         v.location,
         u.name as faculty_name,
-        COUNT(DISTINCT gs.student_id) as student_count,
+        COUNT(DISTINCT CASE WHEN gs.status = 'Active' ${yearFilter ? `AND s.year = ${parseInt(year)}` : ''} THEN gs.student_id END) as student_count,
         COUNT(DISTINCT CASE WHEN DATE(t.created_at) = CURDATE() THEN t.task_id END) as tasks_assigned_today,
         MAX(CASE WHEN DATE(t.created_at) = CURDATE() THEN t.created_at END) as last_task_today
       FROM venue v
       LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id AND g.status = 'Active'
-      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id
+      LEFT JOIN students s ON gs.student_id = s.student_id
       LEFT JOIN tasks t ON t.group_id = g.group_id AND t.status = 'Active'
       WHERE v.status = 'Active'
       GROUP BY v.venue_id, v.venue_name, v.location, u.name
+      ${year ? `HAVING student_count > 0` : ''}
       ORDER BY tasks_assigned_today ASC, v.venue_name
     `);
 

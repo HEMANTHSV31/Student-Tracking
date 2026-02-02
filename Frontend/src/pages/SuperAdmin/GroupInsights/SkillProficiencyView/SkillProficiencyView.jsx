@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CheckCircle, XCircle, Clock, AlertCircle, TrendingUp, Award, Target, Plus, X, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
 import { apiPost } from '../../../../utils/api';
 
-const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '' }) => {
+const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '', selectedYear }) => {
   
   // Selected skill (single dropdown selection)
   const [selectedSkill, setSelectedSkill] = useState(initialSkill);
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [studentSearch, setStudentSearch] = useState('');
-  const [yearFilter, setYearFilter] = useState('All Years');
+  // Use parent year filter if provided, otherwise default to 'All Years'
+  const [yearFilter, setYearFilter] = useState(selectedYear ? `Year ${selectedYear}` : 'All Years');
   // Default to venue filter when a specific venue is selected (not 'all')
   const [venueFilter, setVenueFilter] = useState(selectedVenue && selectedVenue !== 'all');
   
@@ -197,6 +198,15 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   useEffect(() => {
     setVenueFilter(selectedVenue && selectedVenue !== 'all');
   }, [selectedVenue]);
+
+  // Sync yearFilter with parent selectedYear prop
+  useEffect(() => {
+    if (selectedYear) {
+      setYearFilter(`Year ${selectedYear}`);
+    } else {
+      setYearFilter('All Years');
+    }
+  }, [selectedYear]);
 
   // Update selectedSkill when initialSkill changes
   useEffect(() => {
