@@ -211,4 +211,4 @@ const styles = {
   },
 };
 
-export default ReportsHeader;3
+export default ReportsHeader;

@@ -76,7 +76,10 @@ const GroupsClasses = () => {
     group_specification: "",
   });
 
+  // Specifications for the top filter (year-scoped)
   const [groupSpecifications, setGroupSpecifications] = useState([]);
+  // Specifications for create/edit datalists (all)
+  const [allGroupSpecifications, setAllGroupSpecifications] = useState([]);
 
   const [facultyAssignment, setFacultyAssignment] = useState({
     venue_id: "",
@@ -103,8 +106,11 @@ const GroupsClasses = () => {
     setLoading(true);
     setError("");
     try {
-      const yearParam = selectedYear ? `?year=${selectedYear}` : '';
-      const response = await apiGet(`/groups/venues${yearParam}`);
+      const queryParams = [];
+      if (selectedYear) queryParams.push(`year=${selectedYear}`);
+      if (specificationFilter) queryParams.push(`specification=${encodeURIComponent(specificationFilter)}`);
+      const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+      const response = await apiGet(`/groups/venues${queryString}`);
       const data = await response.json();
       if (data.success) {
         setVenues(data.data);
@@ -134,12 +140,25 @@ const GroupsClasses = () => {
   };
 
   // Fetch group specifications
-  const fetchGroupSpecifications = async () => {
+  // - `forFilter=true`: fetch year-scoped specs for the filter dropdown (year can be "" for all-years)
+  // - `forFilter=false`: fetch all specs for create/edit datalists
+  const fetchGroupSpecifications = async ({ year = '', forFilter = false } = {}) => {
     try {
-      const response = await apiGet('/groups/venues/group-specifications');
+      const yearParam = year ? `?year=${year}` : '';
+      const response = await apiGet(`/groups/venues/group-specifications${yearParam}`);
       const data = await response.json();
       if (data.success) {
-        setGroupSpecifications(data.data);
+        const specs = data.data || [];
+        if (forFilter) {
+          setGroupSpecifications(specs);
+
+          // Clear spec filter if it's not valid for the selected year
+          if (specificationFilter && !specs.includes(specificationFilter)) {
+            setSpecificationFilter('');
+          }
+        } else {
+          setAllGroupSpecifications(specs);
+        }
       }
     } catch (err) {
       console.error("Error fetching group specifications:", err);
@@ -167,11 +186,23 @@ const GroupsClasses = () => {
     }
   };
 
+  // Initial load
+  useEffect(() => {
+    fetchFaculties();
+    fetchGroupSpecifications(); // all specs for create/edit
+  }, []);
+
+  // Re-fetch venues + year-scoped specifications when year changes
   useEffect(() => {
     fetchVenues();
-    fetchFaculties();
-    fetchGroupSpecifications();
-  }, [selectedYear]); // Re-fetch when year changes
+    fetchGroupSpecifications({ year: selectedYear, forFilter: true });
+    setCurrentPage(1);
+  }, [selectedYear]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [specificationFilter, statusFilter, searchTerm]);
 
   useEffect(() => {
     if (showAssignFacultyModal) {
@@ -308,7 +339,8 @@ const GroupsClasses = () => {
       const data = await response.json();
       if (data.success) {
         await fetchVenues();
-        await fetchGroupSpecifications(); // Refresh specifications list
+        await fetchGroupSpecifications(); // Refresh create/edit specs
+        await fetchGroupSpecifications({ year: selectedYear, forFilter: true }); // Refresh filter specs
         setEditingVenue(null);
         showResult("success", "Venue Updated", data.message);
       } else {
@@ -343,7 +375,8 @@ const GroupsClasses = () => {
       const data = await response.json();
       if (data.success) {
         await fetchVenues();
-        await fetchGroupSpecifications(); // Refresh specifications list
+        await fetchGroupSpecifications(); // Refresh create/edit specs
+        await fetchGroupSpecifications({ year: selectedYear, forFilter: true }); // Refresh filter specs
         setShowCreateModal(false);
         setNewVenue({
           venue_name: "",
@@ -1160,7 +1193,7 @@ const GroupsClasses = () => {
                   placeholder="Type or select specification"
                 />
                 <datalist id="group-specifications-create">
-                  {groupSpecifications.map((spec, idx) => (
+                  {allGroupSpecifications.map((spec, idx) => (
                     <option key={idx} value={spec} />
                   ))}
                 </datalist>
@@ -1319,7 +1352,7 @@ const GroupsClasses = () => {
                   placeholder="Type or select specification"
                 />
                 <datalist id="group-specifications-edit">
-                  {groupSpecifications.map((spec, idx) => (
+                  {allGroupSpecifications.map((spec, idx) => (
                     <option key={idx} value={spec} />
                   ))}
                 </datalist>
