@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CheckCircle, XCircle, Clock, AlertCircle, TrendingUp, Award, Target, Plus, X, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertCircle, Target, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
 import { apiPost } from '../../../../utils/api';
 
 const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, initialSkill = '', selectedYear, selectedSpecification }) => {
@@ -13,9 +13,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(25);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const itemsPerPage = 25;
   
   // Backend data states
   const [skillReports, setSkillReports] = useState([]);
@@ -80,8 +78,6 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
           setVenueStudents(data.venueStudents);
         }
         setSkillReports([]);
-        setTotalRecords(0);
-        setTotalPages(1);
       } catch (err) {
         console.error('Error fetching available skills:', err);
       }
@@ -123,8 +119,6 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
       }
       
       setSkillReports(data.reports || []);
-      setTotalRecords(data.pagination?.total || 0);
-      setTotalPages(data.pagination?.totalPages || 1);
       
       // Set available skills from API response
       if (data.availableSkills) {
@@ -156,7 +150,7 @@ const SkillProficiencyView = ({ selectedVenue, selectedVenueName, facultyName, i
         const notAttemptedCount = Math.max(0, totalVenueStudents - attemptedCount);
         
         setSkillStats({
-          totalStudentsDB: data.statistics.total_students || 0, // All students in DB
+          totalStudentsDB: data.statistics.total_students || 0, 
           totalAssignedStudents: data.statistics.total_assigned_students || 0, // Always show total assigned
           totalVenueStudents: totalVenueStudents,
           totalStudents: attemptedCount + notAttemptedCount, // Total includes attempted + not attempted

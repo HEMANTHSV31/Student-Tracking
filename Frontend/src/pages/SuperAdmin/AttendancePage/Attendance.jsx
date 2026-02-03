@@ -813,8 +813,8 @@ const AttendanceManagement = () => {
 },
 remarkInput: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid transparent',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',
@@ -825,8 +825,8 @@ remarkInput: {
 },
 remarkInputActive: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid #E5E7EB',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid #E5E7EB',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',

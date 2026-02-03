@@ -32,21 +32,28 @@ const GroupInsights = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSession, setSelectedSession] = useState('');
 
-  // Fetch group specifications
+  // Fetch group specifications based on selected year
   useEffect(() => {
     const fetchSpecifications = async () => {
       try {
-        const response = await apiGet('/groups/venues/group-specifications');
+        const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+        const response = await apiGet(`/groups/venues/group-specifications${yearParam}`);
         const data = await response.json();
         if (data.success) {
-          setGroupSpecifications(data.data || []);
+          const specs = data.data || [];
+          setGroupSpecifications(specs);
+          
+          // Clear selected specification if it's not in the filtered list
+          if (selectedSpecification && !specs.includes(selectedSpecification)) {
+            setSelectedSpecification('');
+          }
         }
       } catch (err) {
         console.error('Error fetching group specifications:', err);
       }
     };
     fetchSpecifications();
-  }, []);
+  }, [selectedYear]);
 
   // Fetch venues based on role (admin sees all, faculty sees only assigned)
   useEffect(() => {
@@ -58,19 +65,19 @@ const GroupInsights = () => {
           ? '/groups/venues'
           : '/skill-reports/faculty/venues';
         
-        const yearParam = selectedYear ? `?year=${selectedYear}` : '';
-        const response = await apiGet(`${endpoint}${yearParam}`);
+        // Build query parameters for year and specification
+        const queryParams = [];
+        if (selectedYear) queryParams.push(`year=${selectedYear}`);
+        if (selectedSpecification) queryParams.push(`specification=${selectedSpecification}`);
+        const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+        
+        const response = await apiGet(`${endpoint}${queryString}`);
         const data = await response.json();
         
         // Handle different response structures
         let venueList = user?.role === 'admin'
           ? data.data || []
           : data.venues || [];
-        
-        // Filter by specification if selected
-        if (selectedSpecification) {
-          venueList = venueList.filter(v => v.group_specification === selectedSpecification);
-        }
         
         setVenues(venueList);
         
@@ -83,7 +90,7 @@ const GroupInsights = () => {
         }
         
         // Auto-select first venue for faculty if they have only one
-        if (user?.role === 'faculty' && venueList.length === 1) {
+        if (user?.role === 'faculty' && venueList.length === 1 && venueList[0]) {
           setSelectedVenue(venueList[0].venue_id.toString());
         }
       } catch (err) {

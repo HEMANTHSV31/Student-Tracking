@@ -387,10 +387,18 @@ export const lookupStudentByRollNumber = async (req, res) => {
 // Get all unique group specifications
 export const getGroupSpecifications = async (req, res) => {
   try {
+    const { year } = req.query; // Year filter parameter
+    
+    // Build year filter condition - only match exact year, not NULL
+    const yearCondition = year ? `AND year = ${parseInt(year)}` : '';
+    
     const [specifications] = await db.query(`
       SELECT DISTINCT group_specification
       FROM venue
-      WHERE group_specification IS NOT NULL AND group_specification != ''
+      WHERE group_specification IS NOT NULL 
+        AND group_specification != ''
+        AND status = 'Active'
+        ${yearCondition}
       ORDER BY group_specification ASC
     `);
     
@@ -406,11 +414,11 @@ export const getGroupSpecifications = async (req, res) => {
 export const getAllVenues = async (req, res) => {
   try {
     // console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
-    const { year } = req.query; // Year filter parameter
+    const { year, specification } = req.query; // Year and specification filter parameters
     
-    // Build year filter - can filter by venue's assigned year OR student year
-    const yearCondition = year ? `AND (v.year = ${parseInt(year)} OR v.year IS NULL)` : '';
-    const studentYearCondition = year ? `AND s.year = ${parseInt(year)}` : '';
+    // Build year filter - only show venues with exact year match (not NULL)
+    const yearCondition = year ? `AND v.year = ${parseInt(year)}` : '';
+    const specificationCondition = specification ? `AND v.group_specification = ${db.escape(specification)}` : '';
     
     // Admin sees all venues
     if (req.user.role === 'admin') {
@@ -436,6 +444,7 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
         WHERE v.status = 'Active'
         ${yearCondition}
+        ${specificationCondition}
         GROUP BY v.venue_id
         ORDER BY v.venue_name
       `);
@@ -484,6 +493,7 @@ export const getAllVenues = async (req, res) => {
       WHERE v.status = 'Active'
         AND v.assigned_faculty_id = ?
         ${yearCondition}
+        ${specificationCondition}
       GROUP BY v.venue_id
       ORDER BY v.venue_name
     `, [facultyId]);

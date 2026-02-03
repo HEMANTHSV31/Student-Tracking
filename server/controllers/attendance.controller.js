@@ -89,8 +89,9 @@ export const getVenueAllocations = async (req, res) => {
     }
 
     // Build year filter condition
-    const yearJoin = year ? `LEFT JOIN students st ON gs.student_id = st.student_id` : '';
     const yearCondition = year ? `AND st.year = ${parseInt(year)}` : '';
+    // Only filter by venue.year if we want strict filtering, otherwise show all venues with matching students
+    // const venueYearCondition = year ? `AND (v.year = ${parseInt(year)} OR v.year IS NULL)` : '';
     const yearHaving = year ? `HAVING student_count > 0` : '';
 
     let allocations;
@@ -116,6 +117,8 @@ export const getVenueAllocations = async (req, res) => {
         ${yearHaving}
         ORDER BY v.venue_name
       `);
+      
+      console.log(`[ATTENDANCE VENUES] Admin - Year filter: ${year || 'none'}, Found ${allocations.length} venues`);
     } else {
       // Faculty: Only show venues they are assigned to
       // Get faculty_id first
@@ -156,6 +159,8 @@ export const getVenueAllocations = async (req, res) => {
         ${yearHaving}
         ORDER BY v.venue_name
       `, [facultyId]);
+      
+      console.log(`[ATTENDANCE VENUES] Faculty ${facultyId} - Year filter: ${year || 'none'}, Found ${allocations.length} venues`);
       
       // console.log(`[ATTENDANCE VENUES] Query result for faculty_id ${facultyId}: ${allocations.length} venue(s)`);
     }
