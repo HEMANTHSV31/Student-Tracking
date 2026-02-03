@@ -1237,11 +1237,14 @@ export const getStudentTasks = async (req, res) => {
       });
     }
 
-    // Get skill order filtered by student's venue and year
+    // Get student's venue and year through group membership
     const [studentDetails] = await db.query(`
-      SELECT s.venue_id, s.year 
+      SELECT g.venue_id, s.year 
       FROM students s 
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
       WHERE s.student_id = ?
+      LIMIT 1
     `, [student_id]);
 
     const studentVenueId = studentDetails[0]?.venue_id || currentVenueId;
