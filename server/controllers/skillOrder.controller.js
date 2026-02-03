@@ -282,7 +282,7 @@ export const createSkillOrder = async (req, res) => {
           );
         }
       } catch (err) {
-        console.log('skill_order_venues table not found, skipping venue associations');
+        // skill_order_venues table not found, skipping venue associations
       }
     }
 
@@ -296,7 +296,7 @@ export const createSkillOrder = async (req, res) => {
           );
         }
       } catch (err) {
-        console.log('skill_order_years table not found, skipping year associations');
+        // skill_order_years table not found, skipping year associations
       }
     }
 

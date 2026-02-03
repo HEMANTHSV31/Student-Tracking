@@ -416,8 +416,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
     // Build year filter for student count
     const yearFilter = year ? `AND s.year = ${parseInt(year)}` : '';
     
-    console.log(`📊 Checking unmarked attendance - Current time: ${currentHour}:${currentMinute} (${currentTimeInMinutes} minutes), Date: ${today}, Year filter: ${year || 'All'}`);
-    
     // Define the 4 standard sessions with start times in minutes from midnight
     // Sessions become "overdue" 45 minutes after they start
     const sessions = [
@@ -431,8 +429,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
     const overdueSessionIds = sessions
       .filter(session => currentTimeInMinutes >= session.deadlineMinutes)
       .map(session => session.id);
-
-    console.log(`📊 Overdue sessions (45 min past start): ${overdueSessionIds.join(', ') || 'None'}`);
 
     // If no sessions are overdue yet, return empty
     if (overdueSessionIds.length === 0) {
@@ -473,8 +469,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
       ORDER BY v.venue_name
     `);
 
-    console.log(`📊 Total active venues found: ${venues.length}`);
-
     // Get attendance sessions that have been created for today
     // Session name format: S1_Venue{venueId}_{date} e.g., S1_Venue1_2026-01-31
     const [markedSessions] = await db.query(`
@@ -483,8 +477,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
       FROM attendance_session
       WHERE session_name LIKE ?
     `, [`%_${today}`]);
-
-    console.log(`📊 Marked sessions today: ${markedSessions.length}`, markedSessions.map(s => s.session_name));
 
     // Parse marked sessions to identify venue/session combinations
     const markedSet = new Set();
@@ -496,11 +488,8 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
         const venueIdPart = parts[1].replace('Venue', ''); // Extract venue ID
         const key = `${venueIdPart}_${sessionId}`;
         markedSet.add(key);
-        console.log(`📊 Parsed marked: venue ${venueIdPart}, session ${sessionId}`);
       }
     });
-
-    console.log(`📊 Marked venue-session combinations: ${[...markedSet].join(', ')}`);
 
     // Build unmarked venues list - only for sessions that are past their deadline
     const unmarkedVenues = [];
@@ -511,7 +500,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
       const unmarkedOverdueSessions = overdueSessions.filter(session => {
         const key = `${venue.venue_id}_${session.id}`;
         const isMarked = markedSet.has(key);
-        console.log(`📊 Checking venue ${venue.venue_id} (${venue.venue_name}), session ${session.id}: ${isMarked ? 'MARKED' : 'NOT MARKED'}`);
         return !isMarked;
       });
       
@@ -534,8 +522,6 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
         });
       }
     });
-
-    console.log(`📊 Venues with unmarked overdue attendance: ${unmarkedVenues.length}`);
 
     // Apply pagination
     const totalItems = unmarkedVenues.length;
