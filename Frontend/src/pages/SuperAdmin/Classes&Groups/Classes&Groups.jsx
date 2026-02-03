@@ -27,6 +27,8 @@ const GroupsClasses = () => {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [selectedYear, setSelectedYear] = useState(""); // Year filter state
+  const [specificationFilter, setSpecificationFilter] = useState(""); // Specification filter state
   const [currentPage, setCurrentPage] = useState(1);
   const [activeMenu, setActiveMenu] = useState(null);
   const [editingVenue, setEditingVenue] = useState(null);
@@ -70,7 +72,14 @@ const GroupsClasses = () => {
     capacity: 50,
     location: "",
     assigned_faculty_id: "",
+    year: "",
+    group_specification: "",
   });
+
+  // Specifications for the top filter (year-scoped)
+  const [groupSpecifications, setGroupSpecifications] = useState([]);
+  // Specifications for create/edit datalists (all)
+  const [allGroupSpecifications, setAllGroupSpecifications] = useState([]);
 
   const [facultyAssignment, setFacultyAssignment] = useState({
     venue_id: "",
@@ -97,7 +106,11 @@ const GroupsClasses = () => {
     setLoading(true);
     setError("");
     try {
-      const response = await apiGet('/groups/venues');
+      const queryParams = [];
+      if (selectedYear) queryParams.push(`year=${selectedYear}`);
+      if (specificationFilter) queryParams.push(`specification=${encodeURIComponent(specificationFilter)}`);
+      const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+      const response = await apiGet(`/groups/venues${queryString}`);
       const data = await response.json();
       if (data.success) {
         setVenues(data.data);
@@ -126,6 +139,32 @@ const GroupsClasses = () => {
     }
   };
 
+  // Fetch group specifications
+  // - `forFilter=true`: fetch year-scoped specs for the filter dropdown (year can be "" for all-years)
+  // - `forFilter=false`: fetch all specs for create/edit datalists
+  const fetchGroupSpecifications = async ({ year = '', forFilter = false } = {}) => {
+    try {
+      const yearParam = year ? `?year=${year}` : '';
+      const response = await apiGet(`/groups/venues/group-specifications${yearParam}`);
+      const data = await response.json();
+      if (data.success) {
+        const specs = data.data || [];
+        if (forFilter) {
+          setGroupSpecifications(specs);
+
+          // Clear spec filter if it's not valid for the selected year
+          if (specificationFilter && !specs.includes(specificationFilter)) {
+            setSpecificationFilter('');
+          }
+        } else {
+          setAllGroupSpecifications(specs);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching group specifications:", err);
+    }
+  };
+
   // Fetch available faculties with workload info
   const fetchAvailableFaculties = async (venueId, search = "") => {
     setLoadingFaculties(true);
@@ -147,10 +186,23 @@ const GroupsClasses = () => {
     }
   };
 
+  // Initial load
+  useEffect(() => {
+    fetchFaculties();
+    fetchGroupSpecifications(); // all specs for create/edit
+  }, []);
+
+  // Re-fetch venues + year-scoped specifications when year changes
   useEffect(() => {
     fetchVenues();
-    fetchFaculties();
-  }, []);
+    fetchGroupSpecifications({ year: selectedYear, forFilter: true });
+    setCurrentPage(1);
+  }, [selectedYear]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [specificationFilter, statusFilter, searchTerm]);
 
   useEffect(() => {
     if (showAssignFacultyModal) {
@@ -169,7 +221,8 @@ const GroupsClasses = () => {
       (v.location &&
         v.location.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = !statusFilter || v.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesSpecification = !specificationFilter || v.group_specification === specificationFilter;
+    return matchesSearch && matchesStatus && matchesSpecification;
   });
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -241,6 +294,8 @@ const GroupsClasses = () => {
       venue_name: venue.venue_name,
       capacity: venue.capacity,
       location: venue.location,
+      year: venue.venue_year || '',
+      group_specification: venue.group_specification || '',
       assigned_faculty_id: venue.faculty_id,
       status: venue.status,
     });
@@ -284,6 +339,8 @@ const GroupsClasses = () => {
       const data = await response.json();
       if (data.success) {
         await fetchVenues();
+        await fetchGroupSpecifications(); // Refresh create/edit specs
+        await fetchGroupSpecifications({ year: selectedYear, forFilter: true }); // Refresh filter specs
         setEditingVenue(null);
         showResult("success", "Venue Updated", data.message);
       } else {
@@ -318,12 +375,16 @@ const GroupsClasses = () => {
       const data = await response.json();
       if (data.success) {
         await fetchVenues();
+        await fetchGroupSpecifications(); // Refresh create/edit specs
+        await fetchGroupSpecifications({ year: selectedYear, forFilter: true }); // Refresh filter specs
         setShowCreateModal(false);
         setNewVenue({
           venue_name: "",
           capacity: 50,
           location: "",
           assigned_faculty_id: "",
+          year: "",
+          group_specification: "",
         });
         showResult("success", "Venue Created", data.message);
       } else {
@@ -676,7 +737,7 @@ const GroupsClasses = () => {
           </button>
         </div>
       )}
-      <div></div>
+      
       <div style={s.topBar}>
         <div style={s.searchWrapper}>
           <Search sx={{ color: "#94a3b8", fontSize: 22 }} />
@@ -692,6 +753,44 @@ const GroupsClasses = () => {
           />
         </div>
         <div style={s.filtersWrapper}>
+          {/* Year Filter */}
+          <div style={s.selectWrapper}>
+            <select
+              style={s.select}
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+            <KeyboardArrowDown style={s.selectArrow} sx={{ fontSize: 20 }} />
+          </div>
+          {/* Specification Filter */}
+          <div style={s.selectWrapper}>
+            <select
+              style={s.select}
+              value={specificationFilter}
+              onChange={(e) => {
+                setSpecificationFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All Specifications</option>
+              {groupSpecifications.map((spec) => (
+                <option key={spec} value={spec}>
+                  {spec}
+                </option>
+              ))}
+            </select>
+            <KeyboardArrowDown style={s.selectArrow} sx={{ fontSize: 20 }} />
+          </div>
+          {/* Status Filter */}
           <div style={s.selectWrapper}>
             <select
               style={s.select}
@@ -722,6 +821,8 @@ const GroupsClasses = () => {
               <tr style={s.trHead}>
                 <th style={s.th}>Venue Details</th>
                 <th style={s.th}>Assigned Faculty</th>
+                <th style={s.th}>Year</th>
+                <th style={s.th}>Specification</th>
                 <th style={s.th}>Capacity</th>
                 <th style={s.th}>Status</th>
                 <th style={s.th}>Action</th>
@@ -763,6 +864,24 @@ const GroupsClasses = () => {
                     ) : (
                       <span style={s.noFaculty}>Not Assigned</span>
                     )}
+                  </td>
+                  <td style={s.td}>
+                    <span style={s.yearBadge}>
+                      {v.venue_year ? `${v.venue_year === 1 ? '1st' : v.venue_year === 2 ? '2nd' : v.venue_year === 3 ? '3rd' : '4th'} Year` : 'All Years'}
+                    </span>
+                  </td>
+                  <td style={s.td}>
+                    <span style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      backgroundColor: v.group_specification ? '#e0e7ff' : '#f1f5f9',
+                      color: v.group_specification ? '#4338ca' : '#64748b',
+                      textTransform: 'capitalize',
+                    }}>
+                      {v.group_specification || 'None'}
+                    </span>
                   </td>
                   <td style={s.td}>
                     <div style={s.capacityCell}>
@@ -1026,6 +1145,61 @@ const GroupsClasses = () => {
               </div>
               <div style={s.formGroup}>
                 <label style={s.label}>
+                  Academic Year *
+                  <span style={s.labelHint}>
+                    Which year students will use this venue
+                  </span>
+                </label>
+                <div style={s.selectWrapper}>
+                  <select
+                    style={s.selectModal}
+                    value={newVenue.year}
+                    onChange={(e) =>
+                      setNewVenue({
+                        ...newVenue,
+                        year: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">All Years</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                  <KeyboardArrowDown
+                    style={s.selectArrow}
+                    sx={{ fontSize: 20 }}
+                  />
+                </div>
+              </div>
+              <div style={s.formGroup}>
+                <label style={s.label}>
+                  Group Specification
+                  <span style={s.labelHint}>
+                    Type to add new or select existing (e.g., pbl, oracle, academics)
+                  </span>
+                </label>
+                <input
+                  list="group-specifications-create"
+                  style={s.input}
+                  value={newVenue.group_specification}
+                  onChange={(e) =>
+                    setNewVenue({
+                      ...newVenue,
+                      group_specification: e.target.value,
+                    })
+                  }
+                  placeholder="Type or select specification"
+                />
+                <datalist id="group-specifications-create">
+                  {allGroupSpecifications.map((spec, idx) => (
+                    <option key={idx} value={spec} />
+                  ))}
+                </datalist>
+              </div>
+              <div style={s.formGroup}>
+                <label style={s.label}>
                   Assign Faculty (Optional)
                   <span style={s.labelHint}>
                     Only unassigned faculties shown
@@ -1127,6 +1301,61 @@ const GroupsClasses = () => {
                     })
                   }
                 />
+              </div>
+              <div style={s.formGroup}>
+                <label style={s.label}>
+                  Academic Year
+                  <span style={s.labelHint}>
+                    Which year students will use this venue
+                  </span>
+                </label>
+                <div style={s.selectWrapper}>
+                  <select
+                    style={s.selectModal}
+                    value={editingVenue.year || ''}
+                    onChange={(e) =>
+                      setEditingVenue({
+                        ...editingVenue,
+                        year: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">All Years</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                  <KeyboardArrowDown
+                    style={s.selectArrow}
+                    sx={{ fontSize: 20 }}
+                  />
+                </div>
+              </div>
+              <div style={s.formGroup}>
+                <label style={s.label}>
+                  Group Specification
+                  <span style={s.labelHint}>
+                    Type to add new or select existing (e.g., pbl, oracle, academics)
+                  </span>
+                </label>
+                <input
+                  list="group-specifications-edit"
+                  style={s.input}
+                  value={editingVenue.group_specification}
+                  onChange={(e) =>
+                    setEditingVenue({
+                      ...editingVenue,
+                      group_specification: e.target.value,
+                    })
+                  }
+                  placeholder="Type or select specification"
+                />
+                <datalist id="group-specifications-edit">
+                  {allGroupSpecifications.map((spec, idx) => (
+                    <option key={idx} value={spec} />
+                  ))}
+                </datalist>
               </div>
               <div style={s.formGroup}>
                 <label style={s.label}>Status *</label>
@@ -1783,6 +2012,32 @@ const s = {
     fontWeight: "600",
     color: "#3b82f6",
   },
+  // Page Header with Year Filter
+  pageHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "16px",
+    flexWrap: "wrap",
+    gap: "12px",
+  },
+  yearFilterSection: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
+  pageHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+  pageTitle: {
+    fontSize: "24px",
+    fontWeight: "700",
+    color: "#1e293b",
+    margin: 0,
+  },
   topBar: {
     display: "flex",
     justifyContent: "space-between",
@@ -1908,6 +2163,15 @@ const s = {
     alignItems: "center",
     gap: "8px",
     fontSize: "14px",
+  },
+  yearBadge: {
+    backgroundColor: "#eff6ff",
+    color: "#1d4ed8",
+    padding: "4px 10px",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500",
+    display: "inline-block",
   },
   statusActive: {
     backgroundColor: "#16A34A",

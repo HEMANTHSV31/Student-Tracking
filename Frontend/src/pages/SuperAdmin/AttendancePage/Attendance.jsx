@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet, apiPost } from '../../../utils/api';
+import YearSelector, { YearBadge } from '../../../components/YearSelector/YearSelector';
 
 const AttendanceManagement = () => {
     const { user } = useAuthStore();
@@ -19,6 +20,9 @@ const AttendanceManagement = () => {
     
     // Track the last initialized session to prevent loops
     const lastInitializedRef = useRef(null);
+
+    // Year filter state
+    const [selectedYear, setSelectedYear] = useState('');
 
 
     // Responsive state
@@ -67,7 +71,8 @@ const AttendanceManagement = () => {
         setLoading(true);
         setError('');
         try {
-            const response = await apiGet('/attendance/venues');
+            const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+            const response = await apiGet(`/attendance/venues${yearParam}`);
 
             
             if (!response.ok) {
@@ -81,7 +86,9 @@ const AttendanceManagement = () => {
                 setSelectedVenue(data.data[0]);
                 setUserInfo(data.user_info);
             } else {
-                setError(data.message || 'No venues found');
+                setVenues([]);
+                setSelectedVenue(null);
+                setError(data.message || 'No venues found for the selected year');
             }
         } catch (err) {
             console.error('❌ Error fetching venues:', err);
@@ -100,8 +107,9 @@ const AttendanceManagement = () => {
         
         setLoading(true);
         try {
+            const yearParam = selectedYear ? `?year=${selectedYear}` : '';
             const response = await apiGet(
-                `/attendance/students/${selectedVenue.venue_id}`
+                `/attendance/students/${selectedVenue.venue_id}${yearParam}`
             );
             
             const data = await response.json();
@@ -117,6 +125,7 @@ const AttendanceManagement = () => {
                 // After students are loaded, initialize the session
                 await initializeSessionWithAttendance(studentsWithDefaults);
             } else {
+                setStudents([]);
                 setError(data.message || 'Failed to fetch students');
             }
         } catch (err) {
@@ -315,7 +324,7 @@ const AttendanceManagement = () => {
         if (user) {
             fetchVenues();
         }
-    }, [user]);
+    }, [user, selectedYear]); // Re-fetch when year changes
 
     // Single effect that handles session initialization
     useEffect(() => {
@@ -324,7 +333,7 @@ const AttendanceManagement = () => {
             lastInitializedRef.current = null;
             fetchStudents(); // This will call initializeSessionWithAttendance
         }
-    }, [selectedVenue, date, timeSlot]);
+    }, [selectedVenue, date, timeSlot, selectedYear]);
 
     // ====================== COMPUTED VALUES ======================
     const filteredStudents = useMemo(() => {
@@ -434,7 +443,7 @@ const AttendanceManagement = () => {
         },
         filterGrid: {
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : 'repeat(4, 1fr)',
+            gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : 'repeat(5, 1fr)',
             gap: isMobile ? '12px' : '20px',
             paddingBottom: '24px',
             borderBottom: '1px solid #F3F4F6',
@@ -804,8 +813,8 @@ const AttendanceManagement = () => {
 },
 remarkInput: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid transparent',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',
@@ -816,8 +825,8 @@ remarkInput: {
 },
 remarkInputActive: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid #E5E7EB',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid #E5E7EB',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',
@@ -927,6 +936,28 @@ remarkInputActive: {
             {/* Filter Card */}
             <div style={styles.card}>
                 <div style={styles.filterGrid}>
+                    {/* Year Selection */}
+                    <div style={styles.inputGroup}>
+                        <label style={styles.label}>
+                            <Calendar size={12} />
+                            <span>Academic Year</span>
+                        </label>
+                        <div style={styles.selectWrapper}>
+                            <select
+                                style={styles.select}
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(e.target.value)}
+                            >
+                                <option value="">All Years</option>
+                                <option value="1">1st Year</option>
+                                <option value="2">2nd Year</option>
+                                <option value="3">3rd Year</option>
+                                <option value="4">4th Year</option>
+                            </select>
+                            <ChevronDown size={16} style={styles.chevron} />
+                        </div>
+                    </div>
+
                     {/* Venue Selection */}
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>

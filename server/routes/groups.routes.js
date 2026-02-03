@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { 
   getAllVenues,
+  getGroupSpecifications,
   createVenue,
   updateVenue,
   deleteVenue,
@@ -38,6 +39,7 @@ const upload = multer({
 
 // Venue routes
 router.get('/venues', authenticate, getAllVenues);
+router.get('/venues/group-specifications', authenticate, getGroupSpecifications);
 router.get('/venues/search', authenticate, searchVenues);
 router.get('/venues/:venueId/details', authenticate, getVenueDetails);
 router.post('/venues', authenticate, createVenue);

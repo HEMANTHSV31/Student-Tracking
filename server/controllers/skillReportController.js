@@ -848,6 +848,16 @@ export const getSkillReportsForFaculty = async (req, res) => {
     const yearCondition = (year && year !== 'All Years') ? `AND s.year = ${parseInt(year)}` : '';
     const yearConditionSt = (year && year !== 'All Years') ? `AND st.year = ${parseInt(year)}` : '';
     
+    // Build venue filter for total_assigned_students subquery
+    let venueConditionForAssigned = '';
+    if (filterByVenue) {
+      if (venueId && !isAllVenues) {
+        venueConditionForAssigned = `AND g.venue_id = ${parseInt(venueId)}`;
+      } else if (facultyVenueIds.length > 0 && !isAllVenues) {
+        venueConditionForAssigned = `AND g.venue_id IN (${facultyVenueIds.join(',')})`;
+      }
+    }
+    
     let statsQuery = `
       SELECT 
         COUNT(*) as total,
@@ -860,7 +870,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
          FROM group_students gs 
          INNER JOIN \`groups\` g ON gs.group_id = g.group_id 
          INNER JOIN students st ON gs.student_id = st.student_id
-         WHERE gs.status = 'Active' AND g.status = 'Active' ${yearConditionSt}) as total_assigned_students
+         WHERE gs.status = 'Active' AND g.status = 'Active' ${yearConditionSt} ${venueConditionForAssigned}) as total_assigned_students
       FROM student_skills ss
       INNER JOIN (
         SELECT student_id, course_name, MAX(last_slot_date) as max_date

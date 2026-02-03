@@ -26,7 +26,7 @@ const SideTab = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
-  const isFullBleedPage = ["group-insights", "tasks", "roadmap"].some((seg) =>
+  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports"].some((seg) =>
     location.pathname.includes(seg),
   );
 

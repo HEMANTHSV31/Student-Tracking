@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { apiGet, apiPut } from '../../../utils/api';
 // Material Icons
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
@@ -19,6 +18,7 @@ import IconButton from "@mui/material/IconButton";
 import { useLocation, useNavigate } from "react-router-dom";
 import useAuthStore from "../../../store/useAuthStore";
 import ReportsHeader from "./ReportsHeader";
+import { apiGet, apiPut } from '../../../utils/api';
 
 const ReportsAnalytics = () => {
   const location = useLocation();
@@ -77,7 +77,7 @@ const ReportsAnalytics = () => {
     };
 
     fetchVenues();
-  }, [user, API_URL, location.state]);
+  }, [user, location.state]);
 
   // Fetch tasks when venue changes
   useEffect(() => {
@@ -86,9 +86,7 @@ const ReportsAnalytics = () => {
 
       setTasksLoading(true);
       try {
-        const response = await apiGet(
-          `/tasks/venue/${selectedVenueId}`
-        );
+        const response = await apiGet(`/tasks/venue/${selectedVenueId}`);
 
         const data = await response.json();
 
@@ -124,7 +122,7 @@ const ReportsAnalytics = () => {
     };
 
     fetchTasks();
-  }, [selectedVenueId, API_URL, location.state]);
+  }, [selectedVenueId, location.state]);
 
   // Fetch submissions when task changes
   useEffect(() => {
@@ -192,7 +190,7 @@ const ReportsAnalytics = () => {
     };
 
     fetchSubmissions();
-  }, [selectedTaskId, currentPage, filters.status, searchTerm, API_URL]);
+  }, [selectedTaskId, currentPage, filters.status, searchTerm]);
 
   // Format date without AM0/PM0 issue
   const formatDate = (dateString) => {

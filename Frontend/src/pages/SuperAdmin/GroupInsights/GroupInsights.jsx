@@ -4,7 +4,8 @@ import AttendanceView from './AttendanceView/AttendanceView';
 import SkillProficiencyView from './SkillProficiencyView/SkillProficiencyView';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet } from '../../../utils/api';
-import { MapPin, BarChart3 } from 'lucide-react';
+import { MapPin, BarChart3, Calendar } from 'lucide-react';
+import YearSelector, { YearBadge } from '../../../components/YearSelector/YearSelector';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -16,16 +17,43 @@ const GroupInsights = () => {
   const urlVenue = searchParams.get('venue');
   const urlSkill = searchParams.get('skill');
   const urlTab = searchParams.get('tab');
+  const urlYear = searchParams.get('year');
   
   const [activeTab, setActiveTab] = useState(urlTab === 'skills' ? 'skills' : 'attendance');
   const [selectedVenue, setSelectedVenue] = useState(urlVenue || '');
+  const [selectedYear, setSelectedYear] = useState(urlYear || ''); // Year filter state
+  const [selectedSpecification, setSelectedSpecification] = useState(''); // Specification filter state
   const [venues, setVenues] = useState([]);
+  const [groupSpecifications, setGroupSpecifications] = useState([]);
   const [venuesLoading, setVenuesLoading] = useState(true);
   const [selectedSkill, setSelectedSkill] = useState(urlSkill || '');
   
   // Date picker state for attendance
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSession, setSelectedSession] = useState('');
+
+  // Fetch group specifications based on selected year
+  useEffect(() => {
+    const fetchSpecifications = async () => {
+      try {
+        const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+        const response = await apiGet(`/groups/venues/group-specifications${yearParam}`);
+        const data = await response.json();
+        if (data.success) {
+          const specs = data.data || [];
+          setGroupSpecifications(specs);
+          
+          // Clear selected specification if it's not in the filtered list
+          if (selectedSpecification && !specs.includes(selectedSpecification)) {
+            setSelectedSpecification('');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching group specifications:', err);
+      }
+    };
+    fetchSpecifications();
+  }, [selectedYear]);
 
   // Fetch venues based on role (admin sees all, faculty sees only assigned)
   useEffect(() => {
@@ -37,18 +65,32 @@ const GroupInsights = () => {
           ? '/groups/venues'
           : '/skill-reports/faculty/venues';
         
-        const response = await apiGet(endpoint);
+        // Build query parameters for year and specification
+        const queryParams = [];
+        if (selectedYear) queryParams.push(`year=${selectedYear}`);
+        if (selectedSpecification) queryParams.push(`specification=${selectedSpecification}`);
+        const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+        
+        const response = await apiGet(`${endpoint}${queryString}`);
         const data = await response.json();
         
         // Handle different response structures
-        const venueList = user?.role === 'admin'
+        let venueList = user?.role === 'admin'
           ? data.data || []
           : data.venues || [];
         
         setVenues(venueList);
         
+        // Clear selected venue if it's not in the filtered list
+        if (selectedVenue && selectedVenue !== 'all') {
+          const venueStillExists = venueList.some(v => v.venue_id.toString() === selectedVenue);
+          if (!venueStillExists) {
+            setSelectedVenue('');
+          }
+        }
+        
         // Auto-select first venue for faculty if they have only one
-        if (user?.role === 'faculty' && venueList.length === 1) {
+        if (user?.role === 'faculty' && venueList.length === 1 && venueList[0]) {
           setSelectedVenue(venueList[0].venue_id.toString());
         }
       } catch (err) {
@@ -59,7 +101,7 @@ const GroupInsights = () => {
     };
     
     fetchVenues();
-  }, [user?.role]);
+  }, [user?.role, selectedYear, selectedSpecification]); // Re-fetch when year or specification changes
 
   // Clear URL parameters after initial load
   useEffect(() => {
@@ -91,6 +133,39 @@ const GroupInsights = () => {
       {/* Top Header Bar */}
       <div style={styles.topBar}>
         <div style={styles.topBarLeft}>
+          {/* Year Selector */}
+          <div style={styles.headerFilterGroup}>
+            <label style={styles.headerLabel}>Academic Year</label>
+            <select
+              style={styles.headerSelect}
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+            >
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </div>
+
+          {/* Specification Filter */}
+          <div style={styles.headerFilterGroup}>
+            <label style={styles.headerLabel}>Group Specification</label>
+            <select
+              style={styles.headerSelect}
+              value={selectedSpecification}
+              onChange={(e) => setSelectedSpecification(e.target.value)}
+            >
+              <option value="">All Specifications</option>
+              {groupSpecifications.map((spec) => (
+                <option key={spec} value={spec}>
+                  {spec}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Venue Selector */}
           <div style={styles.headerFilterGroup}>
             <label style={styles.headerLabel}>
@@ -115,14 +190,6 @@ const GroupInsights = () => {
               ))}
             </select>
           </div>
-
-          {/* Show selected venue name badge
-          {selectedVenueName && (
-            <div style={styles.venueBadge}>
-              <MapPin size={16} style={{ marginRight: '6px' }} />
-              {selectedVenueName}
-            </div>
-          )} */}
         </div>
 
         <div style={styles.topBarTabs}>
@@ -163,6 +230,7 @@ const GroupInsights = () => {
             selectedSession={selectedSession}
             setSelectedSession={setSelectedSession}
             userRole={user?.role}
+            selectedYear={selectedYear}
           />
         ) : (
           <SkillProficiencyView 
@@ -171,6 +239,8 @@ const GroupInsights = () => {
             facultyName={selectedFacultyName}
             initialSkill={selectedSkill}
             userRole={user?.role}
+            selectedYear={selectedYear}
+            selectedSpecification={selectedSpecification}
           />
         )}
       </div>
@@ -231,8 +301,29 @@ const styles = {
     color: '#1f2937',
     outline: 'none',
     backgroundColor: '#fff',
-    minWidth: '250px',
+    minWidth: '180px',
     cursor: 'pointer',
+  },
+  yearBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '6px 12px',
+    backgroundColor: '#dbeafe',
+    color: '#1d4ed8',
+    borderRadius: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    border: '1px solid #bfdbfe',
+  },
+  clearYearBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    marginLeft: '6px',
+    color: '#1d4ed8',
+    fontSize: '16px',
+    lineHeight: 1,
+    padding: '0 2px',
   },
   venueBadge: {
     padding: '6px 12px',
