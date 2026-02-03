@@ -373,10 +373,13 @@ const AttendanceManagement = () => {
             backgroundColor: '#F9FAFB',
             minHeight: '100vh',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            padding: isMobile ? '16px' : '24px',
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            padding: isMobile ? '10px 12px' : '12px 16px',
         },
         header: {
-            marginBottom: '24px',
+            marginBottom: isMobile ? '12px' : '16px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
@@ -390,7 +393,7 @@ const AttendanceManagement = () => {
             fontSize: isMobile ? '24px' : '32px',
             fontWeight: '700',
             color: '#111827',
-            marginBottom: '4px',
+            marginBottom: '2px',
         },
         subtitle: {
             fontSize: '14px',
@@ -1079,7 +1082,7 @@ remarkInputActive: {
             </div>
 
             {/* Students Table Card */}
-            <div style={{ ...styles.card, marginTop: '24px', padding: 0 }}>
+            <div style={{ ...styles.card, marginTop: isMobile ? '12px' : '16px', padding: 0 }}>
                 <div style={styles.tableToolbar}>
                     <div style={styles.searchBox}>
                         <Search size={16} style={styles.searchIcon} />
