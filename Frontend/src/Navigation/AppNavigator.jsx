@@ -31,12 +31,12 @@ import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights"
 
 // Faculty Pages
 //Faculty -> Class & Group
-import FacultyClassDetails from "../pages/Faculty/Class&Group/ClassDetails/ClassDetails";
+import FacultyClassDetails from "../pages/Faculty/Class&Group/ClassDetails";
 //Faculty -> Students
 import FacultyStudentsPage from "../pages/Faculty/studentsPage/AllStudents/studentsPage";
 import FacultyStudentHeader from "../pages/Faculty/studentsPage/studentHeader/StudentHeader";
 //Faculty -> Group Insights
-import FacultyGroupInsights from "../pages/Faculty/GroupInsights/GroupInsights";
+import FacultyGroupInsights from "../pages/Faculty/GroupInsights copy/GroupInsights";
 //Faculty -> Attendance
 import FacultyAttendance from "../pages/Faculty/AttendancePage/Attendance";
 //Faculty -> Task & Assignments
