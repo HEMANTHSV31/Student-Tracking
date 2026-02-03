@@ -61,6 +61,11 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
     fetchCourseTypes();
   }, []);
 
+  // Sync local course selection with parent prop
+  useEffect(() => {
+    setLocalSelectedCourse(selectedCourseType);
+  }, [selectedCourseType]);
+
   // Fetch skill order
   useEffect(() => {
     fetchSkillOrder();

@@ -1116,9 +1116,6 @@ export const updateVenue = async (req, res) => {
     const { venueId } = req.params;
     const { venue_name, capacity, location, assigned_faculty_id, status, year, group_specification } = req.body;
 
-    console.log('[UPDATE VENUE] Request body:', req.body);
-    console.log('[UPDATE VENUE] Year value:', year, 'Type:', typeof year);
-
     // Check if venue name already exists (excluding current venue)
     const [existing] = await connection.query(
       'SELECT venue_id FROM venue WHERE venue_name = ? AND venue_id != ?',
@@ -1143,8 +1140,6 @@ export const updateVenue = async (req, res) => {
       });
     }
 
-    console.log('[UPDATE VENUE] Parsed year value:', yearValue);
-
     await connection.beginTransaction();
 
     await connection.query(`
@@ -1152,8 +1147,6 @@ export const updateVenue = async (req, res) => {
       SET venue_name = ?, capacity = ?, location = ?, assigned_faculty_id = ?, status = ?, year = ?, group_specification = ?  
       WHERE venue_id = ?
     `, [venue_name, capacity, location, assigned_faculty_id, status, yearValue, group_specification || null, venueId]);
-    
-    console.log('[UPDATE VENUE] Update executed for venue_id:', venueId);
 
     await connection.commit();
 

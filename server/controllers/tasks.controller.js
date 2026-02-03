@@ -744,8 +744,8 @@ export const getTaskSubmissions = async (req, res) => {
       clearedCondition = `AND s.student_id NOT IN (${[...clearedStudentIds].join(',')})`;
     }
 
-    // Simple query: Get all students currently in this venue with their task submissions
-    // Match by task title to include submissions from same task in different venues
+    // Get submissions from students who were IN THIS VENUE when they submitted
+    // OR students currently in this venue who haven't submitted yet
     const countQuery = `
       SELECT COUNT(DISTINCT s.student_id) as total
       FROM students s
@@ -754,14 +754,15 @@ export const getTaskSubmissions = async (req, res) => {
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       LEFT JOIN task_submissions ts ON s.student_id = ts.student_id 
         AND ts.task_id IN (SELECT t.task_id FROM tasks t WHERE t.title = ?)
-      WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
+        AND (ts.current_venue_id = ? OR ts.current_venue_id IS NULL)
+      WHERE (g.venue_id = ? OR ts.submission_id IS NOT NULL) ${clearedCondition} ${statusCondition} ${searchCondition}
     `;
 
-    const countParams = [task_title, venue_id, ...statusParams, ...searchParams];
+    const countParams = [task_title, venue_id, venue_id, ...statusParams, ...searchParams];
     const [countResult] = await db.query(countQuery, countParams);
     const total = countResult[0].total;
 
-    // Main query: Students in current venue with their submissions (from any venue with same task title)
+    // Main query: Students currently in venue + submissions that were made in this venue
     const mainQuery = `
       SELECT 
         ts.submission_id,
@@ -773,6 +774,7 @@ export const getTaskSubmissions = async (req, res) => {
         ts.grade,
         ts.feedback,
         ts.is_late,
+        ts.current_venue_id,
         s.student_id,
         u.ID as student_roll,
         u.name as student_name,
@@ -784,12 +786,13 @@ export const getTaskSubmissions = async (req, res) => {
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       LEFT JOIN task_submissions ts ON s.student_id = ts.student_id 
         AND ts.task_id IN (SELECT t.task_id FROM tasks t WHERE t.title = ?)
-      WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
+        AND (ts.current_venue_id = ? OR ts.current_venue_id IS NULL)
+      WHERE (g.venue_id = ? OR ts.submission_id IS NOT NULL) ${clearedCondition} ${statusCondition} ${searchCondition}
       ORDER BY ts.submitted_at IS NULL, ts.submitted_at DESC, u.name ASC
       LIMIT ? OFFSET ?
     `;
 
-    const mainParams = [task_title, venue_id, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
+    const mainParams = [task_title, venue_id, venue_id, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
     
     const [submissions] = await db.query(mainQuery, mainParams);
 
@@ -1137,18 +1140,40 @@ export const getStudentTasks = async (req, res) => {
       });
     }
 
-    // Get skill order (GLOBAL - same for all venues)
+    // Get skill order filtered by student's venue and year
+    const [studentDetails] = await db.query(`
+      SELECT s.venue_id, s.year 
+      FROM students s 
+      WHERE s.student_id = ?
+    `, [student_id]);
+
+    const studentVenueId = studentDetails[0]?.venue_id || currentVenueId;
+    const studentYear = studentDetails[0]?.year || 2;
+
     let skillOrderQuery = `
-      SELECT 
+      SELECT DISTINCT
         so.id as skill_order_id,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
         so.course_type
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
-    const skillOrderParams = [];
+    const skillOrderParams = [studentVenueId, studentYear];
     
     if (course_type) {
       skillOrderQuery += ` AND so.course_type = ?`;
@@ -1304,10 +1329,10 @@ export const getStudentTasks = async (req, res) => {
     // console.log('Unlocked skills set:', Array.from(unlockedSkills));
     // console.log('======================================================\n');
 
-    // Get all tasks from ALL venues the student has been in (match by task title for cross-venue)
-    // Priority: Current venue tasks first, then historical submissions from other venues
+    // Get all tasks from ALL venues the student has been in
+    // Show tasks from current venue + any previously submitted tasks
     let tasksQuery = `
-      SELECT 
+      SELECT DISTINCT
         t.task_id,
         t.title,
         t.description,
@@ -1339,21 +1364,17 @@ export const getStudentTasks = async (req, res) => {
       INNER JOIN venue v ON t.venue_id = v.venue_id
       INNER JOIN faculties f ON t.faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
-      LEFT JOIN (
-        -- Get submissions from current venue OR matching title tasks from other venues
-        SELECT ts1.*
-        FROM task_submissions ts1
-        INNER JOIN tasks t1 ON ts1.task_id = t1.task_id
-        WHERE ts1.student_id = ?
-      ) ts ON t.task_id = ts.task_id OR (
-        ts.task_id IN (
-          SELECT t2.task_id FROM tasks t2 
-          WHERE t2.title = t.title AND ts.task_id = t2.task_id
+      LEFT JOIN task_submissions ts ON t.task_id = ts.task_id AND ts.student_id = ?
+      WHERE (
+        t.venue_id = ? 
+        OR EXISTS (
+          SELECT 1 FROM task_submissions ts2 
+          WHERE ts2.task_id = t.task_id AND ts2.student_id = ?
         )
       )
-      WHERE t.venue_id = ? AND t.status = 'Active'
+      AND t.status = 'Active'
     `;
-    const tasksParams = [currentVenueId || 0, student_id, currentVenueId || allVenueIds[0]];
+    const tasksParams = [currentVenueId || 0, student_id, currentVenueId || allVenueIds[0], student_id];
 
     // Only filter by course_type if it's specified AND not 'all'
     if (course_type && course_type !== 'all') {
@@ -1648,12 +1669,33 @@ export const submitTask = async (req, res) => {
 
     // Check if already submitted
     const [existing] = await db.query(`
-      SELECT submission_id, file_path FROM task_submissions 
+      SELECT submission_id, file_path, extended_due_date, status FROM task_submissions 
       WHERE task_id = ? AND student_id = ?
     `, [task_id, student_id]);
 
     const due_date = task[0].due_date;
-    const is_late = due_date && new Date() > new Date(due_date);
+    
+    // Check effective due date (extended_due_date takes priority)
+    const effectiveDueDate = (existing.length > 0 && existing[0].extended_due_date) 
+      ? existing[0].extended_due_date 
+      : due_date;
+    
+    const currentDate = new Date();
+    const dueDateTime = effectiveDueDate ? new Date(effectiveDueDate) : null;
+    
+    // Block submission if past due date (unless it's a resubmission for 'Needs Revision')
+    if (dueDateTime && currentDate > dueDateTime) {
+      // Allow resubmission only if status is 'Needs Revision'
+      if (existing.length === 0 || existing[0].status !== 'Needs Revision') {
+        return res.status(400).json({
+          success: false,
+          message: 'Submission deadline has passed. You cannot submit this task anymore.',
+          dueDate: effectiveDueDate
+        });
+      }
+    }
+    
+    const is_late = dueDateTime && currentDate > dueDateTime;
 
     // Support both file and link submission at the same time
     const hasFile = file && file.originalname;
@@ -1746,10 +1788,21 @@ export const submitTask = async (req, res) => {
         message: 'Assignment resubmitted successfully!'
       });
     } else {
+      // Get student's current venue
+      const [studentVenue] = await db.query(`
+        SELECT g.venue_id 
+        FROM students s
+        INNER JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+        WHERE s.student_id = ?
+      `, [student_id]);
+      
+      const current_venue_id = studentVenue.length > 0 ? studentVenue[0].venue_id : null;
+      
       // Create new submission - support both file and link
-      const columns = ['task_id', 'student_id', 'is_late', 'submitted_at', 'status'];
-      const values = [task_id, student_id, is_late];
-      const placeholders = ['?', '?', '?', 'NOW()', "'Pending Review'"];
+      const columns = ['task_id', 'student_id', 'is_late', 'submitted_at', 'status', 'current_venue_id'];
+      const values = [task_id, student_id, is_late, current_venue_id];
+      const placeholders = ['?', '?', '?', 'NOW()', "'Pending Review'", '?'];
 
       if (hasFile) {
         columns.push('file_name', 'file_path');

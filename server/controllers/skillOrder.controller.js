@@ -15,6 +15,8 @@ export const getSkillOrders = async (req, res) => {
         so.is_prerequisite,
         so.description,
         so.created_by,
+        so.apply_to_all_venues,
+        so.apply_to_all_years,
         u.name as created_by_name,
         so.created_at,
         so.updated_at
@@ -79,24 +81,54 @@ export const getSkillOrders = async (req, res) => {
   }
 };
 
-// Get skill order for a specific course type (GLOBAL)
+// Get skill order for a specific venue (filtered by venue and year)
 export const getSkillOrderForVenue = async (req, res) => {
   try {
-    const { course_type } = req.query;
+    const { venue_id } = req.params;
+    const { course_type, year } = req.query;
+
+    // Get student's current year if not provided
+    let studentYear = year;
+    if (!studentYear && req.user?.student_id) {
+      const [student] = await db.query('SELECT year FROM students WHERE student_id = ?', [req.user.student_id]);
+      if (student.length > 0) {
+        studentYear = student[0].year;
+      }
+    }
 
     let query = `
-      SELECT 
+      SELECT DISTINCT
         so.id,
         so.course_type,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
-        so.description
+        so.description,
+        so.apply_to_all_venues,
+        so.apply_to_all_years
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
     `;
     
-    const params = [];
+    const params = [venue_id];
+
+    // Filter by year if provided
+    if (studentYear) {
+      query += ` AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )`;
+      params.push(studentYear);
+    }
 
     if (course_type) {
       query += ` AND so.course_type = ?`;
@@ -112,7 +144,7 @@ export const getSkillOrderForVenue = async (req, res) => {
       data: skillOrders
     });
   } catch (error) {
-    console.error('Error fetching skill order:', error);
+    console.error('Error fetching skill order for venue:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch skill order'
@@ -407,25 +439,54 @@ export const deleteSkillOrder = async (req, res) => {
   }
 };
 
-// Get student's skill progression status (GLOBAL)
+// Get student's skill progression status (filtered by student's venue and year)
 export const getStudentSkillProgression = async (req, res) => {
   try {
     const { student_id } = req.params;
     const { course_type } = req.query;
 
-    // Get skill order (GLOBAL)
+    // Get student's venue and year
+    const [student] = await db.query(`
+      SELECT venue_id, year 
+      FROM students 
+      WHERE student_id = ?
+    `, [student_id]);
+
+    if (student.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const { venue_id, year } = student[0];
+
+    // Get skill order filtered by student's venue and year
     let orderQuery = `
-      SELECT 
+      SELECT DISTINCT
         so.id,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
         so.description
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
     
-    const orderParams = [];
+    const orderParams = [venue_id, year];
 
     if (course_type) {
       orderQuery += ` AND so.course_type = ?`;

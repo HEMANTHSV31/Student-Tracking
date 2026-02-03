@@ -2840,7 +2840,7 @@ const StudyRoadmap = ({
       fetchRoadmapData();
       setEditingId(null);
     }
-  }, [selectedVenueId, API_URL, isActiveTab]);
+  }, [selectedVenueId, API_URL, isActiveTab, selectedCourseType]);
 
   // Handle add day trigger from parent
   useEffect(() => {
@@ -4248,7 +4248,7 @@ const StudyRoadmap = ({
                   </React.Fragment>
                 ))
             )
-          ) : roadmap.length === 0 ? (
+          ) : roadmap.filter((m) => m.course_type === selectedCourseType).length === 0 ? (
             <div style={styles.emptyState}>
               <h3
                 style={{
@@ -4256,7 +4256,7 @@ const StudyRoadmap = ({
                   marginBottom: "12px",
                 }}
               >
-                No modules yet
+                No {selectedCourseType} modules yet
               </h3>
               <p
                 style={{
@@ -4264,16 +4264,15 @@ const StudyRoadmap = ({
                   marginBottom: "20px",
                 }}
               >
-                Click "Add First Module" to create your first module for{" "}
-                {venueName}
+                Create your first {selectedCourseType} module for {venueName}
               </p>
               <button style={styles.addDayBtn} onClick={handleAddDay}>
                 <PlusCircle size={18} />
-                <span>Add First Module</span>
+                <span>Add First {selectedCourseType.charAt(0).toUpperCase() + selectedCourseType.slice(1)} Module</span>
               </button>
             </div>
           ) : (
-            roadmap.map((module, index) => (
+            roadmap.filter((m) => m.course_type === selectedCourseType).map((module, index) => (
               <React.Fragment key={module.roadmap_id}>
                 {index !== 0 && <div style={styles.connector} />}
                 <div style={styles.card}>
@@ -4526,7 +4525,7 @@ const StudyRoadmap = ({
                   </button>
                 </div>
               )
-            : roadmap.length > 0 && (
+            : roadmap.filter((m) => m.course_type === selectedCourseType).length > 0 && (
                 <div style={styles.addAnotherContainer}>
                   <button style={styles.addAnotherBtn} onClick={handleAddDay}>
                     <PlusCircle size={18} />

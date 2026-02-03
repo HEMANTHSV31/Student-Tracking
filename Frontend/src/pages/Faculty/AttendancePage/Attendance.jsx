@@ -5,6 +5,7 @@ import {
     XCircle,
     Clock,
     Save,
+    Download,
     Calendar,
     ChevronDown,
     RefreshCw,
@@ -15,10 +16,12 @@ import { apiGet, apiPost } from '../../../utils/api';
 
 const AttendanceManagement = () => {
     const { user } = useAuthStore();
-    const API_URL = import.meta.env.VITE_API_URL;
     
     // Track the last initialized session to prevent loops
     const lastInitializedRef = useRef(null);
+
+    // Year filter state
+    const [selectedYear, setSelectedYear] = useState('');
 
 
     // Responsive state
@@ -48,7 +51,6 @@ const AttendanceManagement = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [sessionId, setSessionId] = useState(null);
-    const [userInfo, setUserInfo] = useState(null);
 
     const TIME_SLOTS = [
         '09:00 AM - 10:30 AM',
@@ -67,7 +69,8 @@ const AttendanceManagement = () => {
         setLoading(true);
         setError('');
         try {
-            const response = await apiGet('/attendance/venues');
+            const yearParam = selectedYear ? `?year=${selectedYear}` : '';
+            const response = await apiGet(`/attendance/venues${yearParam}`);
 
             
             if (!response.ok) {
@@ -79,9 +82,10 @@ const AttendanceManagement = () => {
             if (data.success && data.data.length > 0) {
                 setVenues(data.data);
                 setSelectedVenue(data.data[0]);
-                setUserInfo(data.user_info);
             } else {
-                setError(data.message || 'No venues found');
+                setVenues([]);
+                setSelectedVenue(null);
+                setError(data.message || 'No venues found for the selected year');
             }
         } catch (err) {
             console.error('❌ Error fetching venues:', err);
@@ -100,8 +104,9 @@ const AttendanceManagement = () => {
         
         setLoading(true);
         try {
+            const yearParam = selectedYear ? `?year=${selectedYear}` : '';
             const response = await apiGet(
-                `/attendance/students/${selectedVenue.venue_id}`
+                `/attendance/students/${selectedVenue.venue_id}${yearParam}`
             );
             
             const data = await response.json();
@@ -117,6 +122,7 @@ const AttendanceManagement = () => {
                 // After students are loaded, initialize the session
                 await initializeSessionWithAttendance(studentsWithDefaults);
             } else {
+                setStudents([]);
                 setError(data.message || 'Failed to fetch students');
             }
         } catch (err) {
@@ -265,6 +271,92 @@ const AttendanceManagement = () => {
         }
     };
 
+    const formatAttendanceStatus = (status) => {
+        if (!status) return 'Not Marked';
+        switch (status) {
+            case 'present':
+                return 'Present';
+            case 'absent':
+                return 'Absent';
+            case 'late':
+                return 'Late';
+            case 'ps':
+                return 'PS';
+            case 'mm':
+                return 'MM';
+            case 'ad':
+                return 'AD';
+            case 'other':
+                return 'Other';
+            default:
+                return String(status);
+        }
+    };
+
+    const exportAttendanceToExcel = () => {
+        if (!selectedVenue) {
+            alert('Please select a venue first');
+            return;
+        }
+
+        if (!students || students.length === 0) {
+            alert('No students available to export');
+            return;
+        }
+
+        const facultyName = selectedVenue?.assigned_faculty_name || user?.name || '';
+        const venueName = selectedVenue?.venue_name || '';
+        const sessionInfo = `${date} | ${timeSlot}`;
+
+        const escapeCsv = (value) => {
+            const str = value === null || value === undefined ? '' : String(value);
+            const needsQuotes = /[\",\n\r]/.test(str);
+            const escaped = str.replace(/\"/g, '""');
+            return needsQuotes ? `"${escaped}"` : escaped;
+        };
+
+        const headers = [
+            'Roll Number',
+            'Email',
+            'Student Name',
+            'Attendance',
+            'Faculty Name',
+            'Venue Name',
+            'Session'
+        ];
+
+        const lines = [headers.map(escapeCsv).join(',')];
+
+        students.forEach((s) => {
+            lines.push([
+                escapeCsv(s.id),
+                escapeCsv(s.email),
+                escapeCsv(s.name),
+                escapeCsv(formatAttendanceStatus(s.status)),
+                escapeCsv(facultyName),
+                escapeCsv(venueName),
+                escapeCsv(sessionInfo)
+            ].join(','));
+        });
+
+        // Add UTF-8 BOM so Excel opens it cleanly
+        const csvWithBom = `\ufeff${lines.join('\n')}`;
+
+        const safeVenue = venueName.replace(/[\\/:*?"<>|]/g, '-').trim();
+        const safeDate = String(date || '').replace(/[\\/:*?"<>|]/g, '-');
+        const filename = `attendance_${safeVenue || 'venue'}_${safeDate || 'date'}.csv`;
+
+        const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
     // ====================== EVENT HANDLERS ======================
     const updateStatus = (id, status) => {
         
@@ -315,7 +407,7 @@ const AttendanceManagement = () => {
         if (user) {
             fetchVenues();
         }
-    }, [user]);
+    }, [user, selectedYear]); // Re-fetch when year changes
 
     // Single effect that handles session initialization
     useEffect(() => {
@@ -324,7 +416,7 @@ const AttendanceManagement = () => {
             lastInitializedRef.current = null;
             fetchStudents(); // This will call initializeSessionWithAttendance
         }
-    }, [selectedVenue, date, timeSlot]);
+    }, [selectedVenue, date, timeSlot, selectedYear]);
 
     // ====================== COMPUTED VALUES ======================
     const filteredStudents = useMemo(() => {
@@ -435,12 +527,19 @@ const AttendanceManagement = () => {
             padding: isMobile ? '16px' : '24px',
             marginBottom: '24px',
         },
+        filterWrapper: {
+            display: 'flex',
+            gap: '20px',
+            alignItems: 'flex-end',
+            paddingBottom: '24px',
+            borderBottom: '1px solid #F3F4F6',
+            flexWrap: isMobile ? 'wrap' : 'nowrap',
+        },
         filterGrid: {
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : 'repeat(4, 1fr)',
             gap: isMobile ? '12px' : '20px',
-            paddingBottom: '24px',
-            borderBottom: '1px solid #F3F4F6',
+            flex: 1,
         },
         inputGroup: { 
             display: 'flex', 
@@ -471,6 +570,28 @@ const AttendanceManagement = () => {
             appearance: 'none',
             outline: 'none',
             cursor: 'pointer',
+        },
+        exportBtn: {
+            padding: '12px 24px',
+            backgroundColor: '#3B82F6',
+            border: '1px solid #3B82F6',
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: '#FFFFFF',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            height: '44px',
+            boxSizing: 'border-box',
+            whiteSpace: 'nowrap',
+            minWidth: isMobile ? '100%' : 'fit-content',
+        },
+        exportBtnDisabled: {
+            opacity: 0.6,
+            cursor: 'not-allowed',
         },
         selectDisabled: {
             width: '100%',
@@ -807,8 +928,8 @@ const AttendanceManagement = () => {
 },
 remarkInput: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid transparent',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',
@@ -819,8 +940,8 @@ remarkInput: {
 },
 remarkInputActive: {
     width: '100%', 
-    border: isMobile ? '1px solid #E5E7EB' : '1px solid transparent',
-    borderBottom: isMobile ? '1px solid #E5E7EB' : '1px solid #E5E7EB',
+    border: isMobile ? '1px solid #E5E7EB' : 'none',
+    borderBottom: '1px solid #E5E7EB',
     background: isMobile ? '#FAFBFC' : 'transparent',
     padding: isMobile ? '8px 12px' : '0', 
     borderRadius: isMobile ? '6px' : '0',
@@ -894,18 +1015,6 @@ remarkInputActive: {
 
     return (
         <div style={styles.container}>
-            {/* Header */}
-            <div style={styles.header}>
-                <div style={styles.titleSection}>
-                    <h1 style={styles.title}>Attendance Management</h1>
-                    <p style={styles.subtitle}>
-                        {userInfo ? 
-                            `Logged in as ${userInfo.name} (${userInfo.role}${userInfo.designation ? ` - ${userInfo.designation}` : ''})` : 
-                            'Mark and manage student attendance'}
-                    </p>
-                </div>
-            </div>
-
             {/* Error/Success Messages */}
             {error && (
                 <div style={{ ...styles.alertBanner, ...styles.errorBanner }}>
@@ -929,88 +1038,113 @@ remarkInputActive: {
 
             {/* Filter Card */}
             <div style={styles.card}>
-                <div style={styles.filterGrid}>
-                    {/* Venue Selection */}
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>
-                            <span>Venue / Class</span>
-                        </label>
-                        <div style={styles.selectWrapper}>
-                            <select
-                                style={styles.select}
-                                value={selectedVenue?.venue_id || ''}
-                                onChange={(e) => handleVenueChange(e.target.value)}
-                                disabled={loading || venues.length === 0}
-                            >
-                                {venues.length === 0 ? (
-                                    <option value="">No venues available</option>
-                                ) : (
-                                    <>
-                                        <option value="">Select a venue</option>
-                                        {venues.map(v => (
-                                            <option key={v.venue_id} value={v.venue_id}>
-                                                {v.venue_name} 
-                                                {v.assigned_faculty_name && ` (${v.assigned_faculty_name})`}
-                                                {v.student_count > 0 && ` - ${v.student_count} students`}
-                                            </option>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
-                            <ChevronDown size={16} style={styles.chevron} />
+                <div style={styles.filterWrapper}>
+                    <div style={styles.filterGrid}>
+                        {/* Year Selection */}
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>
+                                <Calendar size={12} />
+                                <span>Academic Year</span>
+                            </label>
+                            <div style={styles.selectWrapper}>
+                                <select
+                                    style={styles.select}
+                                    value={selectedYear}
+                                    onChange={(e) => setSelectedYear(e.target.value)}
+                                >
+                                    <option value="">All Years</option>
+                                    <option value="1">1st Year</option>
+                                    <option value="2">2nd Year</option>
+                                    <option value="3">3rd Year</option>
+                                    <option value="4">4th Year</option>
+                                </select>
+                                <ChevronDown size={16} style={styles.chevron} />
+                            </div>
+                        </div>
+
+                        {/* Venue Selection */}
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>
+                                <span>Venue / Class</span>
+                            </label>
+                            <div style={styles.selectWrapper}>
+                                <select
+                                    style={styles.select}
+                                    value={selectedVenue?.venue_id || ''}
+                                    onChange={(e) => handleVenueChange(e.target.value)}
+                                    disabled={loading || venues.length === 0}
+                                >
+                                    {venues.length === 0 ? (
+                                        <option value="">No venues available</option>
+                                    ) : (
+                                        <>
+                                            <option value="">Select a venue</option>
+                                            {venues.map(v => (
+                                                <option key={v.venue_id} value={v.venue_id}>
+                                                    {v.venue_name} 
+                                                    {v.assigned_faculty_name && ` (${v.assigned_faculty_name})`}
+                                                    {v.student_count > 0 && ` - ${v.student_count} students`}
+                                                </option>
+                                            ))}
+                                        </>
+                                    )}
+                                </select>
+                                <ChevronDown size={16} style={styles.chevron} />
+                            </div>
+                        </div>
+
+                        {/* Date Selection */}
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>
+                                <Calendar size={12} />
+                                <span>Date</span>
+                            </label>
+                            <div style={styles.selectWrapper}>
+                                <input
+                                    type="date"
+                                    value={date}
+                                    onChange={(e) => setDate(e.target.value)}
+                                    style={styles.select}
+                                    max={new Date().toISOString().split('T')[0]}
+                                />
+                                <Calendar size={16} style={styles.calendarIcon} />
+                            </div>
+                        </div>
+
+                        {/* Time Slot Selection */}
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>
+                                <Clock size={12} />
+                                <span>Time Slot</span>
+                            </label>
+                            <div style={styles.selectWrapper}>
+                                <select
+                                    style={styles.select}
+                                    value={timeSlot}
+                                    onChange={(e) => handleTimeSlotChange(e.target.value)}
+                                >
+                                    {TIME_SLOTS.map(slot => (
+                                        <option key={slot} value={slot}>{slot}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={16} style={styles.chevron} />
+                            </div>
                         </div>
                     </div>
 
-                    {/* Date Selection */}
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>
-                            <Calendar size={12} />
-                            <span>Date</span>
-                        </label>
-                        <div style={styles.selectWrapper}>
-                            <input
-                                type="date"
-                                value={date}
-                                onChange={(e) => setDate(e.target.value)}
-                                style={styles.select}
-                                max={new Date().toISOString().split('T')[0]}
-                            />
-                            <Calendar size={16} style={styles.calendarIcon} />
-                        </div>
-                    </div>
-
-                    {/* Time Slot Selection */}
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>
-                            <Clock size={12} />
-                            <span>Time Slot</span>
-                        </label>
-                        <div style={styles.selectWrapper}>
-                            <select
-                                style={styles.select}
-                                value={timeSlot}
-                                onChange={(e) => handleTimeSlotChange(e.target.value)}
-                            >
-                                {TIME_SLOTS.map(slot => (
-                                    <option key={slot} value={slot}>{slot}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={16} style={styles.chevron} />
-                        </div>
-                    </div>
-
-                    {/* User Info */}
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>Current User</label>
-                        <input
-                            type="text"
-                            value={userInfo ? 
-                                `${userInfo.name} (${userInfo.role})` : 
-                                (user?.name ? `${user.name}` : 'Loading...')}
-                            readOnly
-                            style={styles.selectDisabled}
-                        />
-                    </div>
+                    {/* Export Button - Aligned Right */}
+                    <button
+                        style={{
+                            ...styles.exportBtn,
+                            ...((loading || !selectedVenue || students.length === 0) ? styles.exportBtnDisabled : {})
+                        }}
+                        onClick={exportAttendanceToExcel}
+                        disabled={loading || !selectedVenue || students.length === 0}
+                        title={students.length === 0 ? 'No students to export' : 'Export attendance to Excel'}
+                    >
+                        <Download size={16} />
+                        Export Excel
+                    </button>
                 </div>
 
                 {/* Stats */}
