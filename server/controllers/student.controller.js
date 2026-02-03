@@ -710,19 +710,17 @@ export const getStudentOverview = async (req, res) => {
       WHERE a.student_id = ? 
     `, [studentId]);
 
-    // Get student skills from database
+    // Get student skills from database (using course_name directly)
     const [skillsRaw] = await db.query(`
       SELECT 
-        sk.skill_name as name,
-        CASE ss.proficiency_level
-          WHEN 'Beginner' THEN 40
-          WHEN 'Intermediate' THEN 60
-          WHEN 'Advanced' THEN 80
-          WHEN 'Expert' THEN 95
+        ss.course_name as name,
+        CASE 
+          WHEN ss.status = 'Cleared' THEN 80
+          WHEN ss.status = 'Ongoing' THEN 60
+          WHEN ss.status = 'Not Cleared' THEN 40
           ELSE 50
         END as rating
       FROM student_skills ss
-      INNER JOIN skills sk ON ss.skill_id = sk.skill_id
       WHERE ss.student_id = ?
       ORDER BY ss.created_at DESC
     `, [studentId]);
