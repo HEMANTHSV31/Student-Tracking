@@ -26,11 +26,19 @@ function romanToNumber(roman) {
 }
 
 /**
- * Normalize course name - just trim whitespace
+ * Normalize course name - ONLY trim whitespace and reduce multiple spaces
+ * Preserves EXACT spelling and capitalization from Excel
+ * Examples:
+ * - "Java Script  - Level 1" → "Java Script - Level 1" (extra space removed)
+ * - "Programming Java Level - 4" → "Programming Java Level - 4" (unchanged)
+ * - "  HTML / CSS - Level 1  " → "HTML / CSS - Level 1" (trimmed)
  */
 function normalizeCourseName(courseName) {
   if (!courseName) return courseName;
-  return courseName.trim();
+  
+  // 1. Trim leading/trailing whitespace
+  // 2. Replace multiple spaces with single space
+  return courseName.trim().replace(/\s+/g, ' ');
 }
 
 /**
@@ -187,10 +195,11 @@ export const uploadSkillReport = async (req, res) => {
        JOIN users u ON s.user_id = u.user_id`
     );
 
-    // Create lookup map by roll_number
+    // Create lookup map by users.ID (NOT by roll_number)
+    // Excel 'user_id' column matches database users.ID column
     const studentMap = new Map();
     allStudents.forEach(s => {
-      const key = s.roll_number.toLowerCase().trim();
+      const key = s.roll_number.toLowerCase().trim(); // roll_number field contains users.ID value
       studentMap.set(key, s);
     });
     
@@ -385,14 +394,6 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   const skillLevel = extractSkillLevel(normalizedCourseName);
   // console.log(`Row ${rowIndex}: Normalized "${courseName}" → "${normalizedCourseName}", skill_level=${skillLevel}`);
 
-  // Check if record exists for this student + course (regardless of date)
-  const [existing] = await connection.execute(
-    `SELECT id, status, total_attempts, best_score, last_slot_date 
-     FROM student_skills 
-     WHERE student_id = ? AND course_name = ?`,
-    [student.student_id, normalizedCourseName]
-  );
-
   // Get student's current venue allocation
   const [studentVenue] = await connection.execute(
     `SELECT g.venue_id, g.faculty_id 
@@ -406,23 +407,18 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   const studentVenueId = studentVenue.length > 0 ? studentVenue[0].venue_id : null;
   const facultyId = studentVenue.length > 0 ? studentVenue[0].faculty_id : null;
 
+  // Check if EXACT record exists: student + course + date
+  // Students can have multiple courses on same date, or multiple attempts of same course on different dates
+  const [existing] = await connection.execute(
+    `SELECT id, status, total_attempts, best_score 
+     FROM student_skills 
+     WHERE student_id = ? AND course_name = ? AND last_slot_date = ?`,
+    [student.student_id, normalizedCourseName, slotDate]
+  );
+
   if (existing.length > 0) {
+    // Exact duplicate found (same student + course + date) - UPDATE with latest Excel data
     const existingRecord = existing[0];
-    
-    // If already Cleared, don't update
-    if (existingRecord.status === 'Cleared') {
-      // console.log(`Row ${rowIndex}: Skipped - Student already cleared ${normalizedCourseName}`);
-      return { success: true, inserted: false, skipped: true };
-    }
-
-    // If same date exists, skip
-    if (existingRecord.last_slot_date === slotDate) {
-      // console.log(`Row ${rowIndex}: Skipped - Record already exists for date ${slotDate}`);
-      return { success: true, inserted: false, skipped: true };
-    }
-
-    // Update existing record (Ongoing or Not Cleared)
-    const newAttemptCount = existingRecord.total_attempts + 1;
     const newBestScore = Math.max(existingRecord.best_score || 0, score);
 
     await connection.execute(
@@ -433,19 +429,18 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
            latest_score = ?,
            status = ?,
            last_attendance = ?,
-           last_slot_date = ?,
            last_start_time = ?,
            last_end_time = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [slotId, newAttemptCount, newBestScore, score, status, attendance, slotDate, startTime, endTime, existingRecord.id]
+      [slotId, attempt, newBestScore, score, status, attendance, startTime, endTime, existingRecord.id]
     );
 
-    // console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, attempt ${newAttemptCount}, status=${status}`);
+    // console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, attempt ${attempt}, date ${slotDate}`);
     return { success: true, inserted: false, skipped: false, updated: true };
   }
 
-  // INSERT new record (student hasn't attempted this skill before)
+  // INSERT new record (no exact match found - different date or first attempt)
   await connection.execute(
     `INSERT INTO student_skills 
       (slot_id, student_id, year, student_name, student_email, skill_id, course_name, skill_level,

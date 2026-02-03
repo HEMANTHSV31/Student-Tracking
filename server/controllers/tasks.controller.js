@@ -325,21 +325,79 @@ export const createTask = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // ALWAYS check if there's a skill order that restricts venues/years for this task
+    let skillOrderVenues = [];
+    let skillOrderRestricted = false;
+    
+    if (course_type && (apply_to_all_venues === 'true' || apply_to_all_venues === true)) {
+      // When "All Venues" is selected, check ALL skill orders for this course_type
+      // Get the union of allowed venues across all skills in this course_type
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.skill_name, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.course_type = ? AND so.apply_to_all_venues = 0
+      `, [course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        // Collect all venues that are allowed for this course_type
+        const venueSet = new Set();
+        
+        for (const skillOrder of skillOrderCheck) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          // Add all allowed venues to the set
+          venueRestrictions.forEach(v => venueSet.add(v.venue_id));
+        }
+        
+        if (venueSet.size > 0) {
+          skillOrderVenues = Array.from(venueSet);
+          skillOrderRestricted = true;
+        }
+      }
+    } else if (skill_filter && course_type) {
+      // Check if skill order exists with venue restrictions for this specific skill
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.skill_name = ? AND so.course_type = ?
+      `, [skill_filter.trim(), course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        const skillOrder = skillOrderCheck[0];
+        
+        // If skill order doesn't apply to all venues, get specific venues
+        if (!skillOrder.apply_to_all_venues || skillOrder.apply_to_all_venues === 0) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          if (venueRestrictions.length > 0) {
+            skillOrderVenues = venueRestrictions.map(v => v.venue_id);
+            skillOrderRestricted = true;
+          }
+        }
+      }
+    }
+
     // Determine venues to create tasks for
     let targetVenues = [];
     let group_id = null;
     
-    if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
-      // Get all active venues
+    if (skillOrderRestricted) {
+      // PRIORITY 1: If skill order has venue restrictions, ONLY use those venues
+      targetVenues = skillOrderVenues;
+      group_id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } else if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
+      // PRIORITY 2: User selected "all venues" and no skill order restrictions
       const [allVenues] = await connection.query(`
         SELECT venue_id FROM venue WHERE status = 'Active'
       `);
       targetVenues = allVenues.map(v => v.venue_id);
-      
-      // Generate unique group_id for this batch
       group_id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     } else {
-      // Single venue
+      // PRIORITY 3: Single venue selected
       targetVenues = [parseInt(venue_id)];
     }
 
@@ -504,7 +562,7 @@ export const getTasksByVenue = async (req, res) => {
 // Get tasks from ALL venues
 export const getTasksAllVenues = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, course_type } = req.query;
 
     let query = `
       SELECT 
@@ -525,7 +583,7 @@ export const getTasksAllVenues = async (req, res) => {
         u.name as faculty_name,
         COUNT(DISTINCT ts.submission_id) as total_submissions,
         COUNT(DISTINCT CASE WHEN ts.status = 'Pending Review' THEN ts.submission_id END) as pending_submissions,
-        COUNT(DISTINCT CASE WHEN ts.status = 'Graded' THEN ts. submission_id END) as graded_submissions
+        COUNT(DISTINCT CASE WHEN ts.status = 'Graded' THEN ts.submission_id END) as graded_submissions
       FROM tasks t
       INNER JOIN venue v ON t.venue_id = v.venue_id
       INNER JOIN faculties f ON t.faculty_id = f.faculty_id
@@ -544,9 +602,48 @@ export const getTasksAllVenues = async (req, res) => {
 
     const [tasks] = await db.query(query, params);
 
+    // Get skill orders with venue restrictions
+    const [skillOrders] = await db.query(`
+      SELECT so.id, so.skill_name, so.course_type, so.apply_to_all_venues
+      FROM skill_order so
+      WHERE so.apply_to_all_venues = 0
+    `);
+
+    // Build map of course_type -> allowed venue_ids (union of all skills in that course_type)
+    const courseTypeRestrictions = new Map();
+    
+    for (const so of skillOrders) {
+      const [venueRows] = await db.query(`
+        SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+      `, [so.id]);
+      
+      if (venueRows.length > 0) {
+        const courseType = so.course_type;
+        if (!courseTypeRestrictions.has(courseType)) {
+          courseTypeRestrictions.set(courseType, new Set());
+        }
+        // Add all venues from this skill to the course_type set
+        venueRows.forEach(v => {
+          courseTypeRestrictions.get(courseType).add(v.venue_id);
+        });
+      }
+    }
+
+    // Filter tasks based on course_type skill order restrictions
+    const filteredTasks = tasks.filter(task => {
+      // If this course_type has venue restrictions, only show venues in that list
+      if (courseTypeRestrictions.has(task.course_type)) {
+        const allowedVenues = courseTypeRestrictions.get(task.course_type);
+        return allowedVenues.has(task.venue_id);
+      }
+      
+      // No restrictions for this course_type, show all
+      return true;
+    });
+
     res.status(200).json({
       success: true,
-      data: tasks
+      data: filteredTasks
     });
   } catch (error) {
     console.error('Error fetching all tasks:', error);

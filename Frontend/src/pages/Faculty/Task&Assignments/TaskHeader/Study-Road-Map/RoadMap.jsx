@@ -2797,7 +2797,7 @@ const StudyRoadmap = ({
         // Fetch modules for all venues grouped
         setLoading(true);
         try {
-          const response = await apiGet('/roadmap/all-venues');
+          const response = await apiGet(`/roadmap/all-venues?course_type=${selectedCourseType}`);
 
           const data = await response.json();
 
@@ -2949,7 +2949,7 @@ const StudyRoadmap = ({
           });
           // Refresh all venues modules
           if (isAllVenues) {
-            const response = await apiGet('/roadmap/all-venues');
+            const response = await apiGet(`/roadmap/all-venues?course_type=${selectedCourseType}`);
             const refreshData = await response.json();
             if (refreshData.success) {
               setAllVenuesModules(refreshData.data);
@@ -3816,10 +3816,28 @@ const StudyRoadmap = ({
             {selectedVenueId === "all" ? (
               <>
                 <span style={styles.moduleCount}>
-                  {allVenuesModules.length} Module
-                  {allVenuesModules.length !== 1 ? "s" : ""}
+                  {allVenuesModules.filter((m) => m.course_type === selectedCourseType).length} Module
+                  {allVenuesModules.filter((m) => m.course_type === selectedCourseType).length !== 1 ? "s" : ""}
                 </span>
-                <span style={styles.skillCode}>{venues.length} Venues</span>
+                <span style={styles.skillCode}>
+                  {(() => {
+                    const filteredModules = allVenuesModules.filter((m) => m.course_type === selectedCourseType);
+                    if (filteredModules.length === 0) return 0;
+                    const venueSet = new Set();
+                    filteredModules.forEach((module) => {
+                      if (module.venues && Array.isArray(module.venues) && module.venues.length > 0) {
+                        module.venues.forEach((venue) => {
+                          if (venue && venue.venue_id) {
+                            venueSet.add(venue.venue_id);
+                          }
+                        });
+                      } else if (module.venue_id) {
+                        venueSet.add(module.venue_id);
+                      }
+                    });
+                    return venueSet.size;
+                  })()} Venues
+                </span>
               </>
             ) : (
               <>

@@ -223,6 +223,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
   try {
     const user_id = req.user.user_id;
     const user_role = req.user.role;
+    const { course_type } = req.query; // Get course_type filter from query
 
     let query = `
       SELECT 
@@ -230,6 +231,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
         r.group_id,
         r.venue_id,
         v.venue_name,
+        v.year as venue_year,
         r.faculty_id,
         r.day,
         r.title,
@@ -246,12 +248,62 @@ export const getAllVenuesRoadmap = async (req, res) => {
       WHERE r.group_id IS NOT NULL
     `;
 
+    const params = [];
+    
+    // Filter by course_type if provided
+    if (course_type) {
+      query += ' AND r.course_type = ?';
+      params.push(course_type);
+    }
+
     // Group modules by group_id and course_type
-    const [modules] = await db.query(query + ' ORDER BY r.course_type, r.day, r.created_at DESC');
+    const [modules] = await db.query(query + ' ORDER BY r.course_type, r.day, r.created_at DESC', params);
+
+    // For each unique skill (title + course_type), check if there are skill order venue restrictions
+    const skillOrderRestrictions = new Map();
+    
+    // Get all skill orders that have venue restrictions
+    const [skillOrders] = await db.query(`
+      SELECT so.id, so.skill_name, so.course_type, so.apply_to_all_venues
+      FROM skill_order so
+      WHERE so.apply_to_all_venues = 0
+    `);
+
+    // Build map of course_type -> allowed venue_ids (union of all skills in that course_type)
+    const courseTypeRestrictions = new Map();
+    
+    for (const so of skillOrders) {
+      const [venueRestrictions] = await db.query(`
+        SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+      `, [so.id]);
+      
+      if (venueRestrictions.length > 0) {
+        const courseType = so.course_type;
+        if (!courseTypeRestrictions.has(courseType)) {
+          courseTypeRestrictions.set(courseType, new Set());
+        }
+        // Add all venues from this skill to the course_type set
+        venueRestrictions.forEach(v => {
+          courseTypeRestrictions.get(courseType).add(v.venue_id);
+        });
+      }
+    }
+
+    // Filter modules based on course_type skill order restrictions
+    const filteredModules = modules.filter(module => {
+      // If this course_type has venue restrictions, only show venues in that list
+      if (courseTypeRestrictions.has(module.course_type)) {
+        const allowedVenues = courseTypeRestrictions.get(module.course_type);
+        return allowedVenues.has(module.venue_id);
+      }
+      
+      // No restrictions for this course_type, show all
+      return true;
+    });
 
     // Group by group_id to show unique modules
     const groupedModules = {};
-    modules.forEach(module => {
+    filteredModules.forEach(module => {
       const key = `${module.group_id}_${module.course_type}`;
       if (!groupedModules[key]) {
         groupedModules[key] = {
@@ -265,6 +317,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
       groupedModules[key].venues.push({
         venue_id: module.venue_id,
         venue_name: module.venue_name,
+        venue_year: module.venue_year,
         roadmap_id: module.roadmap_id
       });
     });
@@ -459,21 +512,56 @@ export const createRoadmapModule = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // ALWAYS check if there's a skill order that restricts venues/years for this course_type
+    let skillOrderVenues = [];
+    let skillOrderRestricted = false;
+    
+    if (course_type && (apply_to_all_venues === 'true' || apply_to_all_venues === true)) {
+      // When "All Venues" is selected, check ALL skill orders for this course_type
+      // Get the intersection of allowed venues across all skills in this course_type
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.skill_name, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.course_type = ? AND so.apply_to_all_venues = 0
+      `, [course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        // Collect all venues that are allowed for this course_type
+        const venueSet = new Set();
+        
+        for (const skillOrder of skillOrderCheck) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          // Add all allowed venues to the set
+          venueRestrictions.forEach(v => venueSet.add(v.venue_id));
+        }
+        
+        if (venueSet.size > 0) {
+          skillOrderVenues = Array.from(venueSet);
+          skillOrderRestricted = true;
+        }
+      }
+    }
+
     // Determine venues to create roadmaps for
     let targetVenues = [];
     let group_id = null;
     
-    if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
-      // Get all active venues
+    if (skillOrderRestricted) {
+      // PRIORITY 1: If skill order has venue restrictions, ONLY use those venues
+      targetVenues = skillOrderVenues;
+      group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } else if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
+      // PRIORITY 2: User selected "all venues" and no skill order restrictions
       const [allVenues] = await connection.query(`
         SELECT venue_id FROM venue WHERE status = 'Active'
       `);
       targetVenues = allVenues.map(v => v.venue_id);
-      
-      // Generate unique group_id for this batch
       group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     } else {
-      // Single venue
+      // PRIORITY 3: Single venue selected
       targetVenues = [parseInt(venue_id)];
     }
 
