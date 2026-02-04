@@ -1547,6 +1547,7 @@ const StudentRoadmap = () => {
   const [selectedCourse, setSelectedCourse] = useState('frontend');
   const [venueName, setVenueName] = useState('');
   const [unlockSummary, setUnlockSummary] = useState(null);
+  const [availableCourseTypes, setAvailableCourseTypes] = useState(['frontend']); // Dynamic course types
 
   const FRONTEND_SEQUENCE = [
     {
@@ -1689,8 +1690,32 @@ const StudentRoadmap = () => {
   };
 
   useEffect(() => {
+    fetchAvailableCourseTypes();
     fetchRoadmapData();
   }, [selectedCourse]);
+
+  const fetchAvailableCourseTypes = async () => {
+    try {
+      const response = await apiGet('/skill-order/student/course-types');
+      if (!response.ok) throw new Error('Failed to fetch course types');
+      
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 0) {
+        setAvailableCourseTypes(result.data);
+        // If current selection is not in available types, switch to first available
+        if (!result.data.includes(selectedCourse)) {
+          setSelectedCourse(result.data[0]);
+        }
+      } else {
+        // Fallback to default if no course types returned
+        setAvailableCourseTypes(['frontend']);
+      }
+    } catch (error) {
+      console.error('Error fetching course types:', error);
+      // Fallback to default
+      setAvailableCourseTypes(['frontend']);
+    }
+  };
 
   const fetchRoadmapData = async () => {
     setLoading(true);
@@ -2739,11 +2764,11 @@ const StudentRoadmap = () => {
                   }}
                   style={{ paddingRight: '36px' }}
                 >
-                   <option value="frontend">Frontend</option>
-                   <option value="backend">Backend</option>
-                   <option value="devops">DevOps</option>
-                   <option value="fullstack">Full Stack</option>
-                   <option value="react-native">React Native</option>
+                   {availableCourseTypes.map(type => (
+                     <option key={type} value={type}>
+                       {type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ')}
+                     </option>
+                   ))}
                 </select>
                 <div style={{ position: 'absolute', right: '10px', pointerEvents: 'none', display: 'flex' }}>
                   <ChevronRight size={14} color="#64748b" style={{ transform: 'rotate(90deg)' }} />

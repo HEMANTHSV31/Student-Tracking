@@ -724,3 +724,82 @@ export const validateCourseType = async (req, res) => {
     });
   }
 };
+
+// Get available course types for student's venue
+export const getCourseTypesForStudent = async (req, res) => {
+  try {
+    const student_id = req.user?.student_id;
+
+    if (!student_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID not found'
+      });
+    }
+
+    // Get student's venue and year
+    const [studentInfo] = await db.query(`
+      SELECT s.year, gs.group_id, g.venue_id, v.venue_name
+      FROM students s
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
+      LEFT JOIN venue v ON g.venue_id = v.venue_id
+      WHERE s.student_id = ?
+      LIMIT 1
+    `, [student_id]);
+
+    if (studentInfo.length === 0 || !studentInfo[0].venue_id) {
+      // No venue assigned - return all course types
+      const [allCourseTypes] = await db.query(`
+        SELECT DISTINCT course_type
+        FROM skill_order
+        ORDER BY course_type
+      `);
+      return res.status(200).json({
+        success: true,
+        data: allCourseTypes.map(ct => ct.course_type),
+        venue: null
+      });
+    }
+
+    const { year, venue_id, venue_name } = studentInfo[0];
+
+    // Get course types configured for this venue and year
+    const [courseTypes] = await db.query(`
+      SELECT DISTINCT so.course_type
+      FROM skill_order so
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
+      ORDER BY so.course_type
+    `, [venue_id, year]);
+
+    res.status(200).json({
+      success: true,
+      data: courseTypes.map(ct => ct.course_type),
+      venue: {
+        venue_id,
+        venue_name,
+        year
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching course types for student:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch course types'
+    });
+  }
+};
+

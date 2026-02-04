@@ -1153,7 +1153,16 @@ export const getStudentRoadmap = async (req, res) => {
       });
     }
 
-    // Get skill order (GLOBAL - same for all venues)
+    // Get skill order for this student's venue and year
+    const [studentDetails] = await db.query(`
+      SELECT s.year 
+      FROM students s 
+      WHERE s.student_id = ?
+      LIMIT 1
+    `, [student_id]);
+
+    const studentYear = studentDetails[0]?.year || 2;
+
     let skillOrderQuery = `
       SELECT 
         so.id as skill_order_id,
@@ -1163,9 +1172,22 @@ export const getStudentRoadmap = async (req, res) => {
         so.description as skill_description,
         so.course_type
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
-    const skillOrderParams = [];
+    const skillOrderParams = [venue_id, studentYear];
     
     if (course_type) {
       skillOrderQuery += ` AND so.course_type = ?`;
@@ -1176,7 +1198,7 @@ export const getStudentRoadmap = async (req, res) => {
     
     const [skillOrders] = await db.query(skillOrderQuery, skillOrderParams);
 
-    // Use skills directly (no venue preference needed anymore)
+    // Use skills filtered by venue and year
     const orderedSkills = skillOrders;
 
     // Get student's skill status
