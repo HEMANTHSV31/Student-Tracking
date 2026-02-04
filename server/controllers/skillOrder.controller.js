@@ -220,6 +220,12 @@ export const createSkillOrder = async (req, res) => {
       hasNewColumns = false;
     }
 
+    // Determine apply_to_all flags based on whether specific venues/years are provided
+    const shouldApplyToAllVenues = apply_to_all_venues === true || 
+      (!venue_ids || !Array.isArray(venue_ids) || venue_ids.length === 0);
+    const shouldApplyToAllYears = apply_to_all_years === true || 
+      (!years || !Array.isArray(years) || years.length === 0);
+
     // Insert skill order
     let insertQuery, insertParams;
     if (hasNewColumns) {
@@ -240,11 +246,11 @@ export const createSkillOrder = async (req, res) => {
         course_type, 
         skill_name, 
         orderValue, 
-        is_prerequisite !== false ? 1 : 0, 
+        is_prerequisite === true ? 1 : 0, 
         description || null, 
         created_by,
-        apply_to_all_venues !== false,
-        apply_to_all_years !== false
+        shouldApplyToAllVenues ? 1 : 0,
+        shouldApplyToAllYears ? 1 : 0
       ];
     } else {
       insertQuery = `
@@ -262,7 +268,7 @@ export const createSkillOrder = async (req, res) => {
         course_type, 
         skill_name, 
         orderValue, 
-        is_prerequisite !== false ? 1 : 0, 
+        is_prerequisite === true ? 1 : 0, 
         description || null, 
         created_by
       ];
@@ -616,12 +622,18 @@ export const updateSkillOrderAssociations = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // Determine apply_to_all flags based on whether specific venues/years are provided
+    const shouldApplyToAllVenues = apply_to_all_venues === true || 
+      (!venue_ids || !Array.isArray(venue_ids) || venue_ids.length === 0);
+    const shouldApplyToAllYears = apply_to_all_years === true || 
+      (!years || !Array.isArray(years) || years.length === 0);
+
     // Update apply_to_all flags
     await connection.query(`
       UPDATE skill_order 
       SET apply_to_all_venues = ?, apply_to_all_years = ?
       WHERE id = ?
-    `, [apply_to_all_venues !== false, apply_to_all_years !== false, id]);
+    `, [shouldApplyToAllVenues ? 1 : 0, shouldApplyToAllYears ? 1 : 0, id]);
 
     // Update venue associations
     await connection.query('DELETE FROM skill_order_venues WHERE skill_order_id = ?', [id]);
