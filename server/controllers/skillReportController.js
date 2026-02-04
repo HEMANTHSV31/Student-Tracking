@@ -443,11 +443,11 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   // INSERT new record (no exact match found - different date or first attempt)
   await connection.execute(
     `INSERT INTO student_skills 
-      (slot_id, student_id, year, student_name, student_email, skill_id, course_name, skill_level,
+      (slot_id, student_id, year, student_name, student_email, course_name, skill_level,
        excel_venue_name, student_venue_id, faculty_id, total_attempts, best_score, 
        latest_score, status, last_attendance, last_slot_date, last_start_time, 
        last_end_time, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [slotId, student.student_id, year, studentName, studentEmail, normalizedCourseName, skillLevel,
      excelVenueName, studentVenueId, facultyId, attempt, score, score, status, 
      attendance, slotDate, startTime, endTime]
