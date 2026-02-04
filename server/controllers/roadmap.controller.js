@@ -1287,25 +1287,25 @@ export const getStudentRoadmap = async (req, res) => {
       
       const courseTracker = courseProgress[skill.course_type];
       
-      // CHECK IF THIS SKILL HAS PREREQUISITE REQUIREMENT
-      // If is_prerequisite is false (0), skill is always unlocked
-      // If is_prerequisite is true (1), check sequential progression
+      // Only check prerequisites for 'frontend' course type
       let isUnlocked;
       let isLocked;
       
-      if (!skill.is_prerequisite) {
-        // No prerequisite - always unlocked (unless already cleared)
+      if (skill.course_type !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else if (!skill.is_prerequisite) {
+        // Frontend with no prerequisite - always unlocked
         isUnlocked = true;
         isLocked = false;
       } else {
-        // Has prerequisite - check sequential unlocking
+        // Frontend with prerequisite - check sequential unlocking
         const isUnlockedByClearing = isCleared;
         const isUnlockedBySequence = courseTracker.previousCleared;
         isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
         isLocked = !isUnlocked;
       }
-      
-      // console.log(`Skill "${skill.skill_name}": is_prerequisite=${skill.is_prerequisite}, previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
       
       // Track the first unlocked but not cleared skill as "current"
       const isCurrent = isUnlocked && !isCleared && !courseTracker.currentUnlocked;
@@ -1334,26 +1334,17 @@ export const getStudentRoadmap = async (req, res) => {
         matched_with: matchedSkill?.course_name || null
       });
 
-      // Update tracker for next iteration
-      // Only update prerequisite blocking if current skill has is_prerequisite set
-      if (skill.is_prerequisite) {
+      // Update tracker for next iteration (only for frontend courses with prerequisites)
+      if (skill.course_type === 'frontend' && skill.is_prerequisite) {
         if (isCleared) {
           courseTracker.previousCleared = true;
         } else {
-          // Block next skills if this prerequisite is unlocked but not cleared
           if (isUnlocked) {
             courseTracker.previousCleared = false;
           }
         }
       }
-      // If skill has no prerequisite, don't affect the tracker
     }
-
-    // console.log('\n--- Skill Progression Summary ---');
-    skillProgression.forEach(s => {
-      // console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}${s.matched_with ? ` | Matched: "${s.matched_with}"` : ''}`);
-    });
-    // console.log('======================================================\n');
 
     // Get all roadmap modules for the student's venue
     let modulesQuery = `
@@ -1501,7 +1492,10 @@ export const getStudentRoadmap = async (req, res) => {
       // Check if this module's skill has prerequisite requirement
       const hasPrerequisite = skillEntry ? skillEntry.is_prerequisite : false;
       
-      if (moduleIndex === 0) {
+      if (courseType !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        module.is_locked = false;
+      } else if (moduleIndex === 0) {
         // First module is always unlocked
         module.is_locked = false;
       } else if (!hasPrerequisite) {
@@ -1513,12 +1507,6 @@ export const getStudentRoadmap = async (req, res) => {
         const previousModules = courseModules.slice(0, moduleIndex);
         const allPreviousCompleted = previousModules.every(m => Boolean(m.is_completed));
         module.is_locked = !allPreviousCompleted;
-        
-        // Debug logging
-        if (!allPreviousCompleted) {
-          const incompleteModules = previousModules.filter(m => !m.is_completed).map(m => m.title);
-          // console.log(`Module "${module.title}" is LOCKED. Incomplete prerequisites: ${incompleteModules.join(', ')}`);
-        }
       }
 
       // Set current status
@@ -1544,8 +1532,6 @@ export const getStudentRoadmap = async (req, res) => {
 
       // Increment course index
       moduleIndexByCourse[courseType]++;
-
-      // console.log(`Module "${module.title}": completed=${module.is_completed}, locked=${module.is_locked}, current=${module.is_current}`);
     }
 
     res.status(200).json({
