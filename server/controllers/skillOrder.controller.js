@@ -728,25 +728,25 @@ export const validateCourseType = async (req, res) => {
 // Get available course types for student's venue
 export const getCourseTypesForStudent = async (req, res) => {
   try {
-    const student_id = req.user?.student_id;
+    const user_id = req.user?.user_id;
 
-    if (!student_id) {
+    if (!user_id) {
       return res.status(400).json({
         success: false,
-        message: 'Student ID not found'
+        message: 'User ID not found'
       });
     }
 
-    // Get student's venue and year
+    // Get student's venue and year using user_id
     const [studentInfo] = await db.query(`
-      SELECT s.year, gs.group_id, g.venue_id, v.venue_name
+      SELECT s.student_id, s.year, gs.group_id, g.venue_id, v.venue_name
       FROM students s
       LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
       LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
       LEFT JOIN venue v ON g.venue_id = v.venue_id
-      WHERE s.student_id = ?
+      WHERE s.user_id = ?
       LIMIT 1
-    `, [student_id]);
+    `, [user_id]);
 
     if (studentInfo.length === 0 || !studentInfo[0].venue_id) {
       // No venue assigned - return all course types
