@@ -1179,6 +1179,39 @@ export const deleteVenue = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // Get all roadmap resources for this venue to delete files
+    const [resources] = await connection.query(`
+      SELECT rr.file_path 
+      FROM roadmap_resources rr
+      JOIN roadmap r ON rr.roadmap_id = r.roadmap_id
+      WHERE r.venue_id = ? AND rr.file_path IS NOT NULL
+    `, [venueId]);
+
+    // Delete resource files from filesystem
+    const fs = await import('fs');
+    for (const resource of resources) {
+      if (resource.file_path && fs.existsSync(resource.file_path)) {
+        try {
+          fs.unlinkSync(resource.file_path);
+          console.log('Deleted resource file:', resource.file_path);
+        } catch (fileError) {
+          console.warn('Failed to delete file:', resource.file_path, fileError.message);
+        }
+      }
+    }
+
+    // Delete roadmap resources for this venue
+    await connection.query(`
+      DELETE rr FROM roadmap_resources rr
+      JOIN roadmap r ON rr.roadmap_id = r.roadmap_id
+      WHERE r.venue_id = ?
+    `, [venueId]);
+
+    // Delete roadmap modules for this venue
+    await connection.query(`
+      DELETE FROM roadmap WHERE venue_id = ?
+    `, [venueId]);
+
     // Mark all active students in this venue as Dropped
     await connection.query(`
       UPDATE group_students gs
@@ -1203,7 +1236,7 @@ export const deleteVenue = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'Venue deleted successfully!' 
+      message: 'Venue and associated data deleted successfully!' 
     });
 
   } catch (error) {
