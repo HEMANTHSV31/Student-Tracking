@@ -1415,9 +1415,9 @@ export const getStudentRoadmap = async (req, res) => {
 
       module.resources = resources || [];
       
-      if (resources.length > 0) {
-        console.log(`Module "${module.title}" (ID: ${module.roadmap_id}) has ${resources.length} resources:`, resources.map(r => r.resource_name));
-      }
+      // if (resources.length > 0) {
+      //   console.log(`Module "${module.title}" (ID: ${module.roadmap_id}) has ${resources.length} resources:`, resources.map(r => r.resource_name));
+      // }
 
       // Helper: Extract keywords for matching (remove common words)
       const extractKeywords = (name) => {

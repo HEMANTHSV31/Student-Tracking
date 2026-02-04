@@ -1376,27 +1376,38 @@ export const getStudentTasks = async (req, res) => {
       
       const courseTracker = courseProgress[skill.course_type];
       
-      // A skill is unlocked if:
-      // 1. It's already cleared by the student (regardless of prerequisites), OR
-      // 2. Previous skill in same course is cleared (normal progression)
-      // This allows students who cleared a skill directly to proceed
-      const isUnlockedByClearing = isCleared;
-      const isUnlockedByPrerequisite = !skill.is_prerequisite || courseTracker.previousCleared;
-      const isUnlocked = isUnlockedByClearing || isUnlockedByPrerequisite;
-      const isLocked = !isUnlocked;
+      // Only check prerequisites for 'frontend' course type
+      let isUnlocked;
+      let isLocked;
       
-      if (isUnlocked) {
-        unlockedSkills.add(normalizedSkillName); // Use normalized name for consistent matching
+      if (skill.course_type !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else if (!skill.is_prerequisite) {
+        // Frontend with no prerequisite - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else {
+        // Frontend with prerequisite - check sequential unlocking
+        const isUnlockedByClearing = isCleared;
+        const isUnlockedBySequence = courseTracker.previousCleared;
+        isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
+        isLocked = !isUnlocked;
       }
       
-      // If this skill is cleared, mark the next skill as unlockable
-      // This ensures that clearing any skill unlocks the next one
-      if (isCleared) {
-        courseTracker.previousCleared = true;
-      } else {
-        // Only block next skills if this one is unlocked but not cleared yet
-        if (isUnlocked) {
-          courseTracker.previousCleared = false;
+      if (isUnlocked) {
+        unlockedSkills.add(normalizedSkillName);
+      }
+      
+      // Update tracker for next iteration (only for frontend courses with prerequisites)
+      if (skill.course_type === 'frontend' && skill.is_prerequisite) {
+        if (isCleared) {
+          courseTracker.previousCleared = true;
+        } else {
+          if (isUnlocked) {
+            courseTracker.previousCleared = false;
+          }
         }
       }
       
@@ -1411,13 +1422,12 @@ export const getStudentTasks = async (req, res) => {
         skill_name: skill.skill_name,
         course_type: skill.course_type,
         display_order: skill.display_order,
+        is_prerequisite: skill.is_prerequisite,
         status: isCleared ? 'Cleared' : (isLocked ? 'Locked' : 'Available'),
         is_cleared: isCleared,
         is_locked: isLocked,
         is_current: isCurrent
       });
-
-      // previousCleared tracking is done above in the if-else block
     }
 
     // console.log('\n--- Skill Progression Summary ---');
@@ -1477,11 +1487,11 @@ export const getStudentTasks = async (req, res) => {
     const [tasks] = await db.query(tasksQuery, tasksParams);
 
     // Filter tasks based on skill_filter, skill_order, and completion status
+    // LOGIC: Show tasks for skills student has NOT completed yet
     // HIDE tasks for skills student has already CLEARED
     const filteredTasks = tasks.filter(task => {
       // ALWAYS show tasks that need revision (grade < 50%)
       if (task.submission_status === 'Needs Revision') {
-        // console.log(`Task "${task.title}" needs revision - showing to student`);
         return true;
       }
       
@@ -1492,61 +1502,47 @@ export const getStudentTasks = async (req, res) => {
       if (!effectiveSkillFilter) {
         // Hide tasks that are already graded successfully (grade >= 50%)
         if (task.submission_status === 'Graded' && task.grade >= 50) {
-          // console.log(`Task "${task.title}" - No skill filter, already graded successfully - hiding`);
           return false;
         }
-        // console.log(`Task "${task.title}" - No skill filter - showing`);
         return true;
       }
       
       // Use the same normalization function for consistent matching
       const normalizedSkillFilter = normalizeSkillName(effectiveSkillFilter);
       
-      // Use keyword matching to check if student has cleared this skill
+      // Check if student has CLEARED this skill
       const hasCleared = Array.from(clearedSkillsMap.keys()).some(clearedSkillName => {
-        const match = skillMatches(effectiveSkillFilter, clearedSkillName);
-        if (match) {
-          // console.log(`  Task skill "${effectiveSkillFilter}" matched cleared skill "${clearedSkillName}"`);
-        }
-        return match;
+        return skillMatches(effectiveSkillFilter, clearedSkillName);
       });
       
-      // console.log(`Task "${task.title}" - skill_filter: "${effectiveSkillFilter}", hasCleared: ${hasCleared}`);
-      
-      // HIDE task if student has CLEARED this skill (they don't need it anymore)
+      // HIDE task if student has CLEARED this skill
+      // (If skill is cleared, student doesn't need the practice task)
       if (hasCleared) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" CLEARED - hiding from student`);
         return false;
       }
       
-      // If no skill order is defined, show all tasks (don't check unlock status)
+      // If no skill order is defined, show all non-cleared tasks
       if (orderedSkills.length === 0) {
-        // console.log(`Task "${task.title}" - No skill order defined - showing`);
         return true;
       }
       
-      // Check if this skill exists in the skill_order table (using normalized names)
+      // Check if this skill exists in the skill_order table
       const skillExistsInOrder = orderedSkills.some(s => 
         normalizeSkillName(s.skill_name) === normalizedSkillFilter
       );
       
-      // If skill is not in skill_order table, show the task anyway (don't block on unknown skills)
+      // If skill is not in skill_order table, show the task (don't block on unknown skills)
       if (!skillExistsInOrder) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" not in skill_order table - showing`);
         return true;
       }
       
-      // Check if the skill is unlocked for this student (based on skill order progression)
-      // Use normalized skill name for matching
+      // Check if the skill is unlocked for this student
       const isSkillUnlocked = unlockedSkills.has(normalizedSkillFilter);
       
       // If skill is locked, don't show the task
       if (!isSkillUnlocked) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" is LOCKED - hiding from student`);
         return false;
       }
-      
-      // console.log(`Task "${task.title}" - Skill Filter: ${effectiveSkillFilter}, Unlocked: ${isSkillUnlocked}, Cleared: ${hasCleared} - SHOWING`);
       
       // Show task - skill is unlocked and not yet cleared
       return true;

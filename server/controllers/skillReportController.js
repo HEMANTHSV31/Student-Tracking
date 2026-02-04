@@ -209,8 +209,10 @@ export const uploadSkillReport = async (req, res) => {
 
     let processedCount = 0;
     let insertedCount = 0;
+    let updatedCount = 0;
     let skippedCount = 0;
     const errors = [];
+    const skippedStudents = [];
     
     const BATCH_SIZE = 100; // Process in batches to avoid timeout
     const totalBatches = Math.ceil(data.length / BATCH_SIZE);
@@ -235,7 +237,11 @@ export const uploadSkillReport = async (req, res) => {
           if (result.success) {
             processedCount++;
             if (result.inserted) insertedCount++;
-            if (result.skipped) skippedCount++;
+            if (result.updated) updatedCount++;
+            if (result.skipped) {
+              skippedCount++;
+              skippedStudents.push({ row: rowIndex, reason: result.reason });
+            }
           } else {
             errors.push({ row: rowIndex, message: result.error });
           }
@@ -273,8 +279,10 @@ export const uploadSkillReport = async (req, res) => {
         totalRecords: data.length,
         processed: processedCount,
         inserted: insertedCount,
+        updated: updatedCount,
         skipped: skippedCount,
         errors: errors.length,
+        skippedStudents: skippedStudents.length > 0 ? skippedStudents : undefined,
         errorDetails: errors.length > 0 ? errors : undefined
       }
     });
@@ -384,7 +392,8 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   }
   
   if (!student) {
-    return { success: false, error: `Row ${rowIndex}: Student not found - Excel user_id "${lookupValue}" does not match any users.ID in database` };
+    // Skip this student instead of failing the whole upload
+    return { success: true, inserted: false, skipped: true, updated: false, reason: `Student with ID "${lookupValue}" not found` };
   }
 
   // Normalize course name (trim whitespace only)
@@ -417,9 +426,30 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   );
 
   if (existing.length > 0) {
-    // Record exists - UPDATE with latest Excel data
+    // Record exists - UPDATE with smart status overwriting
     const existingRecord = existing[0];
+    const existingStatus = existingRecord.status;
     const newBestScore = Math.max(existingRecord.best_score || 0, score);
+    
+    // Status update logic:
+    // 1. If new status is "Cleared" -> Always update to Cleared (overwrite Ongoing/Not Cleared)
+    // 2. If new status is "Ongoing" -> Update to Ongoing if existing is "Not Cleared" (don't overwrite Cleared)
+    // 3. If new status is "Not Cleared" -> Do NOT overwrite Cleared or Ongoing
+    let finalStatus = existingStatus;
+    
+    if (status === 'Cleared') {
+      // Always update to Cleared
+      finalStatus = 'Cleared';
+    } else if (status === 'Ongoing' && existingStatus === 'Not Cleared') {
+      // Upgrade from Not Cleared to Ongoing
+      finalStatus = 'Ongoing';
+    } else if (status === 'Not Cleared' && (existingStatus === 'Cleared' || existingStatus === 'Ongoing')) {
+      // Don't downgrade from Cleared or Ongoing to Not Cleared
+      finalStatus = existingStatus;
+    } else {
+      // Use new status for all other cases
+      finalStatus = status;
+    }
 
     await connection.execute(
       `UPDATE student_skills 
@@ -442,12 +472,11 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
            updated_at = NOW()
        WHERE id = ?`,
       [slotId, year, studentName, studentEmail, skillLevel, excelVenueName, studentVenueId, 
-       facultyId, attempt, newBestScore, score, status, attendance, slotDate, startTime, 
+       facultyId, attempt, newBestScore, score, finalStatus, attendance, slotDate, startTime, 
        endTime, existingRecord.id]
     );
 
-    // console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, status=${status}, attempt ${attempt}, date ${slotDate}`);
-    return { success: true, inserted: false, skipped: false, updated: true };
+    return { success: true, inserted: false, skipped: false, updated: true, statusChanged: finalStatus !== existingStatus };
   }
 
   // INSERT new record (student + course combination doesn't exist yet)

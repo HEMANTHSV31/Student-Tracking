@@ -1193,7 +1193,7 @@ export const deleteVenue = async (req, res) => {
       if (resource.file_path && fs.existsSync(resource.file_path)) {
         try {
           fs.unlinkSync(resource.file_path);
-          console.log('Deleted resource file:', resource.file_path);
+          // console.log('Deleted resource file:', resource.file_path);
         } catch (fileError) {
           console.warn('Failed to delete file:', resource.file_path, fileError.message);
         }
