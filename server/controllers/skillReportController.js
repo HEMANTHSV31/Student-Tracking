@@ -190,16 +190,16 @@ export const uploadSkillReport = async (req, res) => {
 
     // Pre-fetch student lookups for performance
     const [allStudents] = await connection.execute(
-      `SELECT s.student_id, u.ID as roll_number, u.name, u.email, u.user_id
+      `SELECT s.student_id, u.ID as user_id_value, u.name, u.email, u.user_id
        FROM students s 
        JOIN users u ON s.user_id = u.user_id`
     );
 
-    // Create lookup map by users.ID (NOT by roll_number)
+    // Create lookup map by users.ID
     // Excel 'user_id' column matches database users.ID column
     const studentMap = new Map();
     allStudents.forEach(s => {
-      const key = s.roll_number.toLowerCase().trim(); // roll_number field contains users.ID value
+      const key = s.user_id_value.toLowerCase().trim(); // user_id_value contains users.ID
       studentMap.set(key, s);
     });
     
@@ -371,7 +371,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   // Fallback: try direct DB lookup - Excel "user_id" column matched against users.ID
   if (!student) {
     const [dbStudent] = await connection.execute(
-      `SELECT s.student_id, u.ID as roll_number, u.name, u.email, u.user_id
+      `SELECT s.student_id, u.ID as user_id_value, u.name, u.email, u.user_id
        FROM students s 
        JOIN users u ON s.user_id = u.user_id
        WHERE LOWER(TRIM(u.ID)) = LOWER(TRIM(?))`,
