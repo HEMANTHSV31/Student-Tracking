@@ -1287,17 +1287,25 @@ export const getStudentRoadmap = async (req, res) => {
       
       const courseTracker = courseProgress[skill.course_type];
       
-      // STRICT SEQUENTIAL UNLOCKING:
-      // A skill is unlocked ONLY if:
-      // 1. It's already cleared by the student (they can always access cleared content), OR
-      // 2. ALL previous skills in the same course are cleared
-      // This ensures strict sequential progression
-      const isUnlockedByClearing = isCleared;
-      const isUnlockedBySequence = courseTracker.previousCleared;
-      const isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
-      const isLocked = !isUnlocked;
+      // CHECK IF THIS SKILL HAS PREREQUISITE REQUIREMENT
+      // If is_prerequisite is false (0), skill is always unlocked
+      // If is_prerequisite is true (1), check sequential progression
+      let isUnlocked;
+      let isLocked;
       
-      // console.log(`Skill "${skill.skill_name}": previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
+      if (!skill.is_prerequisite) {
+        // No prerequisite - always unlocked (unless already cleared)
+        isUnlocked = true;
+        isLocked = false;
+      } else {
+        // Has prerequisite - check sequential unlocking
+        const isUnlockedByClearing = isCleared;
+        const isUnlockedBySequence = courseTracker.previousCleared;
+        isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
+        isLocked = !isUnlocked;
+      }
+      
+      // console.log(`Skill "${skill.skill_name}": is_prerequisite=${skill.is_prerequisite}, previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
       
       // Track the first unlocked but not cleared skill as "current"
       const isCurrent = isUnlocked && !isCleared && !courseTracker.currentUnlocked;
@@ -1317,6 +1325,7 @@ export const getStudentRoadmap = async (req, res) => {
         course_type: skill.course_type,
         display_order: skill.display_order,
         description: skill.skill_description,
+        is_prerequisite: skill.is_prerequisite,
         status: isCleared ? 'Cleared' : (isLocked ? 'Locked' : (isOngoing ? 'In Progress' : 'Available')),
         is_cleared: isCleared,
         is_locked: isLocked,
@@ -1326,15 +1335,18 @@ export const getStudentRoadmap = async (req, res) => {
       });
 
       // Update tracker for next iteration
-      // If this skill is cleared, mark the next skill as unlockable
-      if (isCleared) {
-        courseTracker.previousCleared = true;
-      } else {
-        // Only block next skills if this one is unlocked but not cleared yet
-        if (isUnlocked) {
-          courseTracker.previousCleared = false;
+      // Only update prerequisite blocking if current skill has is_prerequisite set
+      if (skill.is_prerequisite) {
+        if (isCleared) {
+          courseTracker.previousCleared = true;
+        } else {
+          // Block next skills if this prerequisite is unlocked but not cleared
+          if (isUnlocked) {
+            courseTracker.previousCleared = false;
+          }
         }
       }
+      // If skill has no prerequisite, don't affect the tracker
     }
 
     // console.log('\n--- Skill Progression Summary ---');
@@ -1480,14 +1492,24 @@ export const getStudentRoadmap = async (req, res) => {
       
       const moduleIndex = moduleIndexByCourse[courseType];
       
-      // Get all modules of this course type to check previous completion
-      const courseModules = modules.filter(m => m.course_type === courseType);
+      // Find the skill entry for this module to check is_prerequisite flag
+      const skillEntry = skillProgression.find(s => 
+        normalizeSkillName(s.skill_name) === normalizeSkillName(module.matched_skill || '') &&
+        s.course_type === module.course_type
+      );
+
+      // Check if this module's skill has prerequisite requirement
+      const hasPrerequisite = skillEntry ? skillEntry.is_prerequisite : false;
       
       if (moduleIndex === 0) {
         // First module is always unlocked
         module.is_locked = false;
+      } else if (!hasPrerequisite) {
+        // No prerequisite - always unlocked
+        module.is_locked = false;
       } else {
-        // Check if ALL previous modules are completed
+        // Has prerequisite - check if ALL previous modules are completed
+        const courseModules = modules.filter(m => m.course_type === courseType);
         const previousModules = courseModules.slice(0, moduleIndex);
         const allPreviousCompleted = previousModules.every(m => Boolean(m.is_completed));
         module.is_locked = !allPreviousCompleted;
