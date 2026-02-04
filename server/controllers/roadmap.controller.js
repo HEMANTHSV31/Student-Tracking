@@ -1483,14 +1483,23 @@ export const getStudentRoadmap = async (req, res) => {
       
       const moduleIndex = moduleIndexByCourse[courseType];
       
-      // Find the skill entry for this module to check is_prerequisite flag
-      const skillEntry = skillProgression.find(s => 
-        normalizeSkillName(s.skill_name) === normalizeSkillName(module.matched_skill || '') &&
-        s.course_type === module.course_type
-      );
+      // Find the skill entry for this module
+      let skillEntry = null;
+      if (module.matched_skill) {
+        skillEntry = skillProgression.find(s => 
+          normalizeSkillName(s.skill_name) === normalizeSkillName(module.matched_skill) &&
+          s.course_type === module.course_type
+        );
+      }
+      
+      // If no skill matched, try to match by module index with skill order
+      if (!skillEntry && moduleIndex < skillProgression.filter(s => s.course_type === courseType).length) {
+        const courseSkills = skillProgression.filter(s => s.course_type === courseType);
+        skillEntry = courseSkills[moduleIndex];
+      }
 
       // Check if this module's skill has prerequisite requirement
-      const hasPrerequisite = skillEntry ? skillEntry.is_prerequisite : false;
+      const hasPrerequisite = skillEntry ? skillEntry.is_prerequisite : true; // Default to true for safety
       
       if (courseType !== 'frontend') {
         // Non-frontend courses - always unlocked
