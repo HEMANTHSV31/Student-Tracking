@@ -392,12 +392,15 @@ export const getGroupSpecifications = async (req, res) => {
     // Build year filter condition - only match exact year, not NULL
     const yearCondition = year ? `AND year = ${parseInt(year)}` : '';
     
+    // Admin sees all specifications (including from inactive venues)
+    const statusCondition = req.user.role === 'admin' ? '' : "AND status = 'Active'";
+    
     const [specifications] = await db.query(`
       SELECT DISTINCT group_specification
       FROM venue
       WHERE group_specification IS NOT NULL 
         AND group_specification != ''
-        AND status = 'Active'
+        ${statusCondition}
         ${yearCondition}
       ORDER BY group_specification ASC
     `);
@@ -420,7 +423,7 @@ export const getAllVenues = async (req, res) => {
     const yearCondition = year ? `AND v.year = ${parseInt(year)}` : '';
     const specificationCondition = specification ? `AND v.group_specification = ${db.escape(specification)}` : '';
     
-    // Admin sees all venues
+    // Admin sees all venues (including inactive)
     if (req.user.role === 'admin') {
       const [venues] = await db.query(`
         SELECT 
@@ -442,11 +445,11 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        WHERE v.status = 'Active'
+        WHERE 1=1
         ${yearCondition}
         ${specificationCondition}
         GROUP BY v.venue_id
-        ORDER BY v.venue_name
+        ORDER BY v.status DESC, v.venue_name
       `);
       
       // console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
