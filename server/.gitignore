@@ -8,3 +8,5 @@ node_modules
 # Migration files
 migrations/*
 **/migrations/
+VENUE_INACTIVE_DELETE_SETUP.md
+VENUE_INACTIVE_VS_DELETE.md
