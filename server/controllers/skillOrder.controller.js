@@ -445,6 +445,41 @@ export const deleteSkillOrder = async (req, res) => {
   }
 };
 
+// Delete entire course type (all skills in that course type)
+export const deleteCourseType = async (req, res) => {
+  try {
+    const { course_type } = req.params;
+
+    if (!course_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course type is required'
+      });
+    }
+
+    const [result] = await db.query('DELETE FROM skill_order WHERE course_type = ?', [course_type]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course type not found or no skills in this course type'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Course type "${course_type}" and all ${result.affectedRows} skill(s) deleted successfully!`,
+      deleted_count: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error deleting course type:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete course type'
+    });
+  }
+};
+
 // Get student's skill progression status (filtered by student's venue and year)
 export const getStudentSkillProgression = async (req, res) => {
   try {

@@ -4086,7 +4086,7 @@ const StudyRoadmap = ({
 
       const data = await response.json();
       if (data.success) {
-        // Update local state
+        // Update local state for single venue view
         const updatedRoadmap = roadmap.map((item) => {
           if (item.roadmap_id === roadmapId) {
             return {
@@ -4100,6 +4100,28 @@ const StudyRoadmap = ({
         });
 
         setRoadmap(updatedRoadmap);
+
+        // Also update all venues modules if viewing "All Venues"
+        if (selectedVenueId === "all") {
+          const updatedAllVenuesModules = allVenuesModules.map((group) => {
+            return {
+              ...group,
+              venues: group.venues.map((venue) => {
+                if (venue.roadmap_id === roadmapId) {
+                  return {
+                    ...venue,
+                    resources: venue.resources.filter(
+                      (r) => r.resource_id !== resourceId,
+                    ),
+                  };
+                }
+                return venue;
+              }),
+            };
+          });
+          setAllVenuesModules(updatedAllVenuesModules);
+        }
+
         setMessageModal({
           show: true,
           title: "Success",

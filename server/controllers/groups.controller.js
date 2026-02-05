@@ -423,7 +423,9 @@ export const getAllVenues = async (req, res) => {
     const yearCondition = year ? `AND v.year = ${parseInt(year)}` : '';
     const specificationCondition = specification ? `AND v.group_specification = ${db.escape(specification)}` : '';
     
-    // Admin sees all venues (including inactive)
+    // Admin sees all Active and Inactive venues, but NOT deleted venues (deleted_at IS NOT NULL)
+    // Status='Active' or 'Inactive' = shown in frontend
+    // deleted_at IS NOT NULL = hidden from frontend (soft deleted)
     if (req.user.role === 'admin') {
       const [venues] = await db.query(`
         SELECT 
@@ -445,7 +447,7 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        WHERE 1=1
+        WHERE v.deleted_at IS NULL
         ${yearCondition}
         ${specificationCondition}
         GROUP BY v.venue_id
@@ -494,6 +496,7 @@ export const getAllVenues = async (req, res) => {
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
       LEFT JOIN group_students gs ON g.group_id = gs.group_id
       WHERE v.status = 'Active'
+        AND v.deleted_at IS NULL
         AND v.assigned_faculty_id = ?
         ${yearCondition}
         ${specificationCondition}
@@ -1170,7 +1173,9 @@ export const updateVenue = async (req, res) => {
   }
 };
 
-// Delete venue (soft delete - set status to Inactive)
+// Delete venue (soft delete - hidden from frontend but data preserved)
+// This is different from setting status to Inactive
+// Deleted venues have deleted_at timestamp and are completely hidden from all lists
 export const deleteVenue = async (req, res) => {
   const connection = await db.getConnection();
   
@@ -1226,9 +1231,11 @@ export const deleteVenue = async (req, res) => {
       [venueId]
     );
 
-    // Soft delete venue (set status to Inactive)
+    // Soft delete venue (set deleted_at timestamp)
+    // This hides the venue from all frontend lists while preserving data
+    // Status can remain as is (Active or Inactive) - deleted_at is what matters
     await connection.query(
-      `UPDATE venue SET status = 'Inactive' WHERE venue_id = ?`,
+      `UPDATE venue SET deleted_at = NOW(), status = 'Inactive' WHERE venue_id = ?`,
       [venueId]
     );
 
@@ -1236,7 +1243,7 @@ export const deleteVenue = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'Venue and associated data deleted successfully!' 
+      message: 'Venue deleted successfully! Data has been preserved but the venue is now hidden.' 
     });
 
   } catch (error) {

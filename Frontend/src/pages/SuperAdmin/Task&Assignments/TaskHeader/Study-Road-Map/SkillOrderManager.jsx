@@ -22,6 +22,10 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCourseTypeModal, setShowCourseTypeModal] = useState(false);
+  const [showEditCourseTypeModal, setShowEditCourseTypeModal] = useState(false);
+  const [editingCourseType, setEditingCourseType] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState({ title: '', message: '', onConfirm: null });
   const [showAssociationsModal, setShowAssociationsModal] = useState(false);
   const [newCourseType, setNewCourseType] = useState('');
   const [newCourseTypeVenues, setNewCourseTypeVenues] = useState([]);
@@ -231,6 +235,55 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
     }
   };
 
+  const handleDeleteCourseType = async (courseType) => {
+    const skillCount = skills.length;
+    const courseTypeName = courseType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    
+    setConfirmModalData({
+      title: 'Delete Course Type',
+      message: `Are you sure you want to delete the entire "${courseTypeName}" course type?\n\nThis will permanently delete all ${skillCount} skill(s) in this course type.\n\nThis action cannot be undone!`,
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        await performDeleteCourseType(courseType);
+      }
+    });
+    setShowConfirmModal(true);
+  };
+
+  const performDeleteCourseType = async (courseType) => {
+    setSaving(true);
+    try {
+      const response = await apiDelete(`/skill-order/course-type/${courseType}`);
+
+      const data = await response.json();
+      if (data.success) {
+        showMessage('success', data.message);
+        
+        // Refresh course types list
+        const coursesResponse = await apiGet('/skill-order/course-types');
+        const coursesData = await coursesResponse.json();
+        if (coursesData.success) {
+          const newCourseTypes = coursesData.data || [];
+          setCourseTypes(newCourseTypes);
+          
+          // Switch to first available course type or default
+          if (newCourseTypes.length > 0) {
+            setLocalSelectedCourse(newCourseTypes[0]);
+          } else {
+            setLocalSelectedCourse('frontend');
+          }
+        }
+      } else {
+        showMessage('error', data.message || 'Failed to delete course type');
+      }
+    } catch (error) {
+      console.error('Error deleting course type:', error);
+      showMessage('error', 'Failed to delete course type');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleTogglePrerequisite = async (skillId, currentValue) => {
     try {
       const response = await apiPut(`/skill-order/${skillId}`, {
@@ -382,16 +435,30 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
           <div style={styles.courseFilterLabel}>Course Type:</div>
           <div style={styles.courseFilterButtons}>
             {courseTypes.map(type => (
-              <button
-                key={type}
-                onClick={() => setLocalSelectedCourse(type)}
-                style={{
-                  ...styles.courseFilterBtn,
-                  ...(localSelectedCourse === type ? styles.courseFilterBtnActive : {})
-                }}
-              >
-                {type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-              </button>
+              <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  onClick={() => setLocalSelectedCourse(type)}
+                  style={{
+                    ...styles.courseFilterBtn,
+                    ...(localSelectedCourse === type ? styles.courseFilterBtnActive : {})
+                  }}
+                >
+                  {type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                </button>
+                {localSelectedCourse === type && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingCourseType(type);
+                      setShowEditCourseTypeModal(true);
+                    }}
+                    style={styles.editCourseTypeBtn}
+                    title="Edit course type"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -1225,6 +1292,105 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
         </div>
       )}
 
+      {/* Edit Course Type Modal */}
+      {showEditCourseTypeModal && editingCourseType && (
+        <div style={styles.modalOverlay} onClick={() => setShowEditCourseTypeModal(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>
+                Edit Course Type: {editingCourseType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              </h3>
+              <button
+                onClick={() => setShowEditCourseTypeModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+                  Course Type ID: <strong>{editingCourseType}</strong>
+                </p>
+                <p style={{ fontSize: '14px', color: '#6b7280' }}>
+                  Total Skills: <strong>{skills.length}</strong>
+                </p>
+              </div>
+
+              <div style={{ padding: '16px', backgroundColor: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#dc2626', marginBottom: '8px' }}>
+                  Danger Zone
+                </h4>
+                <p style={{ fontSize: '13px', color: '#991b1b', marginBottom: '12px' }}>
+                  Deleting this course type will permanently remove all {skills.length} skill(s) associated with it. This action cannot be undone.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowEditCourseTypeModal(false);
+                    handleDeleteCourseType(editingCourseType);
+                  }}
+                  style={styles.dangerButton}
+                >
+                  <Trash2 size={16} />
+                  Delete Course Type
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowEditCourseTypeModal(false)}
+                style={styles.cancelButton}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>{confirmModalData.title}</h3>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                <AlertCircle size={24} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ fontSize: '14px', color: '#374151', whiteSpace: 'pre-line' }}>
+                  {confirmModalData.message}
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                style={styles.cancelButton}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModalData.onConfirm}
+                style={styles.dangerButton}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {saving && (
         <div style={styles.savingIndicator}>
           <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1289,6 +1455,33 @@ const styles = {
     color: '#2563eb',
     fontWeight: '700',
     boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+  },
+  editCourseTypeBtn: {
+    backgroundColor: 'transparent',
+    color: '#6b7280',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '6px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  dangerButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '10px 20px',
+    fontSize: '14px',
+    fontWeight: '600',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: '#dc2626',
+    color: '#ffffff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
   },
   header: {
     display: 'flex',

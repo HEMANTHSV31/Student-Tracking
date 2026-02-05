@@ -7,6 +7,7 @@ import {
   updateSkillOrder,
   reorderSkills,
   deleteSkillOrder,
+  deleteCourseType,
   getStudentSkillProgression,
   getAvailableSkillNames,
   getCourseTypes,
@@ -57,5 +58,8 @@ router.put('/reorder/bulk', authenticate, reorderSkills);
 
 // Delete skill order entry
 router.delete('/:id', authenticate, deleteSkillOrder);
+
+// Delete entire course type (all skills in that course type)
+router.delete('/course-type/:course_type', authenticate, deleteCourseType);
 
 export default router;
