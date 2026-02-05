@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   FileSpreadsheet,
+  BookOpen,
 } from "lucide-react";
 
 const SideTab = () => {
@@ -88,10 +89,16 @@ const SideTab = () => {
       },
       { id: "reports", label: "Reports", icon: BarChart3, section: "academic" },
       {
+        id: "courses",
+        label: "Question Bank",
+        icon: BookOpen,
+        section: "academic",
+      },
+      {
         id: "skill-reports",
         label: "Progress Import",
         icon: FileSpreadsheet,
-        section: "academic",
+        section: "data",
       },
       // { id: 'settings', label: 'Settings', icon: Settings, section: 'system' },
     ],
@@ -174,6 +181,7 @@ const SideTab = () => {
     reports: { title: "Reports" },
     roadmap: { title: "Roadmap & Material" },
     settings: { title: "Settings" },
+    courses: { title: "Question Bank" },
   };
 
   const handleNavigation = (id) => {
@@ -251,6 +259,15 @@ const SideTab = () => {
               <div style={styles.navSectionTitle}>ACADEMIC</div>
               {menuItems
                 .filter((i) => i.section === "academic")
+                .map(renderNavItem)}
+            </div>
+          )}
+
+          {menuItems.some((i) => i.section === "data") && (
+            <div style={styles.navSection}>
+              <div style={styles.navSectionTitle}>DATA</div>
+              {menuItems
+                .filter((i) => i.section === "data")
                 .map(renderNavItem)}
             </div>
           )}

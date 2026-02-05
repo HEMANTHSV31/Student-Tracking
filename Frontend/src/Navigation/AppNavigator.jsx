@@ -28,21 +28,24 @@ import TaskHeader from "../pages/SuperAdmin/Task&Assignments/TaskHeader/TaskHead
 import AdminSkillReport from "../pages/SuperAdmin/SkillReports/AdminSkillReport";
 //Super Admin -> Group Insights
 import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights";
+//Super Admin -> Question Bank (Practice Courses)
+import CourseList from "../pages/SuperAdmin/QuestionBank/CourseList/CourseList";
+import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/QuestionBank";
 
 // Faculty Pages
-//Faculty -> Class & Group
-import FacultyClassDetails from "../pages/Faculty/Class&Group/ClassDetails";
+//Faculty -> Dashboard / Class & Group
+import FacultyClassDetails from "../pages/Faculty/DashboardPanal/Dashboard";
 //Faculty -> Students
 import FacultyStudentsPage from "../pages/Faculty/studentsPage/AllStudents/studentsPage";
 import FacultyStudentHeader from "../pages/Faculty/studentsPage/studentHeader/StudentHeader";
 //Faculty -> Group Insights
 import FacultyGroupInsights from "../pages/Faculty/GroupInsights copy/GroupInsights";
 //Faculty -> Attendance
-import FacultyAttendance from "../pages/Faculty/AttendancePage/Attendance";
+import FacultyAttendance from "../pages/SuperAdmin/AttendancePage/Attendance";
 //Faculty -> Task & Assignments
 import FacultyTaskHeader from "../pages/Faculty/Task&Assignments/TaskHeader/TaskHeader";
 //Faculty -> Reports & Analytics
-import FacultyReports from "../pages/Faculty/Reports&Analytics/Reporst&analytics";
+import FacultyReports from "../pages/SuperAdmin/Reports&Analytics/Reporst&analytics";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
@@ -51,6 +54,7 @@ import StudentAttendance from "../pages/Student/StudentAttendance/Attendance";
 import TasksAssignments from "../pages/Student/Tasks&Assignments/Tasks&Assignment";
 import StudentRoadmap from "../pages/Student/RoadMap&Material/RoadMap&Material";
 import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
+import Performance from "../pages/Student/Performance/Performance";
 
 const AppNavigator = () => {
   const user = useAuthStore((s) => s.user);
@@ -99,6 +103,9 @@ const AppNavigator = () => {
             <Route path="skill-reports" element={<AdminSkillReport />} />
             <Route path="group-insights" element={<AdminGroupInsights />} />
             <Route path="reports" element={<ReportsAnalytics />} />
+            {/* Question Bank / Practice Courses */}
+            <Route path="courses" element={<CourseList />} />
+            <Route path="question-bank/:courseId" element={<QuestionBank />} />
           </Route>
         )}
 
