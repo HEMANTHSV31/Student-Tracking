@@ -7,11 +7,13 @@ import {
   updateSkillOrder,
   reorderSkills,
   deleteSkillOrder,
+  deleteCourseType,
   getStudentSkillProgression,
   getAvailableSkillNames,
   getCourseTypes,
   validateCourseType,
-  updateSkillOrderAssociations
+  updateSkillOrderAssociations,
+  getCourseTypesForStudent
 } from '../controllers/skillOrder.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 
@@ -27,6 +29,9 @@ router.get('/available-skills', authenticate, getAvailableSkillNames);
 
 // Get unique course types from skill_order table
 router.get('/course-types', authenticate, getCourseTypes);
+
+// Get course types available for logged-in student's venue
+router.get('/student/course-types', authenticate, getCourseTypesForStudent);
 
 // Get skill order for a specific venue (with fallback to global)
 router.get('/venue/:venue_id', authenticate, getSkillOrderForVenue);
@@ -53,5 +58,8 @@ router.put('/reorder/bulk', authenticate, reorderSkills);
 
 // Delete skill order entry
 router.delete('/:id', authenticate, deleteSkillOrder);
+
+// Delete entire course type (all skills in that course type)
+router.delete('/course-type/:course_type', authenticate, deleteCourseType);
 
 export default router;

@@ -1,6 +1,12 @@
 .env
 node_modules
-./COMPREHENSIVE_SECURITY.md
-COMPREHENSIVE_SECURITY.md
-README.md
-ROADMAP_AND_EXTENSION_CHANGES.md
+
+# Markdown files except README.md
+*.md
+!README.md
+
+# Migration files
+migrations/*
+**/migrations/
+VENUE_INACTIVE_DELETE_SETUP.md
+VENUE_INACTIVE_VS_DELETE.md

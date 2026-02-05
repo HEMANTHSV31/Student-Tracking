@@ -26,11 +26,19 @@ function romanToNumber(roman) {
 }
 
 /**
- * Normalize course name - just trim whitespace
+ * Normalize course name - ONLY trim whitespace and reduce multiple spaces
+ * Preserves EXACT spelling and capitalization from Excel
+ * Examples:
+ * - "Java Script  - Level 1" → "Java Script - Level 1" (extra space removed)
+ * - "Programming Java Level - 4" → "Programming Java Level - 4" (unchanged)
+ * - "  HTML / CSS - Level 1  " → "HTML / CSS - Level 1" (trimmed)
  */
 function normalizeCourseName(courseName) {
   if (!courseName) return courseName;
-  return courseName.trim();
+  
+  // 1. Trim leading/trailing whitespace
+  // 2. Replace multiple spaces with single space
+  return courseName.trim().replace(/\s+/g, ' ');
 }
 
 /**
@@ -182,15 +190,16 @@ export const uploadSkillReport = async (req, res) => {
 
     // Pre-fetch student lookups for performance
     const [allStudents] = await connection.execute(
-      `SELECT s.student_id, u.ID as roll_number, u.name, u.email, u.user_id
+      `SELECT s.student_id, u.ID as user_id_value, u.name, u.email, u.user_id
        FROM students s 
        JOIN users u ON s.user_id = u.user_id`
     );
 
-    // Create lookup map by roll_number
+    // Create lookup map by users.ID
+    // Excel 'user_id' column matches database users.ID column
     const studentMap = new Map();
     allStudents.forEach(s => {
-      const key = s.roll_number.toLowerCase().trim();
+      const key = s.user_id_value.toLowerCase().trim(); // user_id_value contains users.ID
       studentMap.set(key, s);
     });
     
@@ -200,8 +209,10 @@ export const uploadSkillReport = async (req, res) => {
 
     let processedCount = 0;
     let insertedCount = 0;
+    let updatedCount = 0;
     let skippedCount = 0;
     const errors = [];
+    const skippedStudents = [];
     
     const BATCH_SIZE = 100; // Process in batches to avoid timeout
     const totalBatches = Math.ceil(data.length / BATCH_SIZE);
@@ -226,7 +237,11 @@ export const uploadSkillReport = async (req, res) => {
           if (result.success) {
             processedCount++;
             if (result.inserted) insertedCount++;
-            if (result.skipped) skippedCount++;
+            if (result.updated) updatedCount++;
+            if (result.skipped) {
+              skippedCount++;
+              skippedStudents.push({ row: rowIndex, reason: result.reason });
+            }
           } else {
             errors.push({ row: rowIndex, message: result.error });
           }
@@ -264,8 +279,10 @@ export const uploadSkillReport = async (req, res) => {
         totalRecords: data.length,
         processed: processedCount,
         inserted: insertedCount,
+        updated: updatedCount,
         skipped: skippedCount,
         errors: errors.length,
+        skippedStudents: skippedStudents.length > 0 ? skippedStudents : undefined,
         errorDetails: errors.length > 0 ? errors : undefined
       }
     });
@@ -362,7 +379,7 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   // Fallback: try direct DB lookup - Excel "user_id" column matched against users.ID
   if (!student) {
     const [dbStudent] = await connection.execute(
-      `SELECT s.student_id, u.ID as roll_number, u.name, u.email, u.user_id
+      `SELECT s.student_id, u.ID as user_id_value, u.name, u.email, u.user_id
        FROM students s 
        JOIN users u ON s.user_id = u.user_id
        WHERE LOWER(TRIM(u.ID)) = LOWER(TRIM(?))`,
@@ -375,7 +392,8 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   }
   
   if (!student) {
-    return { success: false, error: `Row ${rowIndex}: Student not found - Excel user_id "${lookupValue}" does not match any users.ID in database` };
+    // Skip this student instead of failing the whole upload
+    return { success: true, inserted: false, skipped: true, updated: false, reason: `Student with ID "${lookupValue}" not found` };
   }
 
   // Normalize course name (trim whitespace only)
@@ -384,14 +402,6 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   // Extract skill level from course name
   const skillLevel = extractSkillLevel(normalizedCourseName);
   // console.log(`Row ${rowIndex}: Normalized "${courseName}" → "${normalizedCourseName}", skill_level=${skillLevel}`);
-
-  // Check if record exists for this student + course (regardless of date)
-  const [existing] = await connection.execute(
-    `SELECT id, status, total_attempts, best_score, last_slot_date 
-     FROM student_skills 
-     WHERE student_id = ? AND course_name = ?`,
-    [student.student_id, normalizedCourseName]
-  );
 
   // Get student's current venue allocation
   const [studentVenue] = await connection.execute(
@@ -406,28 +416,51 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
   const studentVenueId = studentVenue.length > 0 ? studentVenue[0].venue_id : null;
   const facultyId = studentVenue.length > 0 ? studentVenue[0].faculty_id : null;
 
+  // Check if record exists: student + course (ONE record per student per skill)
+  // If exists, UPDATE with latest data from Excel (status can change from Ongoing → Cleared)
+  const [existing] = await connection.execute(
+    `SELECT id, status, total_attempts, best_score 
+     FROM student_skills 
+     WHERE student_id = ? AND course_name = ?`,
+    [student.student_id, normalizedCourseName]
+  );
+
   if (existing.length > 0) {
+    // Record exists - UPDATE with smart status overwriting
     const existingRecord = existing[0];
-    
-    // If already Cleared, don't update
-    if (existingRecord.status === 'Cleared') {
-      // console.log(`Row ${rowIndex}: Skipped - Student already cleared ${normalizedCourseName}`);
-      return { success: true, inserted: false, skipped: true };
-    }
-
-    // If same date exists, skip
-    if (existingRecord.last_slot_date === slotDate) {
-      // console.log(`Row ${rowIndex}: Skipped - Record already exists for date ${slotDate}`);
-      return { success: true, inserted: false, skipped: true };
-    }
-
-    // Update existing record (Ongoing or Not Cleared)
-    const newAttemptCount = existingRecord.total_attempts + 1;
+    const existingStatus = existingRecord.status;
     const newBestScore = Math.max(existingRecord.best_score || 0, score);
+    
+    // Status update logic:
+    // 1. If new status is "Cleared" -> Always update to Cleared (overwrite Ongoing/Not Cleared)
+    // 2. If new status is "Ongoing" -> Update to Ongoing if existing is "Not Cleared" (don't overwrite Cleared)
+    // 3. If new status is "Not Cleared" -> Do NOT overwrite Cleared or Ongoing
+    let finalStatus = existingStatus;
+    
+    if (status === 'Cleared') {
+      // Always update to Cleared
+      finalStatus = 'Cleared';
+    } else if (status === 'Ongoing' && existingStatus === 'Not Cleared') {
+      // Upgrade from Not Cleared to Ongoing
+      finalStatus = 'Ongoing';
+    } else if (status === 'Not Cleared' && (existingStatus === 'Cleared' || existingStatus === 'Ongoing')) {
+      // Don't downgrade from Cleared or Ongoing to Not Cleared
+      finalStatus = existingStatus;
+    } else {
+      // Use new status for all other cases
+      finalStatus = status;
+    }
 
     await connection.execute(
       `UPDATE student_skills 
        SET slot_id = ?,
+           year = ?,
+           student_name = ?,
+           student_email = ?,
+           skill_level = ?,
+           excel_venue_name = ?,
+           student_venue_id = ?,
+           faculty_id = ?,
            total_attempts = ?,
            best_score = ?,
            latest_score = ?,
@@ -438,21 +471,22 @@ async function processSkillRow(connection, row, rowIndex, studentMap) {
            last_end_time = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [slotId, newAttemptCount, newBestScore, score, status, attendance, slotDate, startTime, endTime, existingRecord.id]
+      [slotId, year, studentName, studentEmail, skillLevel, excelVenueName, studentVenueId, 
+       facultyId, attempt, newBestScore, score, finalStatus, attendance, slotDate, startTime, 
+       endTime, existingRecord.id]
     );
 
-    // console.log(`Row ${rowIndex}: Updated - ${rollNumber}, ${normalizedCourseName}, attempt ${newAttemptCount}, status=${status}`);
-    return { success: true, inserted: false, skipped: false, updated: true };
+    return { success: true, inserted: false, skipped: false, updated: true, statusChanged: finalStatus !== existingStatus };
   }
 
-  // INSERT new record (student hasn't attempted this skill before)
+  // INSERT new record (student + course combination doesn't exist yet)
   await connection.execute(
     `INSERT INTO student_skills 
-      (slot_id, student_id, year, student_name, student_email, skill_id, course_name, skill_level,
+      (slot_id, student_id, year, student_name, student_email, course_name, skill_level,
        excel_venue_name, student_venue_id, faculty_id, total_attempts, best_score, 
        latest_score, status, last_attendance, last_slot_date, last_start_time, 
        last_end_time, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [slotId, student.student_id, year, studentName, studentEmail, normalizedCourseName, skillLevel,
      excelVenueName, studentVenueId, facultyId, attempt, score, score, status, 
      attendance, slotDate, startTime, endTime]

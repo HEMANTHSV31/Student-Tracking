@@ -24,4 +24,7 @@ dist-ssr
 *.sw?
 .env
 EXCEL_TEMPLATE_GUIDE.node_modules
-README.md
+
+# Markdown files except README.md
+*.md
+!README.md

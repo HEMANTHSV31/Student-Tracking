@@ -392,12 +392,15 @@ export const getGroupSpecifications = async (req, res) => {
     // Build year filter condition - only match exact year, not NULL
     const yearCondition = year ? `AND year = ${parseInt(year)}` : '';
     
+    // Admin sees all specifications (including from inactive venues)
+    const statusCondition = req.user.role === 'admin' ? '' : "AND status = 'Active'";
+    
     const [specifications] = await db.query(`
       SELECT DISTINCT group_specification
       FROM venue
       WHERE group_specification IS NOT NULL 
         AND group_specification != ''
-        AND status = 'Active'
+        ${statusCondition}
         ${yearCondition}
       ORDER BY group_specification ASC
     `);
@@ -420,7 +423,9 @@ export const getAllVenues = async (req, res) => {
     const yearCondition = year ? `AND v.year = ${parseInt(year)}` : '';
     const specificationCondition = specification ? `AND v.group_specification = ${db.escape(specification)}` : '';
     
-    // Admin sees all venues
+    // Admin sees all Active and Inactive venues, but NOT deleted venues (deleted_at IS NOT NULL)
+    // Status='Active' or 'Inactive' = shown in frontend
+    // deleted_at IS NOT NULL = hidden from frontend (soft deleted)
     if (req.user.role === 'admin') {
       const [venues] = await db.query(`
         SELECT 
@@ -442,11 +447,11 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        WHERE v.status = 'Active'
+        WHERE v.deleted_at IS NULL
         ${yearCondition}
         ${specificationCondition}
         GROUP BY v.venue_id
-        ORDER BY v.venue_name
+        ORDER BY v.status DESC, v.venue_name
       `);
       
       // console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
@@ -491,6 +496,7 @@ export const getAllVenues = async (req, res) => {
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
       LEFT JOIN group_students gs ON g.group_id = gs.group_id
       WHERE v.status = 'Active'
+        AND v.deleted_at IS NULL
         AND v.assigned_faculty_id = ?
         ${yearCondition}
         ${specificationCondition}
@@ -1116,9 +1122,6 @@ export const updateVenue = async (req, res) => {
     const { venueId } = req.params;
     const { venue_name, capacity, location, assigned_faculty_id, status, year, group_specification } = req.body;
 
-    console.log('[UPDATE VENUE] Request body:', req.body);
-    console.log('[UPDATE VENUE] Year value:', year, 'Type:', typeof year);
-
     // Check if venue name already exists (excluding current venue)
     const [existing] = await connection.query(
       'SELECT venue_id FROM venue WHERE venue_name = ? AND venue_id != ?',
@@ -1143,8 +1146,6 @@ export const updateVenue = async (req, res) => {
       });
     }
 
-    console.log('[UPDATE VENUE] Parsed year value:', yearValue);
-
     await connection.beginTransaction();
 
     await connection.query(`
@@ -1152,8 +1153,6 @@ export const updateVenue = async (req, res) => {
       SET venue_name = ?, capacity = ?, location = ?, assigned_faculty_id = ?, status = ?, year = ?, group_specification = ?  
       WHERE venue_id = ?
     `, [venue_name, capacity, location, assigned_faculty_id, status, yearValue, group_specification || null, venueId]);
-    
-    console.log('[UPDATE VENUE] Update executed for venue_id:', venueId);
 
     await connection.commit();
 
@@ -1174,7 +1173,9 @@ export const updateVenue = async (req, res) => {
   }
 };
 
-// Delete venue (soft delete - set status to Inactive)
+// Delete venue (soft delete - hidden from frontend but data preserved)
+// This is different from setting status to Inactive
+// Deleted venues have deleted_at timestamp and are completely hidden from all lists
 export const deleteVenue = async (req, res) => {
   const connection = await db.getConnection();
   
@@ -1182,6 +1183,39 @@ export const deleteVenue = async (req, res) => {
     const { venueId } = req.params;
 
     await connection.beginTransaction();
+
+    // Get all roadmap resources for this venue to delete files
+    const [resources] = await connection.query(`
+      SELECT rr.file_path 
+      FROM roadmap_resources rr
+      JOIN roadmap r ON rr.roadmap_id = r.roadmap_id
+      WHERE r.venue_id = ? AND rr.file_path IS NOT NULL
+    `, [venueId]);
+
+    // Delete resource files from filesystem
+    const fs = await import('fs');
+    for (const resource of resources) {
+      if (resource.file_path && fs.existsSync(resource.file_path)) {
+        try {
+          fs.unlinkSync(resource.file_path);
+          // console.log('Deleted resource file:', resource.file_path);
+        } catch (fileError) {
+          console.warn('Failed to delete file:', resource.file_path, fileError.message);
+        }
+      }
+    }
+
+    // Delete roadmap resources for this venue
+    await connection.query(`
+      DELETE rr FROM roadmap_resources rr
+      JOIN roadmap r ON rr.roadmap_id = r.roadmap_id
+      WHERE r.venue_id = ?
+    `, [venueId]);
+
+    // Delete roadmap modules for this venue
+    await connection.query(`
+      DELETE FROM roadmap WHERE venue_id = ?
+    `, [venueId]);
 
     // Mark all active students in this venue as Dropped
     await connection.query(`
@@ -1197,9 +1231,11 @@ export const deleteVenue = async (req, res) => {
       [venueId]
     );
 
-    // Soft delete venue (set status to Inactive)
+    // Soft delete venue (set deleted_at timestamp)
+    // This hides the venue from all frontend lists while preserving data
+    // Status can remain as is (Active or Inactive) - deleted_at is what matters
     await connection.query(
-      `UPDATE venue SET status = 'Inactive' WHERE venue_id = ?`,
+      `UPDATE venue SET deleted_at = NOW(), status = 'Inactive' WHERE venue_id = ?`,
       [venueId]
     );
 
@@ -1207,7 +1243,7 @@ export const deleteVenue = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'Venue deleted successfully!' 
+      message: 'Venue deleted successfully! Data has been preserved but the venue is now hidden.' 
     });
 
   } catch (error) {

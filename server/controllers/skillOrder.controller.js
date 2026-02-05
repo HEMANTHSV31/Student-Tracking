@@ -15,6 +15,8 @@ export const getSkillOrders = async (req, res) => {
         so.is_prerequisite,
         so.description,
         so.created_by,
+        so.apply_to_all_venues,
+        so.apply_to_all_years,
         u.name as created_by_name,
         so.created_at,
         so.updated_at
@@ -79,24 +81,54 @@ export const getSkillOrders = async (req, res) => {
   }
 };
 
-// Get skill order for a specific course type (GLOBAL)
+// Get skill order for a specific venue (filtered by venue and year)
 export const getSkillOrderForVenue = async (req, res) => {
   try {
-    const { course_type } = req.query;
+    const { venue_id } = req.params;
+    const { course_type, year } = req.query;
+
+    // Get student's current year if not provided
+    let studentYear = year;
+    if (!studentYear && req.user?.student_id) {
+      const [student] = await db.query('SELECT year FROM students WHERE student_id = ?', [req.user.student_id]);
+      if (student.length > 0) {
+        studentYear = student[0].year;
+      }
+    }
 
     let query = `
-      SELECT 
+      SELECT DISTINCT
         so.id,
         so.course_type,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
-        so.description
+        so.description,
+        so.apply_to_all_venues,
+        so.apply_to_all_years
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
     `;
     
-    const params = [];
+    const params = [venue_id];
+
+    // Filter by year if provided
+    if (studentYear) {
+      query += ` AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )`;
+      params.push(studentYear);
+    }
 
     if (course_type) {
       query += ` AND so.course_type = ?`;
@@ -112,7 +144,7 @@ export const getSkillOrderForVenue = async (req, res) => {
       data: skillOrders
     });
   } catch (error) {
-    console.error('Error fetching skill order:', error);
+    console.error('Error fetching skill order for venue:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch skill order'
@@ -188,6 +220,12 @@ export const createSkillOrder = async (req, res) => {
       hasNewColumns = false;
     }
 
+    // Determine apply_to_all flags based on whether specific venues/years are provided
+    const shouldApplyToAllVenues = apply_to_all_venues === true || 
+      (!venue_ids || !Array.isArray(venue_ids) || venue_ids.length === 0);
+    const shouldApplyToAllYears = apply_to_all_years === true || 
+      (!years || !Array.isArray(years) || years.length === 0);
+
     // Insert skill order
     let insertQuery, insertParams;
     if (hasNewColumns) {
@@ -208,11 +246,11 @@ export const createSkillOrder = async (req, res) => {
         course_type, 
         skill_name, 
         orderValue, 
-        is_prerequisite !== false ? 1 : 0, 
+        is_prerequisite === true ? 1 : 0, 
         description || null, 
         created_by,
-        apply_to_all_venues !== false,
-        apply_to_all_years !== false
+        shouldApplyToAllVenues ? 1 : 0,
+        shouldApplyToAllYears ? 1 : 0
       ];
     } else {
       insertQuery = `
@@ -230,7 +268,7 @@ export const createSkillOrder = async (req, res) => {
         course_type, 
         skill_name, 
         orderValue, 
-        is_prerequisite !== false ? 1 : 0, 
+        is_prerequisite === true ? 1 : 0, 
         description || null, 
         created_by
       ];
@@ -250,7 +288,7 @@ export const createSkillOrder = async (req, res) => {
           );
         }
       } catch (err) {
-        console.log('skill_order_venues table not found, skipping venue associations');
+        // skill_order_venues table not found, skipping venue associations
       }
     }
 
@@ -264,7 +302,7 @@ export const createSkillOrder = async (req, res) => {
           );
         }
       } catch (err) {
-        console.log('skill_order_years table not found, skipping year associations');
+        // skill_order_years table not found, skipping year associations
       }
     }
 
@@ -407,25 +445,89 @@ export const deleteSkillOrder = async (req, res) => {
   }
 };
 
-// Get student's skill progression status (GLOBAL)
+// Delete entire course type (all skills in that course type)
+export const deleteCourseType = async (req, res) => {
+  try {
+    const { course_type } = req.params;
+
+    if (!course_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course type is required'
+      });
+    }
+
+    const [result] = await db.query('DELETE FROM skill_order WHERE course_type = ?', [course_type]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course type not found or no skills in this course type'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Course type "${course_type}" and all ${result.affectedRows} skill(s) deleted successfully!`,
+      deleted_count: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error deleting course type:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete course type'
+    });
+  }
+};
+
+// Get student's skill progression status (filtered by student's venue and year)
 export const getStudentSkillProgression = async (req, res) => {
   try {
     const { student_id } = req.params;
     const { course_type } = req.query;
 
-    // Get skill order (GLOBAL)
+    // Get student's venue and year
+    const [student] = await db.query(`
+      SELECT venue_id, year 
+      FROM students 
+      WHERE student_id = ?
+    `, [student_id]);
+
+    if (student.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const { venue_id, year } = student[0];
+
+    // Get skill order filtered by student's venue and year
     let orderQuery = `
-      SELECT 
+      SELECT DISTINCT
         so.id,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
         so.description
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
     
-    const orderParams = [];
+    const orderParams = [venue_id, year];
 
     if (course_type) {
       orderQuery += ` AND so.course_type = ?`;
@@ -555,12 +657,18 @@ export const updateSkillOrderAssociations = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // Determine apply_to_all flags based on whether specific venues/years are provided
+    const shouldApplyToAllVenues = apply_to_all_venues === true || 
+      (!venue_ids || !Array.isArray(venue_ids) || venue_ids.length === 0);
+    const shouldApplyToAllYears = apply_to_all_years === true || 
+      (!years || !Array.isArray(years) || years.length === 0);
+
     // Update apply_to_all flags
     await connection.query(`
       UPDATE skill_order 
       SET apply_to_all_venues = ?, apply_to_all_years = ?
       WHERE id = ?
-    `, [apply_to_all_venues !== false, apply_to_all_years !== false, id]);
+    `, [shouldApplyToAllVenues ? 1 : 0, shouldApplyToAllYears ? 1 : 0, id]);
 
     // Update venue associations
     await connection.query('DELETE FROM skill_order_venues WHERE skill_order_id = ?', [id]);
@@ -663,3 +771,82 @@ export const validateCourseType = async (req, res) => {
     });
   }
 };
+
+// Get available course types for student's venue
+export const getCourseTypesForStudent = async (req, res) => {
+  try {
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID not found'
+      });
+    }
+
+    // Get student's venue and year using user_id
+    const [studentInfo] = await db.query(`
+      SELECT s.student_id, s.year, gs.group_id, g.venue_id, v.venue_name
+      FROM students s
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
+      LEFT JOIN venue v ON g.venue_id = v.venue_id
+      WHERE s.user_id = ?
+      LIMIT 1
+    `, [user_id]);
+
+    if (studentInfo.length === 0 || !studentInfo[0].venue_id) {
+      // No venue assigned - return all course types
+      const [allCourseTypes] = await db.query(`
+        SELECT DISTINCT course_type
+        FROM skill_order
+        ORDER BY course_type
+      `);
+      return res.status(200).json({
+        success: true,
+        data: allCourseTypes.map(ct => ct.course_type),
+        venue: null
+      });
+    }
+
+    const { year, venue_id, venue_name } = studentInfo[0];
+
+    // Get course types configured for this venue and year
+    const [courseTypes] = await db.query(`
+      SELECT DISTINCT so.course_type
+      FROM skill_order so
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
+      ORDER BY so.course_type
+    `, [venue_id, year]);
+
+    res.status(200).json({
+      success: true,
+      data: courseTypes.map(ct => ct.course_type),
+      venue: {
+        venue_id,
+        venue_name,
+        year
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching course types for student:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch course types'
+    });
+  }
+};
+

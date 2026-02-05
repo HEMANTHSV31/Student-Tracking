@@ -325,21 +325,79 @@ export const createTask = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // ALWAYS check if there's a skill order that restricts venues/years for this task
+    let skillOrderVenues = [];
+    let skillOrderRestricted = false;
+    
+    if (course_type && (apply_to_all_venues === 'true' || apply_to_all_venues === true)) {
+      // When "All Venues" is selected, check ALL skill orders for this course_type
+      // Get the union of allowed venues across all skills in this course_type
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.skill_name, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.course_type = ? AND so.apply_to_all_venues = 0
+      `, [course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        // Collect all venues that are allowed for this course_type
+        const venueSet = new Set();
+        
+        for (const skillOrder of skillOrderCheck) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          // Add all allowed venues to the set
+          venueRestrictions.forEach(v => venueSet.add(v.venue_id));
+        }
+        
+        if (venueSet.size > 0) {
+          skillOrderVenues = Array.from(venueSet);
+          skillOrderRestricted = true;
+        }
+      }
+    } else if (skill_filter && course_type) {
+      // Check if skill order exists with venue restrictions for this specific skill
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.skill_name = ? AND so.course_type = ?
+      `, [skill_filter.trim(), course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        const skillOrder = skillOrderCheck[0];
+        
+        // If skill order doesn't apply to all venues, get specific venues
+        if (!skillOrder.apply_to_all_venues || skillOrder.apply_to_all_venues === 0) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          if (venueRestrictions.length > 0) {
+            skillOrderVenues = venueRestrictions.map(v => v.venue_id);
+            skillOrderRestricted = true;
+          }
+        }
+      }
+    }
+
     // Determine venues to create tasks for
     let targetVenues = [];
     let group_id = null;
     
-    if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
-      // Get all active venues
+    if (skillOrderRestricted) {
+      // PRIORITY 1: If skill order has venue restrictions, ONLY use those venues
+      targetVenues = skillOrderVenues;
+      group_id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } else if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
+      // PRIORITY 2: User selected "all venues" and no skill order restrictions
       const [allVenues] = await connection.query(`
         SELECT venue_id FROM venue WHERE status = 'Active'
       `);
       targetVenues = allVenues.map(v => v.venue_id);
-      
-      // Generate unique group_id for this batch
       group_id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     } else {
-      // Single venue
+      // PRIORITY 3: Single venue selected
       targetVenues = [parseInt(venue_id)];
     }
 
@@ -504,7 +562,7 @@ export const getTasksByVenue = async (req, res) => {
 // Get tasks from ALL venues
 export const getTasksAllVenues = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, course_type } = req.query;
 
     let query = `
       SELECT 
@@ -525,7 +583,7 @@ export const getTasksAllVenues = async (req, res) => {
         u.name as faculty_name,
         COUNT(DISTINCT ts.submission_id) as total_submissions,
         COUNT(DISTINCT CASE WHEN ts.status = 'Pending Review' THEN ts.submission_id END) as pending_submissions,
-        COUNT(DISTINCT CASE WHEN ts.status = 'Graded' THEN ts. submission_id END) as graded_submissions
+        COUNT(DISTINCT CASE WHEN ts.status = 'Graded' THEN ts.submission_id END) as graded_submissions
       FROM tasks t
       INNER JOIN venue v ON t.venue_id = v.venue_id
       INNER JOIN faculties f ON t.faculty_id = f.faculty_id
@@ -544,9 +602,48 @@ export const getTasksAllVenues = async (req, res) => {
 
     const [tasks] = await db.query(query, params);
 
+    // Get skill orders with venue restrictions
+    const [skillOrders] = await db.query(`
+      SELECT so.id, so.skill_name, so.course_type, so.apply_to_all_venues
+      FROM skill_order so
+      WHERE so.apply_to_all_venues = 0
+    `);
+
+    // Build map of course_type -> allowed venue_ids (union of all skills in that course_type)
+    const courseTypeRestrictions = new Map();
+    
+    for (const so of skillOrders) {
+      const [venueRows] = await db.query(`
+        SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+      `, [so.id]);
+      
+      if (venueRows.length > 0) {
+        const courseType = so.course_type;
+        if (!courseTypeRestrictions.has(courseType)) {
+          courseTypeRestrictions.set(courseType, new Set());
+        }
+        // Add all venues from this skill to the course_type set
+        venueRows.forEach(v => {
+          courseTypeRestrictions.get(courseType).add(v.venue_id);
+        });
+      }
+    }
+
+    // Filter tasks based on course_type skill order restrictions
+    const filteredTasks = tasks.filter(task => {
+      // If this course_type has venue restrictions, only show venues in that list
+      if (courseTypeRestrictions.has(task.course_type)) {
+        const allowedVenues = courseTypeRestrictions.get(task.course_type);
+        return allowedVenues.has(task.venue_id);
+      }
+      
+      // No restrictions for this course_type, show all
+      return true;
+    });
+
     res.status(200).json({
       success: true,
-      data: tasks
+      data: filteredTasks
     });
   } catch (error) {
     console.error('Error fetching all tasks:', error);
@@ -744,8 +841,8 @@ export const getTaskSubmissions = async (req, res) => {
       clearedCondition = `AND s.student_id NOT IN (${[...clearedStudentIds].join(',')})`;
     }
 
-    // Simple query: Get all students currently in this venue with their task submissions
-    // Match by task title to include submissions from same task in different venues
+    // Get submissions from students CURRENTLY in this venue
+    // Submissions are routed based on student's current venue, not task's original venue
     const countQuery = `
       SELECT COUNT(DISTINCT s.student_id) as total
       FROM students s
@@ -753,15 +850,15 @@ export const getTaskSubmissions = async (req, res) => {
       INNER JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       LEFT JOIN task_submissions ts ON s.student_id = ts.student_id 
-        AND ts.task_id IN (SELECT t.task_id FROM tasks t WHERE t.title = ?)
+        AND ts.task_id = ?
       WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
     `;
 
-    const countParams = [task_title, venue_id, ...statusParams, ...searchParams];
+    const countParams = [task_id, venue_id, ...statusParams, ...searchParams];
     const [countResult] = await db.query(countQuery, countParams);
     const total = countResult[0].total;
 
-    // Main query: Students in current venue with their submissions (from any venue with same task title)
+    // Main query: Students CURRENTLY in this venue (submissions routed by current venue)
     const mainQuery = `
       SELECT 
         ts.submission_id,
@@ -773,6 +870,7 @@ export const getTaskSubmissions = async (req, res) => {
         ts.grade,
         ts.feedback,
         ts.is_late,
+        ts.current_venue_id,
         s.student_id,
         u.ID as student_roll,
         u.name as student_name,
@@ -783,13 +881,13 @@ export const getTaskSubmissions = async (req, res) => {
       INNER JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       LEFT JOIN task_submissions ts ON s.student_id = ts.student_id 
-        AND ts.task_id IN (SELECT t.task_id FROM tasks t WHERE t.title = ?)
+        AND ts.task_id = ?
       WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
       ORDER BY ts.submitted_at IS NULL, ts.submitted_at DESC, u.name ASC
       LIMIT ? OFFSET ?
     `;
 
-    const mainParams = [task_title, venue_id, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
+    const mainParams = [task_id, venue_id, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
     
     const [submissions] = await db.query(mainQuery, mainParams);
 
@@ -1137,18 +1235,43 @@ export const getStudentTasks = async (req, res) => {
       });
     }
 
-    // Get skill order (GLOBAL - same for all venues)
+    // Get student's venue and year through group membership
+    const [studentDetails] = await db.query(`
+      SELECT g.venue_id, s.year 
+      FROM students s 
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
+      WHERE s.student_id = ?
+      LIMIT 1
+    `, [student_id]);
+
+    const studentVenueId = studentDetails[0]?.venue_id || currentVenueId;
+    const studentYear = studentDetails[0]?.year || 2;
+
     let skillOrderQuery = `
-      SELECT 
+      SELECT DISTINCT
         so.id as skill_order_id,
         so.skill_name,
         so.display_order,
         so.is_prerequisite,
         so.course_type
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
-    const skillOrderParams = [];
+    const skillOrderParams = [studentVenueId, studentYear];
     
     if (course_type) {
       skillOrderQuery += ` AND so.course_type = ?`;
@@ -1253,27 +1376,38 @@ export const getStudentTasks = async (req, res) => {
       
       const courseTracker = courseProgress[skill.course_type];
       
-      // A skill is unlocked if:
-      // 1. It's already cleared by the student (regardless of prerequisites), OR
-      // 2. Previous skill in same course is cleared (normal progression)
-      // This allows students who cleared a skill directly to proceed
-      const isUnlockedByClearing = isCleared;
-      const isUnlockedByPrerequisite = !skill.is_prerequisite || courseTracker.previousCleared;
-      const isUnlocked = isUnlockedByClearing || isUnlockedByPrerequisite;
-      const isLocked = !isUnlocked;
+      // Only check prerequisites for 'frontend' course type
+      let isUnlocked;
+      let isLocked;
       
-      if (isUnlocked) {
-        unlockedSkills.add(normalizedSkillName); // Use normalized name for consistent matching
+      if (skill.course_type !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else if (!skill.is_prerequisite) {
+        // Frontend with no prerequisite - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else {
+        // Frontend with prerequisite - check sequential unlocking
+        const isUnlockedByClearing = isCleared;
+        const isUnlockedBySequence = courseTracker.previousCleared;
+        isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
+        isLocked = !isUnlocked;
       }
       
-      // If this skill is cleared, mark the next skill as unlockable
-      // This ensures that clearing any skill unlocks the next one
-      if (isCleared) {
-        courseTracker.previousCleared = true;
-      } else {
-        // Only block next skills if this one is unlocked but not cleared yet
-        if (isUnlocked) {
-          courseTracker.previousCleared = false;
+      if (isUnlocked) {
+        unlockedSkills.add(normalizedSkillName);
+      }
+      
+      // Update tracker for next iteration (only for frontend courses with prerequisites)
+      if (skill.course_type === 'frontend' && skill.is_prerequisite) {
+        if (isCleared) {
+          courseTracker.previousCleared = true;
+        } else {
+          if (isUnlocked) {
+            courseTracker.previousCleared = false;
+          }
         }
       }
       
@@ -1288,13 +1422,12 @@ export const getStudentTasks = async (req, res) => {
         skill_name: skill.skill_name,
         course_type: skill.course_type,
         display_order: skill.display_order,
+        is_prerequisite: skill.is_prerequisite,
         status: isCleared ? 'Cleared' : (isLocked ? 'Locked' : 'Available'),
         is_cleared: isCleared,
         is_locked: isLocked,
         is_current: isCurrent
       });
-
-      // previousCleared tracking is done above in the if-else block
     }
 
     // console.log('\n--- Skill Progression Summary ---');
@@ -1304,10 +1437,9 @@ export const getStudentTasks = async (req, res) => {
     // console.log('Unlocked skills set:', Array.from(unlockedSkills));
     // console.log('======================================================\n');
 
-    // Get all tasks from ALL venues the student has been in (match by task title for cross-venue)
-    // Priority: Current venue tasks first, then historical submissions from other venues
+    // Get tasks from CURRENT venue only (new venues start with no tasks)
     let tasksQuery = `
-      SELECT 
+      SELECT DISTINCT
         t.task_id,
         t.title,
         t.description,
@@ -1333,27 +1465,16 @@ export const getStudentTasks = async (req, res) => {
         ts.is_late,
         ts.status as submission_status,
         ts.extended_due_date,
-        ts.extension_days,
-        CASE WHEN t.venue_id = ? THEN 1 ELSE 0 END as is_current_venue
+        ts.extension_days
       FROM tasks t
       INNER JOIN venue v ON t.venue_id = v.venue_id
       INNER JOIN faculties f ON t.faculty_id = f.faculty_id
       LEFT JOIN users u ON f.user_id = u.user_id
-      LEFT JOIN (
-        -- Get submissions from current venue OR matching title tasks from other venues
-        SELECT ts1.*
-        FROM task_submissions ts1
-        INNER JOIN tasks t1 ON ts1.task_id = t1.task_id
-        WHERE ts1.student_id = ?
-      ) ts ON t.task_id = ts.task_id OR (
-        ts.task_id IN (
-          SELECT t2.task_id FROM tasks t2 
-          WHERE t2.title = t.title AND ts.task_id = t2.task_id
-        )
-      )
-      WHERE t.venue_id = ? AND t.status = 'Active'
+      LEFT JOIN task_submissions ts ON t.task_id = ts.task_id AND ts.student_id = ?
+      WHERE t.venue_id = ?
+      AND t.status = 'Active'
     `;
-    const tasksParams = [currentVenueId || 0, student_id, currentVenueId || allVenueIds[0]];
+    const tasksParams = [student_id, currentVenueId || 0];
 
     // Only filter by course_type if it's specified AND not 'all'
     if (course_type && course_type !== 'all') {
@@ -1363,65 +1484,14 @@ export const getStudentTasks = async (req, res) => {
 
     tasksQuery += ` ORDER BY t.day ASC, t.created_at ASC`;
 
-    const [currentVenueTasks] = await db.query(tasksQuery, tasksParams);
-
-    // Also get historical submissions from other venues (for tasks with same title)
-    const [historicalSubmissions] = await db.query(`
-      SELECT 
-        t.title,
-        t.skill_filter,
-        t.course_type,
-        ts.submission_id,
-        ts.status as submission_status,
-        ts.grade,
-        ts.feedback,
-        ts.submitted_at,
-        v.venue_name as submitted_venue
-      FROM task_submissions ts
-      INNER JOIN tasks t ON ts.task_id = t.task_id
-      INNER JOIN venue v ON t.venue_id = v.venue_id
-      WHERE ts.student_id = ? AND t.venue_id != ?
-    `, [student_id, currentVenueId || 0]);
-
-    // Create a map of historical submissions by title
-    const historicalByTitle = {};
-    historicalSubmissions.forEach(sub => {
-      const key = sub.title.toLowerCase().trim();
-      if (!historicalByTitle[key] || sub.submitted_at > historicalByTitle[key].submitted_at) {
-        historicalByTitle[key] = sub;
-      }
-    });
-
-    // Merge historical submissions into current venue tasks
-    const tasks = currentVenueTasks.map(task => {
-      const titleKey = task.title.toLowerCase().trim();
-      const historical = historicalByTitle[titleKey];
-      
-      // If task has no submission but there's a historical one, use it
-      if (!task.submission_id && historical) {
-        return {
-          ...task,
-          submission_id: historical.submission_id,
-          submission_status: historical.submission_status,
-          grade: historical.grade,
-          feedback: historical.feedback,
-          submitted_at: historical.submitted_at,
-          from_previous_venue: historical.submitted_venue
-        };
-      }
-      return task;
-    });
-
-    // console.log(`Found ${tasks.length} tasks for venue_id ${currentVenueId} (including historical submissions)`);
-    // console.log('Ordered skills from skill_order table:', orderedSkills.map(s => s.skill_name));
-    // console.log('Unlocked skills for student:', Array.from(unlockedSkills));
+    const [tasks] = await db.query(tasksQuery, tasksParams);
 
     // Filter tasks based on skill_filter, skill_order, and completion status
+    // LOGIC: Show tasks for skills student has NOT completed yet
     // HIDE tasks for skills student has already CLEARED
     const filteredTasks = tasks.filter(task => {
       // ALWAYS show tasks that need revision (grade < 50%)
       if (task.submission_status === 'Needs Revision') {
-        // console.log(`Task "${task.title}" needs revision - showing to student`);
         return true;
       }
       
@@ -1432,61 +1502,47 @@ export const getStudentTasks = async (req, res) => {
       if (!effectiveSkillFilter) {
         // Hide tasks that are already graded successfully (grade >= 50%)
         if (task.submission_status === 'Graded' && task.grade >= 50) {
-          // console.log(`Task "${task.title}" - No skill filter, already graded successfully - hiding`);
           return false;
         }
-        // console.log(`Task "${task.title}" - No skill filter - showing`);
         return true;
       }
       
       // Use the same normalization function for consistent matching
       const normalizedSkillFilter = normalizeSkillName(effectiveSkillFilter);
       
-      // Use keyword matching to check if student has cleared this skill
+      // Check if student has CLEARED this skill
       const hasCleared = Array.from(clearedSkillsMap.keys()).some(clearedSkillName => {
-        const match = skillMatches(effectiveSkillFilter, clearedSkillName);
-        if (match) {
-          // console.log(`  Task skill "${effectiveSkillFilter}" matched cleared skill "${clearedSkillName}"`);
-        }
-        return match;
+        return skillMatches(effectiveSkillFilter, clearedSkillName);
       });
       
-      // console.log(`Task "${task.title}" - skill_filter: "${effectiveSkillFilter}", hasCleared: ${hasCleared}`);
-      
-      // HIDE task if student has CLEARED this skill (they don't need it anymore)
+      // HIDE task if student has CLEARED this skill
+      // (If skill is cleared, student doesn't need the practice task)
       if (hasCleared) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" CLEARED - hiding from student`);
         return false;
       }
       
-      // If no skill order is defined, show all tasks (don't check unlock status)
+      // If no skill order is defined, show all non-cleared tasks
       if (orderedSkills.length === 0) {
-        // console.log(`Task "${task.title}" - No skill order defined - showing`);
         return true;
       }
       
-      // Check if this skill exists in the skill_order table (using normalized names)
+      // Check if this skill exists in the skill_order table
       const skillExistsInOrder = orderedSkills.some(s => 
         normalizeSkillName(s.skill_name) === normalizedSkillFilter
       );
       
-      // If skill is not in skill_order table, show the task anyway (don't block on unknown skills)
+      // If skill is not in skill_order table, show the task (don't block on unknown skills)
       if (!skillExistsInOrder) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" not in skill_order table - showing`);
         return true;
       }
       
-      // Check if the skill is unlocked for this student (based on skill order progression)
-      // Use normalized skill name for matching
+      // Check if the skill is unlocked for this student
       const isSkillUnlocked = unlockedSkills.has(normalizedSkillFilter);
       
       // If skill is locked, don't show the task
       if (!isSkillUnlocked) {
-        // console.log(`Task "${task.title}" - Skill "${effectiveSkillFilter}" is LOCKED - hiding from student`);
         return false;
       }
-      
-      // console.log(`Task "${task.title}" - Skill Filter: ${effectiveSkillFilter}, Unlocked: ${isSkillUnlocked}, Cleared: ${hasCleared} - SHOWING`);
       
       // Show task - skill is unlocked and not yet cleared
       return true;
@@ -1648,12 +1704,22 @@ export const submitTask = async (req, res) => {
 
     // Check if already submitted
     const [existing] = await db.query(`
-      SELECT submission_id, file_path FROM task_submissions 
+      SELECT submission_id, file_path, extended_due_date, status FROM task_submissions 
       WHERE task_id = ? AND student_id = ?
     `, [task_id, student_id]);
 
     const due_date = task[0].due_date;
-    const is_late = due_date && new Date() > new Date(due_date);
+    
+    // Check effective due date (extended_due_date takes priority)
+    const effectiveDueDate = (existing.length > 0 && existing[0].extended_due_date) 
+      ? existing[0].extended_due_date 
+      : due_date;
+    
+    const currentDate = new Date();
+    const dueDateTime = effectiveDueDate ? new Date(effectiveDueDate) : null;
+    
+    // Students can submit even after due date - just mark as late
+    const is_late = dueDateTime && currentDate > dueDateTime;
 
     // Support both file and link submission at the same time
     const hasFile = file && file.originalname;
@@ -1746,10 +1812,21 @@ export const submitTask = async (req, res) => {
         message: 'Assignment resubmitted successfully!'
       });
     } else {
+      // Get student's current venue
+      const [studentVenue] = await db.query(`
+        SELECT g.venue_id 
+        FROM students s
+        INNER JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+        INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+        WHERE s.student_id = ?
+      `, [student_id]);
+      
+      const current_venue_id = studentVenue.length > 0 ? studentVenue[0].venue_id : null;
+      
       // Create new submission - support both file and link
-      const columns = ['task_id', 'student_id', 'is_late', 'submitted_at', 'status'];
-      const values = [task_id, student_id, is_late];
-      const placeholders = ['?', '?', '?', 'NOW()', "'Pending Review'"];
+      const columns = ['task_id', 'student_id', 'is_late', 'submitted_at', 'status', 'current_venue_id'];
+      const values = [task_id, student_id, is_late, current_venue_id];
+      const placeholders = ['?', '?', '?', 'NOW()', "'Pending Review'", '?'];
 
       if (hasFile) {
         columns.push('file_name', 'file_path');
@@ -2082,8 +2159,6 @@ export const deleteTask = async (req, res) => {
     const { task_id } = req.params;
     const userId = req.user.user_id;
 
-    console.log('Delete task request:', { task_id, userId });
-
     // Get user role and details
     const [user] = await connection.query(`
       SELECT u.role_id, u.email, f.faculty_id 
@@ -2093,7 +2168,6 @@ export const deleteTask = async (req, res) => {
     `, [userId]);
 
     if (user.length === 0) {
-      console.log('User not found:', userId);
       return res.status(403).json({
         success: false,
         message: 'User not found'
@@ -2102,7 +2176,6 @@ export const deleteTask = async (req, res) => {
 
     const userRole = user[0].role_id;
     const facultyId = user[0].faculty_id;
-    console.log('User details:', { userRole, facultyId, email: user[0].email });
 
     // Start transaction
     await connection.beginTransaction();
@@ -2115,7 +2188,6 @@ export const deleteTask = async (req, res) => {
 
     if (taskDetails.length === 0) {
       await connection.rollback();
-      console.log('Task not found:', task_id);
       return res.status(404).json({
         success: false,
         message: 'Task not found'
@@ -2123,19 +2195,12 @@ export const deleteTask = async (req, res) => {
     }
 
     const task = taskDetails[0];
-    console.log('Task details:', { 
-      task_id: task.task_id, 
-      venue_id: task.venue_id, 
-      assigned_faculty_id: task.assigned_faculty_id,
-      venue_name: task.venue_name
-    });
 
     // Admin (role_id = 1) can delete any task
     // Faculty (role_id = 2) can only delete tasks from their assigned venue
     if (userRole === 2) {
       if (!facultyId) {
         await connection.rollback();
-        console.log('Faculty ID not found for user:', userId);
         return res.status(403).json({
           success: false,
           message: 'Faculty information not found'
@@ -2144,10 +2209,6 @@ export const deleteTask = async (req, res) => {
 
       if (task.assigned_faculty_id !== facultyId) {
         await connection.rollback();
-        console.log('Permission denied - faculty not assigned to venue:', {
-          facultyId,
-          assignedFacultyId: task.assigned_faculty_id
-        });
         return res.status(403).json({
           success: false,
           message: `You can only delete tasks from your assigned venue. This task is in ${task.venue_name}.`
@@ -2156,7 +2217,6 @@ export const deleteTask = async (req, res) => {
     } else if (userRole !== 1) {
       // Not admin or faculty
       await connection.rollback();
-      console.log('Invalid role for delete operation:', userRole);
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to delete tasks'
@@ -2175,14 +2235,12 @@ export const deleteTask = async (req, res) => {
     let deleteResult;
     if (columns.length > 0) {
       // Soft delete - mark as deleted
-      console.log('Using soft delete');
       [deleteResult] = await connection.execute(
         'UPDATE tasks SET deleted = 1, deleted_at = NOW() WHERE task_id = ? AND (deleted IS NULL OR deleted = 0)',
         [task_id]
       );
     } else {
       // Hard delete - remove from database
-      console.log('Using hard delete');
       // First delete submissions
       await connection.execute(
         'DELETE FROM task_submissions WHERE task_id = ?',
@@ -2198,7 +2256,6 @@ export const deleteTask = async (req, res) => {
 
     if (deleteResult.affectedRows === 0) {
       await connection.rollback();
-      console.log('No rows affected during delete:', task_id);
       return res.status(404).json({
         success: false,
         message: 'Task not found or already deleted'
@@ -2207,7 +2264,6 @@ export const deleteTask = async (req, res) => {
 
     // Commit the transaction
     await connection.commit();
-    console.log('Task deleted successfully:', task_id);
 
     res.json({
       success: true,

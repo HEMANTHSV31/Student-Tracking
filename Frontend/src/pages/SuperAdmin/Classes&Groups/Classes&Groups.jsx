@@ -16,6 +16,8 @@ import {
   GetApp,
   CheckCircle,
   Error as ErrorIcon,
+  ToggleOn,
+  ToggleOff,
 } from "@mui/icons-material";
 import useAuthStore from "../../../store/useAuthStore";
 import { encodeIdSimple } from "../../../utils/idEncoder";
@@ -303,7 +305,7 @@ const GroupsClasses = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this venue?  All students will be removed."))
+    if (!window.confirm("Permanently delete this venue? It will be hidden from all lists but data will be preserved."))
       return;
 
     setLoading(true);
@@ -321,7 +323,40 @@ const GroupsClasses = () => {
       showResult(
         "error",
         "Deletion Failed",
-        "Failed to delete venue.  Please try again."
+        "Failed to delete venue. Please try again."
+      );
+    } finally {
+      setLoading(false);
+      setActiveMenu(null);
+    }
+  };
+
+  const handleToggleStatus = async (venue) => {
+    const newStatus = venue.status === 'Active' ? 'Inactive' : 'Active';
+    const action = newStatus === 'Inactive' ? 'deactivate' : 'activate';
+    
+    if (!window.confirm(`Are you sure you want to ${action} this venue? ${newStatus === 'Inactive' ? 'It will still be visible but marked as inactive.' : 'It will be marked as active.'}`))
+      return;
+
+    setLoading(true);
+    try {
+      const response = await apiPut(
+        `/groups/venues/${venue.venue_id}`,
+        { ...venue, status: newStatus }
+      );
+      const data = await response.json();
+      if (data.success) {
+        await fetchVenues();
+        showResult("success", "Status Updated", `Venue ${action}d successfully!`);
+      } else {
+        showResult("error", "Update Failed", data.message);
+      }
+    } catch (err) {
+      console.error("Error updating venue status:", err);
+      showResult(
+        "error",
+        "Update Failed",
+        "Failed to update venue status. Please try again."
       );
     } finally {
       setLoading(false);
@@ -1044,6 +1079,32 @@ const GroupsClasses = () => {
               >
                 <Groups sx={{ fontSize: 16 }} />
                 <span>View Students</span>
+              </button>
+              <button
+                style={menuVenue.status === 'Active' ? s.menuItemWarning : s.menuItemSuccess}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleStatus(menuVenue);
+                  closeMenu();
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.backgroundColor = menuVenue.status === 'Active' ? "#fef3c7" : "#d1fae5")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.backgroundColor = "transparent")
+                }
+              >
+                {menuVenue.status === 'Active' ? (
+                  <>
+                    <ToggleOff sx={{ fontSize: 16, color: "#f59e0b" }} />
+                    <span style={{ color: "#f59e0b" }}>Set Inactive</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleOn sx={{ fontSize: 16, color: "#10b981" }} />
+                    <span style={{ color: "#10b981" }}>Set Active</span>
+                  </>
+                )}
               </button>
               <button
                 style={s.menuItemDelete}
@@ -2232,6 +2293,36 @@ const s = {
     color: "#334155",
     textAlign: "left",
     transition: "background-color 0.15s",
+  },
+  menuItemWarning: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "10px 16px",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#f59e0b",
+    textAlign: "left",
+    transition: "background-color 0.15s",
+    borderTop: "1px solid #f1f5f9",
+  },
+  menuItemSuccess: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "10px 16px",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#10b981",
+    textAlign: "left",
+    transition: "background-color 0.15s",
+    borderTop: "1px solid #f1f5f9",
   },
   menuItemDelete: {
     display: "flex",

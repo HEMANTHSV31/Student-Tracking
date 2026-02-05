@@ -1,3 +1,4 @@
+
 // controllers/roadmap.controller.js
 import db from '../config/db.js';
 import multer from 'multer';
@@ -222,6 +223,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
   try {
     const user_id = req.user.user_id;
     const user_role = req.user.role;
+    const { course_type } = req.query; // Get course_type filter from query
 
     let query = `
       SELECT 
@@ -229,6 +231,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
         r.group_id,
         r.venue_id,
         v.venue_name,
+        v.year as venue_year,
         r.faculty_id,
         r.day,
         r.title,
@@ -245,12 +248,62 @@ export const getAllVenuesRoadmap = async (req, res) => {
       WHERE r.group_id IS NOT NULL
     `;
 
+    const params = [];
+    
+    // Filter by course_type if provided
+    if (course_type) {
+      query += ' AND r.course_type = ?';
+      params.push(course_type);
+    }
+
     // Group modules by group_id and course_type
-    const [modules] = await db.query(query + ' ORDER BY r.course_type, r.day, r.created_at DESC');
+    const [modules] = await db.query(query + ' ORDER BY r.course_type, r.day, r.created_at DESC', params);
+
+    // For each unique skill (title + course_type), check if there are skill order venue restrictions
+    const skillOrderRestrictions = new Map();
+    
+    // Get all skill orders that have venue restrictions
+    const [skillOrders] = await db.query(`
+      SELECT so.id, so.skill_name, so.course_type, so.apply_to_all_venues
+      FROM skill_order so
+      WHERE so.apply_to_all_venues = 0
+    `);
+
+    // Build map of course_type -> allowed venue_ids (union of all skills in that course_type)
+    const courseTypeRestrictions = new Map();
+    
+    for (const so of skillOrders) {
+      const [venueRestrictions] = await db.query(`
+        SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+      `, [so.id]);
+      
+      if (venueRestrictions.length > 0) {
+        const courseType = so.course_type;
+        if (!courseTypeRestrictions.has(courseType)) {
+          courseTypeRestrictions.set(courseType, new Set());
+        }
+        // Add all venues from this skill to the course_type set
+        venueRestrictions.forEach(v => {
+          courseTypeRestrictions.get(courseType).add(v.venue_id);
+        });
+      }
+    }
+
+    // Filter modules based on course_type skill order restrictions
+    const filteredModules = modules.filter(module => {
+      // If this course_type has venue restrictions, only show venues in that list
+      if (courseTypeRestrictions.has(module.course_type)) {
+        const allowedVenues = courseTypeRestrictions.get(module.course_type);
+        return allowedVenues.has(module.venue_id);
+      }
+      
+      // No restrictions for this course_type, show all
+      return true;
+    });
 
     // Group by group_id to show unique modules
     const groupedModules = {};
-    modules.forEach(module => {
+    filteredModules.forEach(module => {
       const key = `${module.group_id}_${module.course_type}`;
       if (!groupedModules[key]) {
         groupedModules[key] = {
@@ -264,6 +317,7 @@ export const getAllVenuesRoadmap = async (req, res) => {
       groupedModules[key].venues.push({
         venue_id: module.venue_id,
         venue_name: module.venue_name,
+        venue_year: module.venue_year,
         roadmap_id: module.roadmap_id
       });
     });
@@ -382,23 +436,15 @@ export const createRoadmapModule = async (req, res) => {
   const connection = await db.getConnection();
   
   try {
-    const { venue_id, venue_ids, day, title, description, status, course_type, learning_objectives, apply_to_all_venues } = req.body;
+    const { venue_id, day, title, description, status, course_type, learning_objectives, apply_to_all_venues } = req.body;
     const user_id = req.user.user_id; // Get user_id from JWT
 
-    // console.log('Creating module:', { venue_id, venue_ids, day, title, course_type, user_id, apply_to_all_venues });
+    // console.log('Creating module:', { venue_id, day, title, course_type, user_id, apply_to_all_venues });
 
-    if (!day || !title) {
+    if (!venue_id || !day || !title) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide day and title'
-      });
-    }
-
-    // Validate venue selection
-    if (!venue_id && !venue_ids && !apply_to_all_venues) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select at least one venue or enable apply_to_all_venues'
+        message: 'Please provide venue_id, day, and title'
       });
     }
 
@@ -466,34 +512,57 @@ export const createRoadmapModule = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // ALWAYS check if there's a skill order that restricts venues/years for this course_type
+    let skillOrderVenues = [];
+    let skillOrderRestricted = false;
+    
+    if (course_type && (apply_to_all_venues === 'true' || apply_to_all_venues === true)) {
+      // When "All Venues" is selected, check ALL skill orders for this course_type
+      // Get the intersection of allowed venues across all skills in this course_type
+      const [skillOrderCheck] = await connection.query(`
+        SELECT so.id, so.skill_name, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.course_type = ? AND so.apply_to_all_venues = 0
+      `, [course_type]);
+
+      if (skillOrderCheck.length > 0) {
+        // Collect all venues that are allowed for this course_type
+        const venueSet = new Set();
+        
+        for (const skillOrder of skillOrderCheck) {
+          const [venueRestrictions] = await connection.query(`
+            SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+          `, [skillOrder.id]);
+          
+          // Add all allowed venues to the set
+          venueRestrictions.forEach(v => venueSet.add(v.venue_id));
+        }
+        
+        if (venueSet.size > 0) {
+          skillOrderVenues = Array.from(venueSet);
+          skillOrderRestricted = true;
+        }
+      }
+    }
+
     // Determine venues to create roadmaps for
     let targetVenues = [];
     let group_id = null;
     
-    if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
-      // Get all active venues
+    if (skillOrderRestricted) {
+      // PRIORITY 1: If skill order has venue restrictions, ONLY use those venues
+      targetVenues = skillOrderVenues;
+      group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } else if (apply_to_all_venues === 'true' || apply_to_all_venues === true) {
+      // PRIORITY 2: User selected "all venues" and no skill order restrictions
       const [allVenues] = await connection.query(`
         SELECT venue_id FROM venue WHERE status = 'Active'
       `);
       targetVenues = allVenues.map(v => v.venue_id);
-      
-      // Generate unique group_id for this batch
       group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    } else if (venue_ids && Array.isArray(venue_ids) && venue_ids.length > 0) {
-      // Multiple selected venues
-      targetVenues = venue_ids.map(id => parseInt(id));
-      
-      // Generate unique group_id for this batch
-      group_id = `roadmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    } else if (venue_id) {
-      // Single venue (backward compatibility)
-      targetVenues = [parseInt(venue_id)];
     } else {
-      await connection.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'No valid venues specified'
-      });
+      // PRIORITY 3: Single venue selected
+      targetVenues = [parseInt(venue_id)];
     }
 
     const createdRoadmaps = [];
@@ -522,7 +591,7 @@ export const createRoadmapModule = async (req, res) => {
       `, [target_venue_id, day, course_type || 'frontend']);
 
       if (existing.length > 0) {
-        if (!apply_to_all_venues && (!venue_ids || venue_ids.length === 1)) {
+        if (!apply_to_all_venues) {
           // For single venue, return error
           await connection.rollback();
           return res.status(400).json({
@@ -530,7 +599,7 @@ export const createRoadmapModule = async (req, res) => {
             message: `Module ${day} already exists for this course in this venue`
           });
         } else {
-          // For multiple venues, skip this venue and continue
+          // For all venues, skip this venue and continue
           skippedVenues.push(target_venue_id);
           continue;
         }
@@ -557,7 +626,7 @@ export const createRoadmapModule = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: (apply_to_all_venues || (venue_ids && venue_ids.length > 1))
+      message: apply_to_all_venues 
         ? `Roadmap module created for ${createdRoadmaps.length} venue(s)${skippedVenues.length > 0 ? `, skipped ${skippedVenues.length} (already exists)` : ''}!`
         : 'Roadmap module created successfully!',
       data: { 
@@ -1084,7 +1153,16 @@ export const getStudentRoadmap = async (req, res) => {
       });
     }
 
-    // Get skill order (GLOBAL - same for all venues)
+    // Get skill order for this student's venue and year
+    const [studentDetails] = await db.query(`
+      SELECT s.year 
+      FROM students s 
+      WHERE s.student_id = ?
+      LIMIT 1
+    `, [student_id]);
+
+    const studentYear = studentDetails[0]?.year || 2;
+
     let skillOrderQuery = `
       SELECT 
         so.id as skill_order_id,
@@ -1094,9 +1172,22 @@ export const getStudentRoadmap = async (req, res) => {
         so.description as skill_description,
         so.course_type
       FROM skill_order so
-      WHERE 1=1
+      WHERE (
+        so.apply_to_all_venues = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_venues sov 
+          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+        )
+      )
+      AND (
+        so.apply_to_all_years = 1 
+        OR EXISTS (
+          SELECT 1 FROM skill_order_years soy 
+          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        )
+      )
     `;
-    const skillOrderParams = [];
+    const skillOrderParams = [venue_id, studentYear];
     
     if (course_type) {
       skillOrderQuery += ` AND so.course_type = ?`;
@@ -1107,7 +1198,7 @@ export const getStudentRoadmap = async (req, res) => {
     
     const [skillOrders] = await db.query(skillOrderQuery, skillOrderParams);
 
-    // Use skills directly (no venue preference needed anymore)
+    // Use skills filtered by venue and year
     const orderedSkills = skillOrders;
 
     // Get student's skill status
@@ -1196,17 +1287,25 @@ export const getStudentRoadmap = async (req, res) => {
       
       const courseTracker = courseProgress[skill.course_type];
       
-      // STRICT SEQUENTIAL UNLOCKING:
-      // A skill is unlocked ONLY if:
-      // 1. It's already cleared by the student (they can always access cleared content), OR
-      // 2. ALL previous skills in the same course are cleared
-      // This ensures strict sequential progression
-      const isUnlockedByClearing = isCleared;
-      const isUnlockedBySequence = courseTracker.previousCleared;
-      const isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
-      const isLocked = !isUnlocked;
+      // Only check prerequisites for 'frontend' course type
+      let isUnlocked;
+      let isLocked;
       
-      // console.log(`Skill "${skill.skill_name}": previousCleared=${courseTracker.previousCleared}, isCleared=${isCleared}, isUnlocked=${isUnlocked}, isLocked=${isLocked}`);
+      if (skill.course_type !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else if (!skill.is_prerequisite) {
+        // Frontend with no prerequisite - always unlocked
+        isUnlocked = true;
+        isLocked = false;
+      } else {
+        // Frontend with prerequisite - check sequential unlocking
+        const isUnlockedByClearing = isCleared;
+        const isUnlockedBySequence = courseTracker.previousCleared;
+        isUnlocked = isUnlockedByClearing || isUnlockedBySequence;
+        isLocked = !isUnlocked;
+      }
       
       // Track the first unlocked but not cleared skill as "current"
       const isCurrent = isUnlocked && !isCleared && !courseTracker.currentUnlocked;
@@ -1226,6 +1325,7 @@ export const getStudentRoadmap = async (req, res) => {
         course_type: skill.course_type,
         display_order: skill.display_order,
         description: skill.skill_description,
+        is_prerequisite: skill.is_prerequisite,
         status: isCleared ? 'Cleared' : (isLocked ? 'Locked' : (isOngoing ? 'In Progress' : 'Available')),
         is_cleared: isCleared,
         is_locked: isLocked,
@@ -1234,23 +1334,17 @@ export const getStudentRoadmap = async (req, res) => {
         matched_with: matchedSkill?.course_name || null
       });
 
-      // Update tracker for next iteration
-      // If this skill is cleared, mark the next skill as unlockable
-      if (isCleared) {
-        courseTracker.previousCleared = true;
-      } else {
-        // Only block next skills if this one is unlocked but not cleared yet
-        if (isUnlocked) {
-          courseTracker.previousCleared = false;
+      // Update tracker for next iteration (only for frontend courses with prerequisites)
+      if (skill.course_type === 'frontend' && skill.is_prerequisite) {
+        if (isCleared) {
+          courseTracker.previousCleared = true;
+        } else {
+          if (isUnlocked) {
+            courseTracker.previousCleared = false;
+          }
         }
       }
     }
-
-    // console.log('\n--- Skill Progression Summary ---');
-    skillProgression.forEach(s => {
-      // console.log(`${s.skill_name} (${s.course_type}): ${s.status} | Cleared: ${s.is_cleared} | Locked: ${s.is_locked} | Current: ${s.is_current}${s.matched_with ? ` | Matched: "${s.matched_with}"` : ''}`);
-    });
-    // console.log('======================================================\n');
 
     // Get all roadmap modules for the student's venue
     let modulesQuery = `
@@ -1320,6 +1414,10 @@ export const getStudentRoadmap = async (req, res) => {
       `, [module.roadmap_id]);
 
       module.resources = resources || [];
+      
+      // if (resources.length > 0) {
+      //   console.log(`Module "${module.title}" (ID: ${module.roadmap_id}) has ${resources.length} resources:`, resources.map(r => r.resource_name));
+      // }
 
       // Helper: Extract keywords for matching (remove common words)
       const extractKeywords = (name) => {
@@ -1385,23 +1483,39 @@ export const getStudentRoadmap = async (req, res) => {
       
       const moduleIndex = moduleIndexByCourse[courseType];
       
-      // Get all modules of this course type to check previous completion
-      const courseModules = modules.filter(m => m.course_type === courseType);
+      // Find the skill entry for this module
+      let skillEntry = null;
+      if (module.matched_skill) {
+        skillEntry = skillProgression.find(s => 
+          normalizeSkillName(s.skill_name) === normalizeSkillName(module.matched_skill) &&
+          s.course_type === module.course_type
+        );
+      }
       
-      if (moduleIndex === 0) {
+      // If no skill matched, try to match by module index with skill order
+      if (!skillEntry && moduleIndex < skillProgression.filter(s => s.course_type === courseType).length) {
+        const courseSkills = skillProgression.filter(s => s.course_type === courseType);
+        skillEntry = courseSkills[moduleIndex];
+      }
+
+      // Check if this module's skill has prerequisite requirement
+      const hasPrerequisite = skillEntry ? skillEntry.is_prerequisite : true; // Default to true for safety
+      
+      if (courseType !== 'frontend') {
+        // Non-frontend courses - always unlocked
+        module.is_locked = false;
+      } else if (moduleIndex === 0) {
         // First module is always unlocked
         module.is_locked = false;
+      } else if (!hasPrerequisite) {
+        // No prerequisite - always unlocked
+        module.is_locked = false;
       } else {
-        // Check if ALL previous modules are completed
+        // Has prerequisite - check if ALL previous modules are completed
+        const courseModules = modules.filter(m => m.course_type === courseType);
         const previousModules = courseModules.slice(0, moduleIndex);
         const allPreviousCompleted = previousModules.every(m => Boolean(m.is_completed));
         module.is_locked = !allPreviousCompleted;
-        
-        // Debug logging
-        if (!allPreviousCompleted) {
-          const incompleteModules = previousModules.filter(m => !m.is_completed).map(m => m.title);
-          // console.log(`Module "${module.title}" is LOCKED. Incomplete prerequisites: ${incompleteModules.join(', ')}`);
-        }
       }
 
       // Set current status
@@ -1427,8 +1541,6 @@ export const getStudentRoadmap = async (req, res) => {
 
       // Increment course index
       moduleIndexByCourse[courseType]++;
-
-      // console.log(`Module "${module.title}": completed=${module.is_completed}, locked=${module.is_locked}, current=${module.is_current}`);
     }
 
     res.status(200).json({
