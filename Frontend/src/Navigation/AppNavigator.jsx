@@ -46,6 +46,9 @@ import FacultyAttendance from "../pages/SuperAdmin/AttendancePage/Attendance";
 import FacultyTaskHeader from "../pages/Faculty/Task&Assignments/TaskHeader/TaskHeader";
 //Faculty -> Reports & Analytics
 import FacultyReports from "../pages/SuperAdmin/Reports&Analytics/Reporst&analytics";
+//Faculty -> Code Evaluation
+import SubmissionsList from "../pages/Faculty/CodeEvaluation/SubmissionList/SubmissionsList";
+import CodeEvaluation from "../pages/Faculty/CodeEvaluation/CodeReviewer/CodeEvaluation";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
@@ -123,6 +126,8 @@ const AppNavigator = () => {
             <Route path="group-insights" element={<FacultyGroupInsights />} />
             <Route path="tasks" element={<FacultyTaskHeader />} />
             <Route path="reports" element={<FacultyReports />} />
+            <Route path="submissions" element={<SubmissionsList />} />
+            <Route path="submissions/:submissionId" element={<CodeEvaluation />} />
           </Route>
         )}
 

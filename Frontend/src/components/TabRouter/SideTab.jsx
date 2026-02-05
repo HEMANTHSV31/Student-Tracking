@@ -20,6 +20,7 @@ import {
   X,
   FileSpreadsheet,
   BookOpen,
+  Code,
 } from "lucide-react";
 
 const SideTab = () => {
@@ -127,6 +128,12 @@ const SideTab = () => {
         icon: ClipboardCheck,
         section: "academic",
       },
+      {
+        id: "submissions",
+        label: "Code Evaluation",
+        icon: Code,
+        section: "academic",
+      },
       // { id: 'skill-reports', label: 'Course Progress', icon: FileSpreadsheet, section: 'academic' },
       {
         id: "group-insights",
@@ -170,6 +177,7 @@ const SideTab = () => {
   const menuItems = menuByRole[user?.role] || [];
 
   const tabContent = {
+    submissions: { title: "Code Evaluation" },
     dashboard: { title: "Dashboard" },
     faculty: { title: "Faculty & Accounts" },
     classes: { title: "My Classes / Groups" },
