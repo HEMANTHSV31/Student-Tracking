@@ -34,7 +34,7 @@ import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/Question
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
-import FacultyClassDetails from "../pages/Faculty/DashboardPanal/Dashboard";
+import FacultyClassDetails from "../pages/Faculty/Class&Group/ClassDetails/ClassDetails";
 //Faculty -> Students
 import FacultyStudentsPage from "../pages/Faculty/studentsPage/AllStudents/studentsPage";
 import FacultyStudentHeader from "../pages/Faculty/studentsPage/studentHeader/StudentHeader";
