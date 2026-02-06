@@ -419,9 +419,20 @@ export const getAllVenues = async (req, res) => {
     // console.log(`[GET ALL VENUES] user_id: ${req.user.user_id}, role: ${req.user.role}`);
     const { year, specification } = req.query; // Year and specification filter parameters
     
-    // Build year filter - only show venues with exact year match (not NULL)
-    const yearCondition = year ? `AND v.year = ${parseInt(year)}` : '';
-    const specificationCondition = specification ? `AND v.group_specification = ${db.escape(specification)}` : '';
+    // Build query parts and parameters
+    const params = [];
+    let yearCondition = '';
+    let specificationCondition = '';
+    
+    if (year) {
+      yearCondition = ' AND v.year = ?';
+      params.push(parseInt(year));
+    }
+    
+    if (specification) {
+      specificationCondition = ' AND v.group_specification = ?';
+      params.push(specification);
+    }
     
     // Admin sees all Active and Inactive venues, but NOT deleted venues (deleted_at IS NOT NULL)
     // Status='Active' or 'Inactive' = shown in frontend
@@ -447,12 +458,10 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        WHERE v.deleted_at IS NULL
-        ${yearCondition}
-        ${specificationCondition}
+        WHERE v.deleted_at IS NULL${yearCondition}${specificationCondition}
         GROUP BY v.venue_id
         ORDER BY v.status DESC, v.venue_name
-      `);
+      `, params);
       
       // console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
       return res.status(200).json({ success: true, data: venues });
@@ -474,6 +483,9 @@ export const getAllVenues = async (req, res) => {
     }
     
     const facultyId = faculty[0].faculty_id;
+    
+    // Add faculty_id to params for faculty query
+    const facultyParams = [...params, facultyId];
     
     const [venues] = await db.query(`
       SELECT 
@@ -497,18 +509,16 @@ export const getAllVenues = async (req, res) => {
       LEFT JOIN group_students gs ON g.group_id = gs.group_id
       WHERE v.status = 'Active'
         AND v.deleted_at IS NULL
-        AND v.assigned_faculty_id = ?
-        ${yearCondition}
-        ${specificationCondition}
+        AND v.assigned_faculty_id = ?${yearCondition}${specificationCondition}
       GROUP BY v.venue_id
       ORDER BY v.venue_name
-    `, [facultyId]);
+    `, facultyParams);
     
     // console.log(`[GET ALL VENUES] Faculty ${facultyId} - found ${venues.length} venue(s)`);
     res.status(200).json({ success: true, data: venues });
   } catch (error) {
     console.error('Error fetching venues:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch venues' });
+    res.status(500).json({ success: false, message: 'Failed to fetch venues', error: error.message });
   }
 };
 

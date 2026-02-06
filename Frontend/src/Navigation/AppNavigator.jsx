@@ -46,6 +46,9 @@ import FacultyAttendance from "../pages/SuperAdmin/AttendancePage/Attendance";
 import FacultyTaskHeader from "../pages/Faculty/Task&Assignments/TaskHeader/TaskHeader";
 //Faculty -> Reports & Analytics
 import FacultyReports from "../pages/SuperAdmin/Reports&Analytics/Reporst&analytics";
+//Faculty -> Code Evaluation
+import SubmissionsList from "../pages/Faculty/CodeEvaluation/SubmissionList/SubmissionsList";
+import CodeEvaluation from "../pages/Faculty/CodeEvaluation/CodeReviewer/CodeEvaluation";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
@@ -55,6 +58,7 @@ import TasksAssignments from "../pages/Student/Tasks&Assignments/Tasks&Assignmen
 import StudentRoadmap from "../pages/Student/RoadMap&Material/RoadMap&Material";
 import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
 import Performance from "../pages/Student/Performance/Performance";
+import CodePracticePage from "../pages/Student/CodePractice/CodePracticePage";
 
 const AppNavigator = () => {
   const user = useAuthStore((s) => s.user);
@@ -123,6 +127,8 @@ const AppNavigator = () => {
             <Route path="group-insights" element={<FacultyGroupInsights />} />
             <Route path="tasks" element={<FacultyTaskHeader />} />
             <Route path="reports" element={<FacultyReports />} />
+            <Route path="submissions" element={<SubmissionsList />} />
+            <Route path="submissions/:submissionId" element={<CodeEvaluation />} />
           </Route>
         )}
 
@@ -134,6 +140,9 @@ const AppNavigator = () => {
             <Route path="attendance" element={<StudentAttendance />} />
             <Route path="roadmap" element={<StudentRoadmap />} />
             <Route path="tasks" element={<TasksAssignments />} /> 
+            {/* P Skills Workspace - HTML+CSS and HTML+CSS+JS */}
+            <Route path="code-practice" element={<CodePracticePage />} />
+            <Route path="code-practice/:taskId" element={<CodePracticePage />} />
            <Route path="performance" element={<Performance />} /> 
           </Route>
         )}
