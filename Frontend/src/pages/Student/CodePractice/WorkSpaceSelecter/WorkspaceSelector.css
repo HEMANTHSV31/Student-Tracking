@@ -1,0 +1,217 @@
+/* Workspace Selector - Clean Theme */
+
+.ws-selector {
+  min-height: calc(100vh - 100px);
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Header */
+.ws-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.ws-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.ws-header p {
+  font-size: 0.95rem;
+  color: #64748b;
+}
+
+/* Cards Container */
+.ws-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  max-width: 800px;
+  width: 100%;
+  margin-bottom: 40px;
+}
+
+/* Card */
+.ws-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.ws-card:hover {
+  border-color: var(--card-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.ws-card.selected {
+  border-color: var(--card-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-color) 15%, transparent);
+}
+
+/* Badge */
+.ws-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+/* Icon */
+.ws-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+/* Title */
+.ws-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+/* Subtitle */
+.ws-subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Description */
+.ws-description {
+  font-size: 0.875rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 16px 0;
+}
+
+/* Features */
+.ws-features {
+  list-style: none;
+  margin: 0 0 20px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ws-features li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.ws-features li svg {
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+/* Button */
+.ws-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ws-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* Selected Mark */
+.ws-selected-mark {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 24px;
+  height: 24px;
+  background: #10b981;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+
+/* Info Bar */
+.ws-info {
+  display: flex;
+  gap: 24px;
+  padding: 16px 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.ws-info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.ws-info-item svg {
+  color: #6366f1;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .ws-cards {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+  }
+  
+  .ws-info {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .ws-selector {
+    padding: 24px 16px;
+  }
+  
+  .ws-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .ws-features {
+    grid-template-columns: 1fr;
+  }
+}

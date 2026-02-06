@@ -5,7 +5,7 @@ import {
   CheckCircle, AlertCircle, Loader, Home, RefreshCw
 } from 'lucide-react';
 import WebWorkspace from './WebWorkSpace/WebWorkspace';
-import WorkspaceSelector from './WorkspaceSelector';
+import WorkspaceSelector from './WorkSpaceSelecter/WorkspaceSelector';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet, apiPost } from '../../../utils/api';
 import './CodePracticePage.css';
