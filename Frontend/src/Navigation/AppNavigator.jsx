@@ -58,6 +58,7 @@ import TasksAssignments from "../pages/Student/Tasks&Assignments/Tasks&Assignmen
 import StudentRoadmap from "../pages/Student/RoadMap&Material/RoadMap&Material";
 import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
 import Performance from "../pages/Student/Performance/Performance";
+import CodePracticePage from "../pages/Student/CodePractice/CodePracticePage";
 
 const AppNavigator = () => {
   const user = useAuthStore((s) => s.user);
@@ -139,6 +140,9 @@ const AppNavigator = () => {
             <Route path="attendance" element={<StudentAttendance />} />
             <Route path="roadmap" element={<StudentRoadmap />} />
             <Route path="tasks" element={<TasksAssignments />} /> 
+            {/* P Skills Workspace - HTML+CSS and HTML+CSS+JS */}
+            <Route path="code-practice" element={<CodePracticePage />} />
+            <Route path="code-practice/:taskId" element={<CodePracticePage />} />
            <Route path="performance" element={<Performance />} /> 
           </Route>
         )}

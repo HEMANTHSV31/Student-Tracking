@@ -21,6 +21,7 @@ import {
   FileSpreadsheet,
   BookOpen,
   Code,
+  Braces,
 } from "lucide-react";
 
 const SideTab = () => {
@@ -28,7 +29,7 @@ const SideTab = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
-  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance"].some((seg) =>
+  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice"].some((seg) =>
     location.pathname.includes(seg),
   );
 
@@ -165,6 +166,12 @@ const SideTab = () => {
         section: "academic",
       },
       {
+        id: "code-practice",
+        label: "P Skills Practice",
+        icon: Braces,
+        section: "academic",
+      },
+      {
         id: "attendance",
         label: "Attendance",
         icon: CalendarCheck,
@@ -188,6 +195,7 @@ const SideTab = () => {
     "group-insights": { title: "Group Insights" },
     reports: { title: "Reports" },
     roadmap: { title: "Roadmap & Material" },
+    "code-practice": { title: "P Skills Practice" },
     settings: { title: "Settings" },
     courses: { title: "Question Bank" },
   };

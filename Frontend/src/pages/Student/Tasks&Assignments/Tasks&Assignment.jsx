@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Clock,
@@ -24,6 +25,7 @@ import {
 import useAuthStore from "../../../store/useAuthStore";
 
 const TasksAssignments = () => {
+  const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL;
   const { user } = useAuthStore();
   const [activeFilter, setActiveFilter] = useState("all");
@@ -1030,6 +1032,18 @@ const TasksAssignments = () => {
                   {/* Description */}
                   <div className="description-section">
                     <p className="description-text">{selectedTask.description}</p>
+                    
+                    {/* Practice Code Button for Frontend/Backend tasks */}
+                    {(selectedTask.subject === 'frontend' || selectedTask.subject === 'backend' || selectedTask.subject === 'react-native') && (
+                      <button
+                        onClick={() => navigate(`/code-practice/${selectedTask.id}`)}
+                        className="mt-4 flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm hover:shadow-md"
+                      >
+                        <Code size={18} />
+                        Practice Code
+                        <ChevronRight size={16} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Resources */}

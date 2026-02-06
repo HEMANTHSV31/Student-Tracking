@@ -836,9 +836,13 @@ export const getTaskSubmissions = async (req, res) => {
       searchParams.push(`%${decodedSearch}%`, `%${decodedSearch}%`);
     }
 
+    // Build cleared condition with proper parameterization
     let clearedCondition = '';
+    let clearedParams = [];
     if (clearedStudentIds.size > 0) {
-      clearedCondition = `AND s.student_id NOT IN (${[...clearedStudentIds].join(',')})`;
+      const placeholders = Array(clearedStudentIds.size).fill('?').join(',');
+      clearedCondition = `AND s.student_id NOT IN (${placeholders})`;
+      clearedParams = [...clearedStudentIds];
     }
 
     // Get submissions from students CURRENTLY in this venue
@@ -854,7 +858,7 @@ export const getTaskSubmissions = async (req, res) => {
       WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
     `;
 
-    const countParams = [task_id, venue_id, ...statusParams, ...searchParams];
+    const countParams = [task_id, venue_id, ...clearedParams, ...statusParams, ...searchParams];
     const [countResult] = await db.query(countQuery, countParams);
     const total = countResult[0].total;
 
@@ -887,7 +891,7 @@ export const getTaskSubmissions = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const mainParams = [task_id, venue_id, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
+    const mainParams = [task_id, venue_id, ...clearedParams, ...statusParams, ...searchParams, parseInt(limit), parseInt(offset)];
     
     const [submissions] = await db.query(mainQuery, mainParams);
 
@@ -1248,42 +1252,47 @@ export const getStudentTasks = async (req, res) => {
     const studentVenueId = studentDetails[0]?.venue_id || currentVenueId;
     const studentYear = studentDetails[0]?.year || 2;
 
-    let skillOrderQuery = `
-      SELECT DISTINCT
-        so.id as skill_order_id,
-        so.skill_name,
-        so.display_order,
-        so.is_prerequisite,
-        so.course_type
-      FROM skill_order so
-      WHERE (
-        so.apply_to_all_venues = 1 
-        OR EXISTS (
-          SELECT 1 FROM skill_order_venues sov 
-          WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+    // Try to get skill orders, but handle error gracefully if tables don't exist
+    let orderedSkills = [];
+    try {
+      let skillOrderQuery = `
+        SELECT DISTINCT
+          so.id as skill_order_id,
+          so.skill_name,
+          so.display_order,
+          so.is_prerequisite,
+          so.course_type
+        FROM skill_order so
+        WHERE (
+          so.apply_to_all_venues = 1 
+          OR EXISTS (
+            SELECT 1 FROM skill_order_venues sov 
+            WHERE sov.skill_order_id = so.id AND sov.venue_id = ?
+          )
         )
-      )
-      AND (
-        so.apply_to_all_years = 1 
-        OR EXISTS (
-          SELECT 1 FROM skill_order_years soy 
-          WHERE soy.skill_order_id = so.id AND soy.year = ?
+        AND (
+          so.apply_to_all_years = 1 
+          OR EXISTS (
+            SELECT 1 FROM skill_order_years soy 
+            WHERE soy.skill_order_id = so.id AND soy.year = ?
+          )
         )
-      )
-    `;
-    const skillOrderParams = [studentVenueId, studentYear];
-    
-    if (course_type) {
-      skillOrderQuery += ` AND so.course_type = ?`;
-      skillOrderParams.push(course_type);
+      `;
+      const skillOrderParams = [studentVenueId, studentYear];
+      
+      if (course_type) {
+        skillOrderQuery += ` AND so.course_type = ?`;
+        skillOrderParams.push(course_type);
+      }
+      
+      skillOrderQuery += ` ORDER BY so.course_type, so.display_order ASC`;
+      
+      const [skillOrders] = await db.query(skillOrderQuery, skillOrderParams);
+      orderedSkills = skillOrders;
+    } catch (skillError) {
+      console.warn('Skill order tables may not exist, continuing without skill ordering:', skillError.message);
+      orderedSkills = [];
     }
-    
-    skillOrderQuery += ` ORDER BY so.course_type, so.display_order ASC`;
-    
-    const [skillOrders] = await db.query(skillOrderQuery, skillOrderParams);
-
-    // Use skills directly (no venue preference needed anymore)
-    const orderedSkills = skillOrders;
 
     // Get student's cleared skills to filter tasks
     const [studentSkills] = await db.query(`
