@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Star, ChevronLeft, ChevronRight, Loader } from 'lucide-react';
+import { apiGet } from '../../../utils/api';
 
 // Helper function to get initials from name
 const getInitials = (name) => {
@@ -29,114 +30,90 @@ const paginate = (items, page, itemsPerPage) => {
 const Performance = () => {
   const [selectedWorkshop, setSelectedWorkshop] = useState('overall');
   const [currentPage, setCurrentPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [leaderboardData, setLeaderboardData] = useState([]);
+  const [workshopsData, setWorkshopsData] = useState([]);
+  const [currentUserData, setCurrentUserData] = useState(null);
   const itemsPerPage = 4;
 
-  // JSON data for leaderboards
-  const leaderboardsData = {
-    overall: {
-      title: "Global Leaderboard",
-      students: [
-        { rank: 1, name: "Sarah Jenkins", points: 1250, image: null },
-        { rank: 2, name: "Michael Chen", points: 1180, image: null },
-        { rank: 3, name: "Jessica Wong", points: 1150, image: null },
-        { rank: 4, name: "David Kim", points: 1040, initials: "DK", image: null },
-        { rank: 5, name: "Rahul Jones", points: 980, initials: "RJ", image: null },
-        { rank: 12, name: "Emma Watson (You)", points: 850, isCurrentUser: true, image: null },
-        { rank: 13, name: "Alex Morgan", points: 820, image: null }
-      ]
-    },
-    advancedReact: {
-      title: "Advanced React Leaderboard",
-      students: [
-        { rank: 1, name: "Jessica Wong", points: 485, image: null },
-        { rank: 2, name: "David Kim", points: 420, initials: "DK", image: null },
-        { rank: 3, name: "Sarah Jenkins", points: 395, image: null },
-        { rank: 8, name: "Emma Watson (You)", points: 95, isCurrentUser: true, image: null },
-        { rank: 9, name: "Michael Chen", points: 85, image: null },
-        { rank: 10, name: "Alex Morgan", points: 75, image: null }
-      ]
-    },
-    htmlCss: {
-      title: "HTML & CSS Basics Leaderboard",
-      students: [
-        { rank: 1, name: "Emma Watson (You)", points: 350, isCurrentUser: true, image: null },
-        { rank: 2, name: "Sarah Jenkins", points: 340, image: null },
-        { rank: 3, name: "Michael Chen", points: 325, image: null },
-        { rank: 4, name: "David Kim", points: 310, initials: "DK", image: null },
-        { rank: 5, name: "Jessica Wong", points: 295, image: null },
-        { rank: 6, name: "Rahul Jones", points: 280, initials: "RJ", image: null }
-      ]
-    },
-    uiUx: {
-      title: "UI/UX Sprint Leaderboard",
-      students: [
-        { rank: 1, name: "Michael Chen", points: 290, image: null },
-        { rank: 2, name: "Sarah Jenkins", points: 275, image: null },
-        { rank: 3, name: "Jessica Wong", points: 250, image: null },
-        { rank: 4, name: "David Kim", points: 235, initials: "DK", image: null },
-        { rank: 5, name: "Emma Watson (You)", points: 210, isCurrentUser: true, image: null },
-        { rank: 6, name: "Alex Morgan", points: 195, image: null }
-      ]
-    },
-    jsFundamentals: {
-      title: "JS Fundamentals Leaderboard",
-      students: [
-        { rank: 1, name: "Rahul Jones", points: 320, initials: "RJ", image: null },
-        { rank: 2, name: "Sarah Jenkins", points: 310, image: null },
-        { rank: 3, name: "David Kim", points: 285, initials: "DK", image: null },
-        { rank: 4, name: "Jessica Wong", points: 270, image: null },
-        { rank: 14, name: "Emma Watson (You)", points: 195, isCurrentUser: true, image: null },
-        { rank: 15, name: "Alex Morgan", points: 180, image: null }
-      ]
+  // Fetch leaderboard and standings on component mount
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Fetch data when workshop selection changes
+  useEffect(() => {
+    if (selectedWorkshop !== 'overall') {
+      fetchCourseLeaderboard(selectedWorkshop);
+    } else {
+      fetchOverallLeaderboard();
+    }
+  }, [selectedWorkshop]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchOverallLeaderboard(),
+        fetchStandings()
+      ]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const workshopData = [
-    { 
-      id: 'overall',
-      title: "Overall Leaderboard", 
-      status: "All Workshops Combined", 
-      rank: null, 
-      points: 850,
-      color: "#E8F4F8",
-      isOverall: true
-    },
-    { 
-      id: 'advancedReact',
-      title: "Advanced React", 
-      status: "In Progress (Day 3)", 
-      rank: 8, 
-      points: 95,
-      color: "#FFF4E6"
-    },
-    { 
-      id: 'htmlCss',
-      title: "HTML & CSS Basics", 
-      status: "Jan 10 - Jan 12", 
-      rank: 1, 
-      points: 350,
-      color: "#E8F4F8"
-    },
-    { 
-      id: 'uiUx',
-      title: "UI/UX Sprint", 
-      status: "Jan 05 - Jan 06", 
-      rank: 5, 
-      points: 210,
-      color: "#E8F4F8"
-    },
-    { 
-      id: 'jsFundamentals',
-      title: "JS Fundamentals", 
-      status: "Dec 15 - Dec 20", 
-      rank: 14, 
-      points: 195,
-      color: "#E8F4F8"
+  const fetchOverallLeaderboard = async () => {
+    try {
+      const response = await apiGet('/leaderboard/overall');
+      if (response.success) {
+        setLeaderboardData(response.data.leaderboard);
+        setCurrentUserData(response.data.current_user);
+      }
+    } catch (error) {
+      console.error('Error fetching overall leaderboard:', error);
+      setLeaderboardData([]);
     }
-  ];
+  };
 
-  const currentLeaderboard = leaderboardsData[selectedWorkshop];
-  const paginatedWorkshops = paginate(workshopData, currentPage, itemsPerPage);
+  const fetchCourseLeaderboard = async (courseId) => {
+    try {
+      setLoading(true);
+      const response = await apiGet(`/leaderboard/course/${courseId}`);
+      if (response.success) {
+        setLeaderboardData(response.data.leaderboard);
+        setCurrentUserData(response.data.current_user);
+      }
+    } catch (error) {
+      console.error('Error fetching course leaderboard:', error);
+      setLeaderboardData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStandings = async () => {
+    try {
+      const response = await apiGet('/leaderboard/my-standings');
+      if (response.success) {
+        // Add overall standing
+        const overallStanding = {
+          course_id: 'overall',
+          course_name: 'Overall Leaderboard',
+          status: 'All Courses Combined',
+          my_rank: currentUserData?.rank || 0,
+          my_points: currentUserData?.total_points || 0,
+          isOverall: true
+        };
+        
+        setWorkshopsData([overallStanding, ...response.data]);
+      }
+    } catch (error) {
+      console.error('Error fetching standings:', error);
+      setWorkshopsData([]);
+    }
+  };
 
   const handleWorkshopClick = (workshopId) => {
     setSelectedWorkshop(workshopId);
@@ -150,108 +127,139 @@ const Performance = () => {
     }
   };
 
+  // Calculate paginated workshops
+  const paginatedWorkshops = paginate(workshopsData, currentPage, itemsPerPage);
+
+  // Get leaderboard title
+  const leaderboardTitle = selectedWorkshop === 'overall' 
+    ? 'Overall Leaderboard' 
+    : workshopsData.find(w => w.course_id === selectedWorkshop)?.course_name || 'Leaderboard';
+
+  if (loading && leaderboardData.length === 0) {
+    return (
+      <div style={styles.loadingContainer}>
+        <Loader size={40} style={{ animation: 'spin 1s linear infinite' }} />
+        <p>Loading leaderboard...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
       {/* Leaderboard */}
       <div style={styles.leaderboardSection}>
         <div style={styles.header}>
-          <h2 style={styles.title}>{currentLeaderboard.title}</h2>
-          <p style={styles.subtitle}>Based on accumulated activity points across all workshops</p>
+          <h2 style={styles.title}>{leaderboardTitle}</h2>
+          <p style={styles.subtitle}>Based on accumulated points across all submissions</p>
         </div>
 
         <div style={styles.tableHeader}>
           <span style={styles.headerRank}>RANK</span>
           <span style={styles.headerName}>STUDENT NAME</span>
-          <span style={styles.headerPoints}>ACTIVITY POINTS</span>
+          <span style={styles.headerPoints}>TOTAL POINTS</span>
         </div>
 
         <div style={styles.leaderboardList}>
-          {currentLeaderboard.students.map((student) => (
-            <div 
-              key={student.rank} 
-              style={{
-                ...styles.leaderboardRow,
-                ...(student.isCurrentUser ? styles.currentUserRow : {})
-              }}
-            >
-              <div style={styles.rankCell}>
-                <span style={{
-                  ...styles.rankNumber,
-                  ...(student.rank <= 3 ? styles.topRank : {}),
-                  ...(student.isCurrentUser ? styles.currentUserText : {})
-                }}>
-                  {student.rank}
-                </span>
-              </div>
-              
-              <div style={styles.nameCell}>
-                <div 
-                  style={{
-                    ...styles.avatar,
-                    backgroundColor: getAvatarColor(student.name)
-                  }}
-                >
-                  {student.initials || getInitials(student.name)}
-                </div>
-                <span style={{
-                  ...styles.studentName,
-                  ...(student.isCurrentUser ? styles.currentUserText : {})
-                }}>
-                  {student.name}
-                </span>
-              </div>
-              
-              <div style={styles.pointsCell}>
-                <span style={{
-                  ...styles.points,
-                  ...(student.isCurrentUser ? styles.currentUserText : {})
-                }}>
-                  {student.points.toLocaleString()}
-                </span>
-              </div>
+          {leaderboardData.length === 0 ? (
+            <div style={styles.emptyState}>
+              <p>No leaderboard data available</p>
             </div>
-          ))}
+          ) : (
+            leaderboardData.map((student) => (
+              <div 
+                key={student.student_id} 
+                style={{
+                  ...styles.leaderboardRow,
+                  ...(student.is_current_user ? styles.currentUserRow : {})
+                }}
+              >
+                <div style={styles.rankCell}>
+                  <span style={{
+                    ...styles.rankNumber,
+                    ...(student.rank <= 3 ? styles.topRank : {}),
+                    ...(student.is_current_user ? styles.currentUserText : {})
+                  }}>
+                    {student.rank}
+                  </span>
+                </div>
+                
+                <div style={styles.nameCell}>
+                  <div 
+                    style={{
+                      ...styles.avatar,
+                      backgroundColor: getAvatarColor(student.student_name)
+                    }}
+                  >
+                    {getInitials(student.student_name)}
+                  </div>
+                  <span style={{
+                    ...styles.studentName,
+                    ...(student.is_current_user ? styles.currentUserText : {})
+                  }}>
+                    {student.student_name} {student.is_current_user ? '(You)' : ''}
+                  </span>
+                </div>
+                
+                <div style={styles.pointsCell}>
+                  <span style={{
+                    ...styles.points,
+                    ...(student.is_current_user ? styles.currentUserText : {})
+                  }}>
+                    {Math.round(student.total_points)}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
       {/* Workshop Standings */}
       <div style={styles.workshopSection}>
-        <h2 style={styles.workshopTitle}>Workshop Standings</h2>
+        <h2 style={styles.workshopTitle}>Course Standings</h2>
         
         <div style={styles.workshopList}>
-          {paginatedWorkshops.items.map((workshop) => (
-            <div 
-              key={workshop.id} 
-              style={{
-                ...styles.workshopCard,
-                backgroundColor: selectedWorkshop === workshop.id ? '#EBF4FF' : 'white',
-                cursor: 'pointer',
-                border: selectedWorkshop === workshop.id ? '2px solid #2B6EF6' : '2px solid #E5E7EB',
-                transition: 'all 0.2s ease'
-              }}
-              onClick={() => handleWorkshopClick(workshop.id)}
-            >
-              <div style={styles.workshopHeader}>
-                <div>
-                  <h3 style={styles.workshopName}>{workshop.title}</h3>
-                  <p style={styles.workshopStatus}>{workshop.status}</p>
+          {paginatedWorkshops.items.length === 0 ? (
+            <div style={styles.emptyState}>
+              <p>No course standings available</p>
+            </div>
+          ) : (
+            paginatedWorkshops.items.map((workshop) => (
+              <div 
+                key={workshop.course_id} 
+                style={{
+                  ...styles.workshopCard,
+                  backgroundColor: selectedWorkshop === workshop.course_id ? '#EBF4FF' : 'white',
+                  cursor: 'pointer',
+                  border: selectedWorkshop === workshop.course_id ? '2px solid #2B6EF6' : '2px solid #E5E7EB',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={() => handleWorkshopClick(workshop.course_id)}
+              >
+                <div style={styles.workshopHeader}>
+                  <div>
+                    <h3 style={styles.workshopName}>{workshop.course_name}</h3>
+                    <p style={styles.workshopStatus}>
+                      {workshop.status || (workshop.start_date ? `${new Date(workshop.start_date).toLocaleDateString()} - ${new Date(workshop.end_date).toLocaleDateString()}` : 'N/A')}
+                    </p>
+                  </div>
+                </div>
+                
+                <div style={styles.workshopFooter}>
+                  {workshop.my_rank !== undefined && !workshop.isOverall && (
+                    <span style={styles.rankBadge}>Rank #{workshop.my_rank}</span>
+                  )}
+                  {workshop.isOverall && (
+                    <span style={styles.rankBadge}>All Courses</span>
+                  )}
+                  <span style={styles.workshopPoints}>
+                    <Star size={14} fill="#2B6EF6" stroke="#2B6EF6" style={{marginRight: '4px', verticalAlign: 'middle'}} />
+                    {Math.round(workshop.my_points || 0)} Pts
+                  </span>
                 </div>
               </div>
-              
-              <div style={styles.workshopFooter}>
-                {workshop.rank && (
-                  <span style={styles.rankBadge}>Rank #{workshop.rank}</span>
-                )}
-                {!workshop.rank && (
-                  <span style={styles.rankBadge}>All Workshops</span>
-                )}
-                <span style={styles.workshopPoints}>
-                  <Star size={14} fill="#2B6EF6" stroke="#2B6EF6" style={{marginRight: '4px', verticalAlign: 'middle'}} />
-                  {workshop.points} Pts
-                </span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Pagination */}

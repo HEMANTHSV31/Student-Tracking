@@ -10,7 +10,7 @@ import {
   Assessment,
   Visibility,
 } from "@mui/icons-material";
-import { apiGet } from "../../../../utils/api";
+import { getPendingSubmissions, getGradedSubmissions } from "../../../../services/questionBankApi";
 import "./SubmissionsList.css";
 
 const SubmissionsList = () => {
@@ -20,79 +20,71 @@ const SubmissionsList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
-
-  // Dummy data for demonstration
-  const dummySubmissions = [
-    {
-      id: "sub-001",
-      studentName: "Alex Johnson",
-      studentId: "S12345",
-      taskTitle: "Portfolio Project v1.0",
-      submittedAt: "2023-10-24T14:22:00",
-      status: "pending",
-      autoTestScore: 5,
-      autoTestTotal: 5,
-      type: "code",
-      technology: "Web Foundations",
-      avatarBg: "#EFF6FF",
-      avatarColor: "#3B82F6",
-    },
-    {
-      id: "sub-002",
-      studentName: "Emma Williams",
-      studentId: "S12346",
-      taskTitle: "React Todo App",
-      submittedAt: "2023-10-24T13:15:00",
-      status: "graded",
-      finalScore: 92,
-      maxScore: 100,
-      type: "code",
-      technology: "React JS",
-      avatarBg: "#F3E8FF",
-      avatarColor: "#9333EA",
-    },
-    {
-      id: "sub-003",
-      studentName: "Michael Davis",
-      studentId: "S12388",
-      taskTitle: "E-commerce Layout",
-      submittedAt: "2023-10-23T12:30:00",
-      status: "pending",
-      autoTestScore: 4,
-      autoTestTotal: 5,
-      type: "code",
-      technology: "CSS Grid",
-      avatarBg: "#DBEAFE",
-      avatarColor: "#2563EB",
-    },
-    {
-      id: "sub-004",
-      studentName: "Sarah Parker",
-      studentId: "S12399",
-      taskTitle: "API Integration",
-      submittedAt: "2023-10-22T11:45:00",
-      status: "revision",
-      finalScore: 45,
-      maxScore: 100,
-      type: "code",
-      technology: "JavaScript",
-      avatarBg: "#FEE2E2",
-      avatarColor: "#DC2626",
-    },
-  ];
+  const [selectedVenue, setSelectedVenue] = useState('all');
 
   useEffect(() => {
     loadSubmissions();
-  }, []);
+  }, [selectedVenue]);
 
   const loadSubmissions = async () => {
     try {
       setLoading(true);
-      // In real app: const response = await apiGet('/faculty/submissions');
-      // For now, use dummy data
-      setSubmissions(dummySubmissions);
+      const venueId = selectedVenue === 'all' ? null : parseInt(selectedVenue);
+      
+      // Fetch both pending and graded submissions
+      const [pendingRes, gradedRes] = await Promise.all([
+        getPendingSubmissions(venueId),
+        getGradedSubmissions(venueId)
+      ]);
+      
+      const allSubmissions = [];
+      
+      // Transform pending submissions
+      if (pendingRes.success && pendingRes.data.submissions) {
+        const pending = pendingRes.data.submissions.map(sub => ({
+          id: sub.submission_id,
+          studentName: sub.student_name,
+          studentId: sub.roll_number || 'N/A',
+          taskTitle: sub.skill_name,
+          submittedAt: sub.submitted_at,
+          status: 'pending',
+          autoTestScore: 0,
+          autoTestTotal: 5,
+          type: 'code',
+          technology: sub.skill_name,
+          avatarBg: '#EFF6FF',
+          avatarColor: '#3B82F6',
+        }));
+        allSubmissions.push(...pending);
+      }
+      
+      // Transform graded submissions
+      if (gradedRes.success && gradedRes.data.submissions) {
+        const graded = gradedRes.data.submissions.map(sub => ({
+          id: sub.submission_id,
+          studentName: sub.student_name,
+          studentId: sub.roll_number || 'N/A',
+          taskTitle: sub.skill_name,
+          submittedAt: sub.submitted_at,
+          status: sub.score >= 50 ? 'graded' : 'revision',
+          finalScore: sub.score,
+          maxScore: 100,
+          type: 'code',
+          technology: sub.skill_name,
+          avatarBg: sub.score >= 50 ? '#F3E8FF' : '#FEE2E2',
+          avatarColor: sub.score >= 50 ? '#9333EA' : '#DC2626',
+        }));
+        allSubmissions.push(...graded);
+      }
+      
+      setSubmissions(allSubmissions);
     } catch (error) {
       console.error("Error loading submissions:", error);
+      // Only log error, don't show error state for empty data
+      // If there's a real connection error, it will be handled by the API layer
+      if (!error.message.includes('<!DOCTYPE')) {
+        setSubmissions([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -314,7 +306,7 @@ const SubmissionsList = () => {
               <div className="card-footer">
                 <button
                   className={`action-btn ${submission.status === 'pending' ? 'primary' : 'secondary'}`}
-                  onClick={() => navigate(`/submissions/${submission.id}`)}
+                  onClick={() => navigate(`/faculty/question-bank/grade/${submission.id}`)}
                 >
                   {getButtonContent(submission.status)}
                 </button>

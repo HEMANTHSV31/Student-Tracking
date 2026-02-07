@@ -6,7 +6,6 @@ import {
   KeyboardArrowDown,
   MoreVert,
   Edit,
-  Delete,
   Add,
   Groups,
   Upload,
@@ -65,6 +64,14 @@ const GroupsClasses = () => {
     type: "success",
     title: "",
     message: "",
+  });
+
+  // Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    title: "",
+    message: "",
+    onConfirm: null,
   });
 
   const itemsPerPage = 6;
@@ -304,64 +311,42 @@ const GroupsClasses = () => {
     setActiveMenu(null);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Permanently delete this venue? It will be hidden from all lists but data will be preserved."))
-      return;
-
-    setLoading(true);
-    try {
-      const response = await apiDelete(`/groups/venues/${id}`);
-      const data = await response.json();
-      if (data.success) {
-        await fetchVenues();
-        showResult("success", "Venue Deleted", data.message);
-      } else {
-        showResult("error", "Deletion Failed", data.message);
-      }
-    } catch (err) {
-      console.error("Error deleting venue:", err);
-      showResult(
-        "error",
-        "Deletion Failed",
-        "Failed to delete venue. Please try again."
-      );
-    } finally {
-      setLoading(false);
-      setActiveMenu(null);
-    }
-  };
-
   const handleToggleStatus = async (venue) => {
     const newStatus = venue.status === 'Active' ? 'Inactive' : 'Active';
     const action = newStatus === 'Inactive' ? 'deactivate' : 'activate';
     
-    if (!window.confirm(`Are you sure you want to ${action} this venue? ${newStatus === 'Inactive' ? 'It will still be visible but marked as inactive.' : 'It will be marked as active.'}`))
-      return;
-
-    setLoading(true);
-    try {
-      const response = await apiPut(
-        `/groups/venues/${venue.venue_id}`,
-        { ...venue, status: newStatus }
-      );
-      const data = await response.json();
-      if (data.success) {
-        await fetchVenues();
-        showResult("success", "Status Updated", `Venue ${action}d successfully!`);
-      } else {
-        showResult("error", "Update Failed", data.message);
+    setConfirmModal({
+      title: `${action.charAt(0).toUpperCase() + action.slice(1)} Venue`,
+      message: `Are you sure you want to ${action} "${venue.venue_name}"? ${newStatus === 'Inactive' ? 'It will still be visible but marked as inactive.' : 'It will be marked as active.'}`,
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        setLoading(true);
+        try {
+          const response = await apiPut(
+            `/groups/venues/${venue.venue_id}`,
+            { ...venue, status: newStatus }
+          );
+          const data = await response.json();
+          if (data.success) {
+            await fetchVenues();
+            showResult("success", "Status Updated", `Venue ${action}d successfully!`);
+          } else {
+            showResult("error", "Update Failed", data.message);
+          }
+        } catch (err) {
+          console.error("Error updating venue status:", err);
+          showResult(
+            "error",
+            "Update Failed",
+            "Failed to update venue status. Please try again."
+          );
+        } finally {
+          setLoading(false);
+          setActiveMenu(null);
+        }
       }
-    } catch (err) {
-      console.error("Error updating venue status:", err);
-      showResult(
-        "error",
-        "Update Failed",
-        "Failed to update venue status. Please try again."
-      );
-    } finally {
-      setLoading(false);
-      setActiveMenu(null);
-    }
+    });
+    setShowConfirmModal(true);
   };
 
   const handleUpdate = async () => {
@@ -607,9 +592,13 @@ const GroupsClasses = () => {
   };
 
   const handleRemoveStudent = async (studentId) => {
-    if (!window.confirm("Remove this student from venue?")) return;
-
-    setLoading(true);
+    const student = venueStudents.find(s => s.student_id === studentId);
+    setConfirmModal({
+      title: "Remove Student",
+      message: `Are you sure you want to remove "${student?.name || 'this student'}" from ${selectedVenue.venue_name}?`,
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        setLoading(true);
     try {
       const response = await apiDelete(
         `/groups/venues/${selectedVenue.venue_id}/students/${studentId}`
@@ -633,6 +622,9 @@ const GroupsClasses = () => {
     } finally {
       setLoading(false);
     }
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const handleBulkRemoveStudents = async () => {
@@ -641,9 +633,12 @@ const GroupsClasses = () => {
       return;
     }
 
-    if (!window.confirm(`Remove ${selectedStudents.length} selected student(s) from venue?`)) return;
-
-    setLoading(true);
+    setConfirmModal({
+      title: "Remove Multiple Students",
+      message: `Are you sure you want to remove ${selectedStudents.length} selected student(s) from ${selectedVenue.venue_name}?`,
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        setLoading(true);
     try {
       const response = await apiPost(
         `/groups/venues/${selectedVenue.venue_id}/bulk-remove-students`,
@@ -669,6 +664,9 @@ const GroupsClasses = () => {
     } finally {
       setLoading(false);
     }
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const toggleStudentSelection = (studentId) => {
@@ -1104,28 +1102,62 @@ const GroupsClasses = () => {
                     <ToggleOn sx={{ fontSize: 16, color: "#10b981" }} />
                     <span style={{ color: "#10b981" }}>Set Active</span>
                   </>
-                )}
-              </button>
-              <button
-                style={s.menuItemDelete}
-                onClick={() => {
-                  handleDelete(menuVenue.venue_id);
-                  closeMenu();
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#fef2f2")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = "transparent")
-                }
-              >
-                <Delete sx={{ fontSize: 16 }} />
-                <span>Delete</span>
-              </button>
+                )}              </button>
             </div>
           </div>,
           document.body
         )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div style={s.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+          <div style={{...s.resultModal, maxWidth: '450px'}} onClick={(e) => e.stopPropagation()}>
+            <div style={{...s.resultIconContainer, backgroundColor: '#fff3cd'}}>
+              <ErrorIcon sx={{ fontSize: 64, color: "#f59e0b" }} />
+            </div>
+            <h2 style={s.resultTitle}>{confirmModal.title}</h2>
+            <p style={s.resultMessage}>{confirmModal.message}</p>
+            <div style={{display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px'}}>
+              <button
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
+                onClick={confirmModal.onConfirm}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Result Modal (Success/Error) */}
       {showResultModal && (

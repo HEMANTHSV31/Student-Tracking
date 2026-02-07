@@ -31,6 +31,11 @@ import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights"
 //Super Admin -> Question Bank (Practice Courses)
 import CourseList from "../pages/SuperAdmin/QuestionBank/CourseList/CourseList";
 import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/QuestionBank";
+// Super Admin -> Question Bank Management
+import QuestionBankDashboard from "../pages/SuperAdmin/QuestionBank/QuestionBankDashboard";
+import QuestionList from "../pages/SuperAdmin/QuestionBank/QuestionList";
+import QuestionForm from "../pages/SuperAdmin/QuestionBank/QuestionForm";
+import QuestionDetail from "../pages/SuperAdmin/QuestionBank/QuestionDetail";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
@@ -49,6 +54,9 @@ import FacultyReports from "../pages/SuperAdmin/Reports&Analytics/Reporst&analyt
 //Faculty -> Code Evaluation
 import SubmissionsList from "../pages/Faculty/CodeEvaluation/SubmissionList/SubmissionsList";
 import CodeEvaluation from "../pages/Faculty/CodeEvaluation/CodeReviewer/CodeEvaluation";
+//Faculty -> Question Bank
+import FacultyPendingSubmissions from "../pages/Faculty/FacultyPendingSubmissions";
+import GradeSubmission from "../pages/Faculty/GradeSubmission";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
@@ -59,6 +67,11 @@ import StudentRoadmap from "../pages/Student/RoadMap&Material/RoadMap&Material";
 import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
 import Performance from "../pages/Student/Performance/Performance";
 import CodePracticePage from "../pages/Student/CodePractice/CodePracticePage";
+// Student -> Question Bank
+import MCQTest from "../pages/Student/MCQTest";
+import CodingTest from "../pages/Student/CodingTest";
+import SubmissionHistory from "../pages/Student/SubmissionHistory";
+import StudentQuestionBankDashboard from "../pages/Student/QuestionBankDashboard";
 
 const AppNavigator = () => {
   const user = useAuthStore((s) => s.user);
@@ -110,6 +123,12 @@ const AppNavigator = () => {
             {/* Question Bank / Practice Courses */}
             <Route path="courses" element={<CourseList />} />
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            {/* Question Bank Management */}
+            <Route path="question-bank" element={<QuestionBankDashboard />} />
+            <Route path="question-bank/questions" element={<QuestionList />} />
+            <Route path="question-bank/questions/create" element={<QuestionForm />} />
+            <Route path="question-bank/questions/:id" element={<QuestionDetail />} />
+            <Route path="question-bank/questions/:id/edit" element={<QuestionForm />} />
           </Route>
         )}
 
@@ -129,6 +148,9 @@ const AppNavigator = () => {
             <Route path="reports" element={<FacultyReports />} />
             <Route path="submissions" element={<SubmissionsList />} />
             <Route path="submissions/:submissionId" element={<CodeEvaluation />} />
+            {/* Question Bank Routes */}
+            <Route path="question-bank/pending" element={<FacultyPendingSubmissions />} />
+            <Route path="question-bank/grade/:submissionId" element={<GradeSubmission />} />
           </Route>
         )}
 
@@ -143,6 +165,11 @@ const AppNavigator = () => {
             {/* P Skills Workspace - HTML+CSS and HTML+CSS+JS */}
             <Route path="code-practice" element={<CodePracticePage />} />
             <Route path="code-practice/:taskId" element={<CodePracticePage />} />
+            {/* Question Bank Routes */}
+            <Route path="question-bank" element={<StudentQuestionBankDashboard />} />
+            <Route path="question-bank/mcq/:taskId" element={<MCQTest />} />
+            <Route path="question-bank/coding/:taskId" element={<CodingTest />} />
+            <Route path="question-bank/history/:taskId" element={<SubmissionHistory />} />
            <Route path="performance" element={<Performance />} /> 
           </Route>
         )}
