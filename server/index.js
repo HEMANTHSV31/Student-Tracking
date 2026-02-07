@@ -91,6 +91,12 @@ app.use(`${API_PREFIX}/api/uploads`, (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
+// Support both /pbl and no prefix routes for compatibility
+app.use(`/pbl/api/uploads`, (req, res, next) => {
+  res.setHeader('Content-Disposition', 'inline');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 app.use(`${API_PREFIX}/api/auth`, authRoutes);
 app.use(`${API_PREFIX}/api/faculty`, facultyRoutes);
 app.use(`${API_PREFIX}/api/students`, studentRoutes);
