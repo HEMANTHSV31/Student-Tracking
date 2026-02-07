@@ -10,13 +10,18 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/pbl/
  */
 const apiFetch = async (url, options = {}) => {
   try {
+    // Prepare headers
+    const headers = { ...options.headers };
+    
+    // Only set Content-Type if body is not FormData
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+    
     const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       credentials: 'include', // Include cookies for authentication
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
 
     // Check if response is JSON
@@ -233,27 +238,45 @@ export const deleteCourse = async (courseId) => {
 
 /**
  * Create a new question
- * @param {Object} questionData - Question details
+ * @param {Object|FormData} questionData - Question details
+ * @param {boolean} isFormData - Whether data is FormData (for file uploads)
  * @returns {Promise<Object>} Created question
  */
-export const createQuestion = async (questionData) => {
-  return apiFetch('/question-bank/questions', {
+export const createQuestion = async (questionData, isFormData = false) => {
+  const options = {
     method: 'POST',
-    body: JSON.stringify(questionData),
-  });
+  };
+  
+  if (isFormData) {
+    // For FormData, don't set Content-Type header (browser will set it with boundary)
+    options.body = questionData;
+  } else {
+    options.body = JSON.stringify(questionData);
+  }
+  
+  return apiFetch('/question-bank/questions', options);
 };
 
 /**
  * Update existing question
  * @param {number} questionId - Question ID
- * @param {Object} questionData - Updated question data
+ * @param {Object|FormData} questionData - Updated question data
+ * @param {boolean} isFormData - Whether data is FormData (for file uploads)
  * @returns {Promise<Object>} Updated question
  */
-export const updateQuestion = async (questionId, questionData) => {
-  return apiFetch(`/question-bank/questions/${questionId}`, {
+export const updateQuestion = async (questionId, questionData, isFormData = false) => {
+  const options = {
     method: 'PUT',
-    body: JSON.stringify(questionData),
-  });
+  };
+  
+  if (isFormData) {
+    // For FormData, don't set Content-Type header (browser will set it with boundary)
+    options.body = questionData;
+  } else {
+    options.body = JSON.stringify(questionData);
+  }
+  
+  return apiFetch(`/question-bank/questions/${questionId}`, options);
 };
 
 /**

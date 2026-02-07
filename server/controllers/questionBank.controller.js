@@ -304,6 +304,7 @@ export const getAllQuestions = async (req, res) => {
         qb.coding_language_support,
         qb.coding_test_cases,
         qb.coding_expected_output,
+        qb.sample_image,
         qb.max_score,
         qb.time_limit_minutes,
         qb.hints,
@@ -457,6 +458,9 @@ export const createQuestion = async (req, res) => {
       status
     } = req.body;
 
+    // Get uploaded file path (if any) - normalize to forward slashes
+    const sample_image = req.file ? req.file.path.replace(/\\/g, '/') : null;
+
     // Validation
     if (!course_id || !title || !description || !question_type) {
       return res.status(400).json({
@@ -544,9 +548,9 @@ export const createQuestion = async (req, res) => {
       INSERT INTO question_bank (
         course_id, title, description, question_type, difficulty_level,
         mcq_options, mcq_correct_answer, mcq_explanation,
-        coding_starter_code, coding_language_support, coding_test_cases, coding_expected_output,
+        coding_starter_code, coding_language_support, coding_test_cases, coding_expected_output, sample_image,
         max_score, time_limit_minutes, hints, created_by, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       course_id,
       title,
@@ -560,6 +564,7 @@ export const createQuestion = async (req, res) => {
       coding_language_support || 'javascript',
       codingTestCasesJson,
       coding_expected_output || null,
+      sample_image,
       max_score || 100,
       time_limit_minutes || 30,
       hints || null,
@@ -614,6 +619,9 @@ export const updateQuestion = async (req, res) => {
       hints,
       status
     } = req.body;
+
+    // Get uploaded file path (if any) - normalize to forward slashes
+    const sample_image = req.file ? req.file.path.replace(/\\/g, '/') : undefined;
 
     // Check if question exists
     const [existing] = await db.execute(`
@@ -682,6 +690,10 @@ export const updateQuestion = async (req, res) => {
     if (coding_expected_output !== undefined) {
       updates.push('coding_expected_output = ?');
       params.push(coding_expected_output);
+    }
+    if (sample_image !== undefined) {
+      updates.push('sample_image = ?');
+      params.push(sample_image);
     }
     if (max_score !== undefined) {
       updates.push('max_score = ?');

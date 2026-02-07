@@ -83,6 +83,7 @@ const QuestionBank = () => {
     sampleHtmlCode: "",
     sampleCssCode: "",
     sampleOutputImage: "",
+    sampleImageFile: null, // Store actual file object
     checklist: [],
     maxMarks: 10,
     mappedSkill: "",
@@ -141,6 +142,7 @@ const QuestionBank = () => {
             taskInstructions: q.description || '',
             sampleHtmlCode: q.coding_starter_code || '',
             sampleCssCode: q.coding_expected_output || '',
+            sampleOutputImage: q.sample_image ? `${import.meta.env.VITE_API_URL || 'http://localhost:5000/pbl/api'}/uploads/${q.sample_image.replace(/\\/g, '/').replace('uploads/', '')}` : '',
             checklist: q.coding_test_cases ? (typeof q.coding_test_cases === 'string' ? JSON.parse(q.coding_test_cases) : q.coding_test_cases) : [],
             maxMarks: q.max_score || 10,
             mappedSkill: q.course_name || '',
@@ -392,36 +394,39 @@ const QuestionBank = () => {
         return mapping[level] || 'Medium';
       };
 
-      // Prepare data for backend
-      const questionData = {
-        course_id: parseInt(courseId),
-        title: codeFormData.title,
-        description: codeFormData.description || codeFormData.title,
-        question_type: 'coding',
-        difficulty_level: mapLevelToDifficulty(codeFormData.level),
-        // Explicitly set MCQ fields to null for Coding
-        mcq_options: null,
-        mcq_correct_answer: null,
-        mcq_explanation: null,
-        coding_starter_code: codeFormData.sampleHtmlCode || '',
-        coding_language_support: 'html,css,javascript',
-        coding_test_cases: JSON.stringify(codeFormData.checklist || []),
-        coding_expected_output: codeFormData.sampleCssCode || '',
-        max_score: 100,
-        time_limit_minutes: 60,
-        hints: codeFormData.topic || '',
-        status: 'Active'
-      };
+      // Use FormData to send file
+      const formData = new FormData();
+      formData.append('course_id', parseInt(courseId));
+      formData.append('title', codeFormData.title);
+      formData.append('description', codeFormData.description || codeFormData.title);
+      formData.append('question_type', 'coding');
+      formData.append('difficulty_level', mapLevelToDifficulty(codeFormData.level));
+      formData.append('mcq_options', 'null');
+      formData.append('mcq_correct_answer', 'null');
+      formData.append('mcq_explanation', 'null');
+      formData.append('coding_starter_code', codeFormData.sampleHtmlCode || '');
+      formData.append('coding_language_support', 'html,css,javascript');
+      formData.append('coding_test_cases', JSON.stringify(codeFormData.checklist || []));
+      formData.append('coding_expected_output', codeFormData.sampleCssCode || '');
+      formData.append('max_score', '100');
+      formData.append('time_limit_minutes', '60');
+      formData.append('hints', codeFormData.topic || '');
+      formData.append('status', 'Active');
+
+      // Append image file if exists
+      if (codeFormData.sampleImageFile) {
+        formData.append('sampleImage', codeFormData.sampleImageFile);
+      }
 
       if (editingQuestion) {
         const questionId = editingQuestion.id.replace('QS-', '');
-        const response = await updateQuestion(questionId, questionData);
+        const response = await updateQuestion(questionId, formData, true); // Pass true for FormData
         if (response.success) {
           showResult("success", "Question Updated", "Question has been updated successfully.");
           fetchQuestions();
         }
       } else {
-        const response = await createQuestion(questionData);
+        const response = await createQuestion(formData, true); // Pass true for FormData
         if (response.success) {
           showResult("success", "Question Created", "Question has been created successfully.");
           fetchQuestions();
@@ -443,7 +448,11 @@ const QuestionBank = () => {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setCodeFormData((prev) => ({ ...prev, sampleOutputImage: reader.result }));
+        setCodeFormData((prev) => ({ 
+          ...prev, 
+          sampleOutputImage: reader.result,
+          sampleImageFile: file // Store the actual file
+        }));
       };
       reader.readAsDataURL(file);
     }
