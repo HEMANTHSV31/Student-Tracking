@@ -36,7 +36,7 @@ import VenueAllocation from "../pages/SuperAdmin/VenueAllocation/VenueAllocation
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
-import FacultyClassDetails from "../pages/Faculty/DashboardPanal/Dashboard";
+import FacultyClassDetails from "../pages/Faculty/Class&Group/ClassDetails/ClassDetails";
 //Faculty -> Students
 import FacultyStudentsPage from "../pages/Faculty/studentsPage/AllStudents/studentsPage";
 import FacultyStudentHeader from "../pages/Faculty/studentsPage/studentHeader/StudentHeader";
