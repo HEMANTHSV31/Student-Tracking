@@ -9,7 +9,8 @@ import {
   StarBorder,
   ArrowBack,
 } from "@mui/icons-material";
-import { apiGet, apiPut } from "../../../../utils/api";
+import { getSubmissionDetails, gradeSubmission } from "../../../../services/questionBankApi";
+import Editor from '@monaco-editor/react';
 import "./CodeEvaluation.css";
 
 const CodeEvaluation = () => {
@@ -30,106 +31,15 @@ const CodeEvaluation = () => {
     comment: "",
   });
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [submittingGrade, setSubmittingGrade] = useState(false);
+  const [error, setError] = useState(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultModal, setResultModal] = useState({ type: '', title: '', message: '' });
 
-  // Dummy data for demonstration
-  const dummySubmission = {
-    id: "sub-001",
-    studentName: "Alex Johnson",
-    studentId: "S12345",
-    title: "Portfolio Project",
-    submittedAt: "Oct 24, 2023 14:22 PM (ZH Time)",
-    status: "PASSED",
-    autoTestOutcome: "PASSED (5/5)",
-    code: {
-      html: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Portfolio Project</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <!-- Main Container -->
-  <main class="container">
-    <header class="profile-header">
-      <h1>Alex Johnson</h1>
-      <p class="tagline">Frontend Developer in Training</p>
-    </header>
-    
-    <section class="about">
-      <h2>About Me</h2>
-      <p>I love building clean, accessible user interfaces.</p>
-    </section>
-  </main>
-</body>
-</html>`,
-      css: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Arial', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.container {
-  background: white;
-  border-radius: 20px;
-  padding: 40px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-  max-width: 800px;
-}
-
-.profile-header {
-  text-align: center;
-  margin-bottom: 30px;
-}
-
-h1 {
-  font-size: 2.5rem;
-  color: #333;
-  margin-bottom: 10px;
-}
-
-.tagline {
-  font-size: 1.2rem;
-  color: #666;
-}
-
-.about {
-  padding: 20px 0;
-}
-
-h2 {
-  color: #667eea;
-  margin-bottom: 15px;
-}`,
-      js: `// Portfolio Interactive Features
-console.log('Portfolio loaded successfully!');
-
-// Add smooth scrolling
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', function (e) {
-    e.preventDefault();
-    document.querySelector(this.getAttribute('href')).scrollIntoView({
-      behavior: 'smooth'
-    });
-  });
-});`,
-    },
-    rubric: {
-      codeQuality: { max: 40, current: 35 },
-      requirements: { max: 25, current: 20 },
-      expectedOutput: { max: 35, current: 30 },
-    },
-    totalScore: 85,
-    maxScore: 100,
+  const showResult = (type, title, message) => {
+    setResultModal({ type, title, message });
+    setShowResultModal(true);
+    setTimeout(() => setShowResultModal(false), 3000);
   };
 
   useEffect(() => {
@@ -139,16 +49,45 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   const loadSubmission = async () => {
     try {
       setLoading(true);
-      // In real app: const response = await apiGet(`/faculty/submissions/${submissionId}`);
-      // For now, use dummy data
-      setSubmission(dummySubmission);
-      setScores({
-        codeQuality: dummySubmission.rubric.codeQuality.current,
-        requirements: dummySubmission.rubric.requirements.current,
-        expectedOutput: dummySubmission.rubric.expectedOutput.current,
-      });
+      const response = await getSubmissionDetails(submissionId);
+      
+      if (response.success) {
+        const data = response.data;
+        // Transform API data to match component structure
+        const transformedSubmission = {
+          id: data.submission_id,
+          studentName: data.student_name,
+          studentId: data.roll_number || 'N/A',
+          title: data.skill_name,
+          submittedAt: new Date(data.submitted_at).toLocaleString(),
+          status: data.score >= 50 ? 'PASSED' : 'PENDING',
+          autoTestOutcome: 'N/A',
+          code: {
+            html: data.code_solution || '// No code submitted',
+            css: '',
+            js: '',
+          },
+          rubric: {
+            codeQuality: { max: 40, current: data.score ? Math.round(data.score * 0.4) : 0 },
+            requirements: { max: 25, current: data.score ? Math.round(data.score * 0.25) : 0 },
+            expectedOutput: { max: 35, current: data.score ? Math.round(data.score * 0.35) : 0 },
+          },
+          totalScore: data.score || 0,
+          maxScore: 100,
+          language: data.language || 'python',
+          questionText: data.question_text,
+        };
+        
+        setSubmission(transformedSubmission);
+        setScores({
+          codeQuality: transformedSubmission.rubric.codeQuality.current,
+          requirements: transformedSubmission.rubric.requirements.current,
+          expectedOutput: transformedSubmission.rubric.expectedOutput.current,
+        });
+      }
     } catch (error) {
       console.error("Error loading submission:", error);
+      setError(error.message || 'Failed to load submission');
     } finally {
       setLoading(false);
     }
@@ -166,26 +105,30 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   };
 
   const handleRunTests = () => {
-    alert("Running automated tests...");
+    showResult("info", "Info", "Running automated tests...");
   };
 
   const handleFinalizeEvaluation = async () => {
     try {
-      const evaluationData = {
-        submissionId: submission.id,
-        scores,
-        feedback,
-        totalScore: calculateTotalScore(),
-        status: calculateTotalScore() >= 60 ? "PASSED" : "FAILED",
-      };
-
-      // In real app: await apiPut(`/faculty/submissions/${submissionId}/evaluate`, evaluationData);
-      console.log("Evaluation finalized:", evaluationData);
-      alert("Evaluation finalized successfully!");
-      navigate("/submissions");
+      setSubmittingGrade(true);
+      const totalScore = calculateTotalScore();
+      const feedbackText = `Code Quality: ${scores.codeQuality}/${submission.rubric.codeQuality.max}, Requirements: ${scores.requirements}/${submission.rubric.requirements.max}, Output: ${scores.expectedOutput}/${submission.rubric.expectedOutput.max}`;
+      
+      const response = await gradeSubmission(submissionId, totalScore, feedbackText);
+      
+      if (response.success) {
+        showResult("success", "Success", "Evaluation finalized successfully!");
+        setTimeout(() => navigate("/faculty/question-bank/pending"), 1500);
+      }
     } catch (error) {
       console.error("Error finalizing evaluation:", error);
-      alert("Failed to finalize evaluation");
+      const errorMsg = error.message.includes('<!DOCTYPE') 
+        ? 'Backend server is not running. Please start the server.'
+        : error.message || 'Failed to finalize evaluation';
+      showResult("error", "Failed", errorMsg);
+    } finally {
+      setSubmittingGrade(false);
+      setShowFinalizeModal(false);
     }
   };
 
@@ -201,8 +144,8 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   if (!submission) {
     return (
       <div className="code-eval-error">
-        <p>Submission not found</p>
-        <button onClick={() => navigate("/submissions")}>
+        <p>{error || 'Submission not found'}</p>
+        <button onClick={() => navigate("/faculty/question-bank/pending")}>
           Go Back
         </button>
       </div>
@@ -218,7 +161,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       <div className="code-eval-header">
         <button
           className="back-button"
-          onClick={() => navigate("/submissions")}
+          onClick={() => navigate("/faculty/question-bank/pending")}
         >
           <ArrowBack /> Back to Submissions
         </button>
@@ -271,9 +214,19 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
           </div>
 
           <div className="code-editor">
-            <pre className="code-content">
-              <code>{submission.code[activeTab]}</code>
-            </pre>
+            <Editor
+              height="500px"
+              language={submission.language || 'python'}
+              value={submission.code[activeTab]}
+              theme="vs-dark"
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+              }}
+            />
           </div>
 
           {/* Telemetry */}
@@ -431,6 +384,19 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         </div>
       </div>
 
+      {/* Result Modal */}
+      {showResultModal && (
+        <div className="modal-overlay" onClick={() => setShowResultModal(false)}>
+          <div className="modal-content result-modal" onClick={(e) => e.stopPropagation()}>
+            <div className={`result-icon ${resultModal.type}`}>
+              {resultModal.type === 'success' ? '✓' : resultModal.type === 'error' ? '✗' : 'ℹ'}
+            </div>
+            <h3>{resultModal.title}</h3>
+            <p>{resultModal.message}</p>
+          </div>
+        </div>
+      )}
+
       {/* Finalize Modal */}
       {showFinalizeModal && (
         <div className="modal-overlay" onClick={() => setShowFinalizeModal(false)}>
@@ -456,11 +422,16 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
               <button
                 className="cancel-btn"
                 onClick={() => setShowFinalizeModal(false)}
+                disabled={submittingGrade}
               >
                 Cancel
               </button>
-              <button className="confirm-btn" onClick={handleFinalizeEvaluation}>
-                Confirm & Finalize
+              <button 
+                className="confirm-btn" 
+                onClick={handleFinalizeEvaluation}
+                disabled={submittingGrade}
+              >
+                {submittingGrade ? 'Submitting...' : 'Confirm & Finalize'}
               </button>
             </div>
           </div>

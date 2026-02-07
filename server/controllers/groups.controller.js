@@ -181,43 +181,69 @@ export const addIndividualStudentToVenue = async (req, res) => {
       studentId = insertStudent.insertId;
     }
 
-    // Check if student is already in ANY active class.
+    // Check if student is already in ANY venue with Active allocation status
+    // This includes both active and inactive venues - we just check the student's allocation status
     const [existingAllocation] = await connection.query(
-      `SELECT gs.group_id, g.venue_id, v.venue_name
+      `SELECT gs.id as allocation_id, gs.group_id, gs.status as allocation_status,
+              g.venue_id, v.venue_name, g.status as group_status, v.status as venue_status
        FROM group_students gs
        INNER JOIN \`groups\` g ON g.group_id = gs.group_id
        INNER JOIN venue v ON v.venue_id = g.venue_id
-       WHERE gs.student_id = ? AND gs.status = 'Active'
+       WHERE gs.student_id = ? 
+         AND gs.status = 'Active'
        LIMIT 1
        FOR UPDATE`,
       [studentId]
     );
 
+    // Debug logging
+    console.log(`[ADD STUDENT] Checking allocation for student ${studentRollNumber} (ID: ${studentId})`);
+    console.log(`[ADD STUDENT] Target venue: ${venueId}, Found allocations:`, existingAllocation.length);
+    
     if (existingAllocation.length > 0) {
       const alloc = existingAllocation[0];
-      await connection.rollback();
+      console.log(`[ADD STUDENT] Existing allocation found:`, {
+        allocation_id: alloc.allocation_id,
+        venue_id: alloc.venue_id,
+        venue_name: alloc.venue_name,
+        group_id: alloc.group_id,
+        allocation_status: alloc.allocation_status,
+        group_status: alloc.group_status,
+        venue_status: alloc.venue_status
+      });
 
+      // If already in the target venue with Active status, return error
       if (Number(alloc.venue_id) === Number(venueId)) {
+        await connection.rollback();
+        console.log(`[ADD STUDENT] ERROR: Student already in target venue ${venueId}`);
         return res.status(409).json({
           success: false,
-          message: 'Student is already present in this class.',
+          message: `Student "${studentName}" (${studentRollNumber}) is already enrolled in this class.`,
           data: {
             venue_id: alloc.venue_id,
             venue_name: alloc.venue_name,
             group_id: alloc.group_id,
+            allocation_id: alloc.allocation_id,
+            student_name: studentName,
+            student_roll: studentRollNumber
           },
         });
       }
 
-      return res.status(409).json({
-        success: false,
-        message: 'Student is already assigned to another class.',
-        data: {
-          venue_id: alloc.venue_id,
-          venue_name: alloc.venue_name,
-          group_id: alloc.group_id,
-        },
-      });
+      // Student is in a different venue - drop them from old venue (keeps history) and move to new venue
+      console.log(`[ADD STUDENT] Moving student ${studentRollNumber} from venue ${alloc.venue_id} (${alloc.venue_name}) to venue ${venueId}`);
+      console.log(`[ADD STUDENT] Old venue status: ${alloc.venue_status}, group status: ${alloc.group_status}`);
+      
+      // Drop from old venue (this preserves all their history/records but marks them as Dropped)
+      await connection.query(
+        `UPDATE group_students SET status = 'Dropped' WHERE id = ?`,
+        [alloc.allocation_id]
+      );
+      
+      console.log(`[ADD STUDENT] Student dropped from old venue, proceeding to add to venue ${venueId}`);
+      // Continue to add them to the new venue below
+    } else {
+      console.log(`[ADD STUDENT] No existing active allocation found - proceeding with fresh enrollment`);
     }
 
     // Capacity check.
@@ -458,9 +484,9 @@ export const getAllVenues = async (req, res) => {
         LEFT JOIN users u ON f.user_id = u.user_id
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
         LEFT JOIN group_students gs ON g.group_id = gs.group_id
-        WHERE v.deleted_at IS NULL${yearCondition}${specificationCondition}
+        WHERE 1=1${yearCondition}${specificationCondition}
         GROUP BY v.venue_id
-        ORDER BY v.status DESC, v.venue_name
+        ORDER BY CASE WHEN v.status = 'Active' THEN 0 ELSE 1 END, v.venue_name
       `, params);
       
       // console.log(`[GET ALL VENUES] Admin - found ${venues.length} venue(s)`);
@@ -508,7 +534,6 @@ export const getAllVenues = async (req, res) => {
       LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
       LEFT JOIN group_students gs ON g.group_id = gs.group_id
       WHERE v.status = 'Active'
-        AND v.deleted_at IS NULL
         AND v.assigned_faculty_id = ?${yearCondition}${specificationCondition}
       GROUP BY v.venue_id
       ORDER BY v.venue_name
@@ -1252,11 +1277,10 @@ export const deleteVenue = async (req, res) => {
       [venueId]
     );
 
-    // Soft delete venue (set deleted_at timestamp)
+    // Soft delete venue (set status to Inactive)
     // This hides the venue from all frontend lists while preserving data
-    // Status can remain as is (Active or Inactive) - deleted_at is what matters
     await connection.query(
-      `UPDATE venue SET deleted_at = NOW(), status = 'Inactive' WHERE venue_id = ?`,
+      `UPDATE venue SET status = 'Inactive' WHERE venue_id = ?`,
       [venueId]
     );
 

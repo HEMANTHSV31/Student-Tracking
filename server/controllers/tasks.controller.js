@@ -264,13 +264,28 @@ export const createTask = async (req, res) => {
   const connection = await db.getConnection();
   
   try {
-    const { title, description, venue_id, day, due_date, max_score, material_type, external_url, skill_filter, course_type, apply_to_all_venues } = req.body;
+    const { 
+      title, description, venue_id, day, due_date, max_score, 
+      material_type, external_url, skill_filter, course_type, apply_to_all_venues,
+      // NEW: Practice question support
+      task_type, practice_type
+    } = req.body;
 
     if (!title || !venue_id || !day || !max_score) {
       return res.status(400).json({
         success: false,
         message: 'Please provide all required fields: title, venue, day, and max score'
       });
+    }
+    
+    // Validate practice task requirements
+    if (task_type === 'practice') {
+      if (!practice_type || !skill_filter) {
+        return res.status(400).json({
+          success: false,
+          message: 'Practice tasks require practice_type (mcq/coding) and skill_filter'
+        });
+      }
     }
 
     // Get faculty_id from JWT token
@@ -422,9 +437,9 @@ export const createTask = async (req, res) => {
 
       // Insert task
       const [taskResult] = await connection.query(`
-        INSERT INTO tasks (group_id, title, description, venue_id, faculty_id, day, due_date, max_score, material_type, external_url, skill_filter, course_type, status, is_template, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, NOW())
-      `, [group_id, title, description || '', target_venue_id, venue_faculty_id, day, due_date || null, max_score, material_type, external_url || null, skill_filter || null, course_type || null, group_id ? 1 : 0]);
+        INSERT INTO tasks (group_id, title, description, venue_id, faculty_id, day, due_date, max_score, material_type, external_url, skill_filter, course_type, status, is_template, task_type, practice_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?, NOW())
+      `, [group_id, title, description || '', target_venue_id, venue_faculty_id, day, due_date || null, max_score, material_type, external_url || null, skill_filter || null, course_type || null, group_id ? 1 : 0, task_type || 'manual', practice_type || null]);
 
       const taskId = taskResult.insertId;
       createdTasks.push({ task_id: taskId, venue_id: target_venue_id });
@@ -472,6 +487,29 @@ export const createTask = async (req, res) => {
       // Do not pre-create placeholder submissions.
       // Student/Faculty views use LEFT JOIN and treat missing submissions as "Not Submitted".
       totalStudents += eligibleStudents.length;
+
+      // For practice tasks, assign random questions to each eligible student
+      if (task_type === 'practice' && eligibleStudents.length > 0) {
+        for (const student of eligibleStudents) {
+          // Get a random question from question_bank for this skill and practice_type
+          const [questions] = await connection.query(`
+            SELECT qb.question_id 
+            FROM question_bank qb
+            JOIN skill_courses sc ON qb.course_id = sc.course_id
+            WHERE sc.skill_name = ? AND qb.question_type = ? AND qb.status = 'Active'
+            ORDER BY RAND() 
+            LIMIT 1
+          `, [skill_filter, practice_type]);
+          
+          if (questions.length > 0) {
+            // Assign this question to the student for this task
+            await connection.query(`
+              INSERT INTO task_question_assignments (task_id, student_id, question_id, assigned_at)
+              VALUES (?, ?, ?, NOW())
+            `, [taskId, student.student_id, questions[0].question_id]);
+          }
+        }
+      }
     }
 
     await connection.commit();
@@ -1447,6 +1485,7 @@ export const getStudentTasks = async (req, res) => {
     // console.log('======================================================\n');
 
     // Get tasks from CURRENT venue only (new venues start with no tasks)
+    // Include both regular tasks (task_type='manual' or NULL) AND practice tasks (task_type='practice')
     let tasksQuery = `
       SELECT DISTINCT
         t.task_id,
@@ -1462,6 +1501,7 @@ export const getStudentTasks = async (req, res) => {
         t.status as task_status,
         t.created_at,
         t.venue_id as task_venue_id,
+        t.task_type,
         v.venue_name as task_venue_name,
         u.name as faculty_name,
         ts.submission_id,
@@ -1628,6 +1668,8 @@ export const getStudentTasks = async (req, res) => {
         materialType: task.material_type,
         skillFilter: task.skill_filter || '',
         courseType: task.course_type || '',
+        taskType: task.task_type || 'manual',
+        practiceType: task.practice_type || null,
         moduleTitle: `Day ${task.day}`,
         instructor: task.faculty_name || 'Faculty',
         submittedDate: task.submitted_at,

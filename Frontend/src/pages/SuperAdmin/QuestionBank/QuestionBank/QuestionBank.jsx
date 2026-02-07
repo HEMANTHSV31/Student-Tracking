@@ -18,7 +18,12 @@ import {
   ContentCopy,
 } from "@mui/icons-material";
 import useAuthStore from "../../../../store/useAuthStore";
-import { apiGet, apiPost, apiPut, apiDelete } from "../../../../utils/api";
+import { 
+  getAllQuestions, 
+  createQuestion, 
+  updateQuestion, 
+  deleteQuestion 
+} from "../../../../services/questionBankApi";
 
 // Question Type Tabs
 const QUESTION_TABS = [
@@ -26,210 +31,12 @@ const QUESTION_TABS = [
   { id: "code", label: "Code & Output", icon: Code },
 ];
 
-// Dummy Questions
-const DUMMY_QUESTIONS = [
-  {
-    id: "QS-8921",
-    type: "mcq",
-    level: "intermediate",
-    topic: "React Hooks",
-    question: "Which hook should be used to perform side effects in a functional component, such as data fetching or subscriptions?",
-    options: [
-      { label: "A", text: "useState", isCorrect: false },
-      { label: "B", text: "useEffect", isCorrect: true },
-      { label: "C", text: "useContext", isCorrect: false },
-      { label: "D", text: "useReducer", isCorrect: false },
-    ],
-    addedBy: "Prof. Sarah Jenkins",
-  },
-  {
-    id: "QS-8922",
-    type: "mcq",
-    level: "beginner",
-    topic: "JSX",
-    question: "What is the correct syntax to embed a Javascript expression inside JSX?",
-    options: [
-      { label: "A", text: "{{ expression }}", isCorrect: false },
-      { label: "B", text: "${expression}", isCorrect: false },
-      { label: "C", text: "{ expression }", isCorrect: true },
-      { label: "D", text: "[ expression ]", isCorrect: false },
-    ],
-    addedBy: "Admin",
-  },
-  {
-    id: "QS-8923",
-    type: "mcq",
-    level: "advanced",
-    topic: "Virtual DOM",
-    question: "React's Virtual DOM is a lightweight copy of the actual DOM that React uses to optimize rendering performance. This statement is:",
-    options: [
-      { label: "A", text: "True", isCorrect: true },
-      { label: "B", text: "False", isCorrect: false },
-    ],
-    addedBy: "Prof. Sarah Jenkins",
-  },
-  {
-    id: "QS-8924",
-    type: "code",
-    level: "beginner",
-    topic: "HTML",
-    title: "Build a Simple HTML Portfolio Section",
-    description: "Ask the student to create a clean semantic HTML block with heading, paragraph, and list.",
-    taskInstructions: `Create a small "About Me" section using semantic HTML. The section should include:
-• A main heading with the student name.
-• One short paragraph description.
-• An unordered list of at least three skills.
-• A link to any social profile.`,
-    checklist: [
-      'Uses <section>, <h1>, <p>, <ul>, <li>, and <a> correctly.',
-      'No inline styles.',
-      'Content is readable and structured.',
-      'Link opens in a new tab using target="_blank".'
-    ],
-    sampleHtmlCode: `<section class="about-me">
-  <h1>Your Name</h1>
-  <p>Short introduction about yourself...</p>
-  
-  <h2>Skills</h2>
-  <ul>
-    <li>HTML</li>
-    <li>CSS</li>
-    <li>JavaScript</li>
-  </ul>
-  
-  <a href="https://" target="_blank">View my work</a>
-</section>`,
-    sampleCssCode: "",
-    sampleOutputImage: "",
-    maxMarks: 10,
-    mappedSkill: "HTML Semantic Structure",
-    addedBy: "Admin",
-  },
-  {
-    id: "QS-8925",
-    type: "code",
-    level: "intermediate",
-    topic: "HTML & CSS",
-    title: "Card Layout with HTML & CSS",
-    description: "Define an assessment where student builds a simple three-card layout.",
-    taskInstructions: `Ask the student to build a responsive "Feature Cards" section:
-• Three cards in a row on desktop, stacked on mobile.
-• Each card has an icon, title, and short description.
-• Cards should have padding, border-radius, and a light shadow.
-• Use only CSS (no frameworks) and avoid inline styles.`,
-    checklist: [
-      "Uses semantic HTML structure",
-      "CSS flexbox or grid for layout",
-      "Responsive design with media queries",
-      "Proper spacing and visual hierarchy"
-    ],
-    sampleHtmlCode: `<section class="features">
-  <div class="feature-card">
-    <span class="icon">🚀</span>
-    <h3>Fast Performance</h3>
-    <p>Lightning fast load times.</p>
-  </div>
-  <div class="feature-card">
-    <span class="icon">🎨</span>
-    <h3>Modern Design</h3>
-    <p>Beautiful and clean UI.</p>
-  </div>
-  <div class="feature-card">
-    <span class="icon">📱</span>
-    <h3>Responsive</h3>
-    <p>Works on all devices.</p>
-  </div>
-</section>`,
-    sampleCssCode: `.features {
-  max-width: 900px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-}
-
-.feature-card {
-  padding: 24px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-  background: #ffffff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-@media (max-width: 768px) {
-  .features {
-    grid-template-columns: 1fr;
-  }
-}`,
-    sampleOutputImage: "",
-    maxMarks: 15,
-    mappedSkill: "CSS Layout & Responsive Design",
-    addedBy: "Prof. Sarah Jenkins",
-  },
-  {
-    id: "QS-8926",
-    type: "code",
-    level: "intermediate",
-    topic: "JavaScript",
-    title: "Array Manipulation Functions",
-    description: "Create JavaScript functions to manipulate arrays.",
-    taskInstructions: `Write the following JavaScript functions:
-1. A function that takes an array and returns the sum of all numbers.
-2. A function that filters out all odd numbers from an array.
-3. A function that finds the maximum value in an array without using Math.max().`,
-    checklist: [
-      "All three functions implemented correctly",
-      "Uses appropriate array methods",
-      "Handles edge cases",
-      "Clean and readable code"
-    ],
-    sampleHtmlCode: `// Example solution
-function sumArray(arr) {
-  return arr.reduce((sum, num) => sum + num, 0);
-}
-
-function filterEven(arr) {
-  return arr.filter(num => num % 2 === 0);
-}
-
-function findMax(arr) {
-  let max = arr[0];
-  for (let i = 1; i < arr.length; i++) {
-    if (arr[i] > max) max = arr[i];
-  }
-  return max;
-}`,
-    sampleCssCode: `// Expected Output:
-sumArray([1, 2, 3, 4, 5]) => 15
-filterEven([1, 2, 3, 4, 5, 6]) => [2, 4, 6]
-findMax([3, 7, 2, 9, 1]) => 9`,
-    sampleOutputImage: "",
-    maxMarks: 20,
-    mappedSkill: "JavaScript Arrays",
-    addedBy: "Admin",
-  },
-  {
-    id: "QS-8928",
-    type: "mcq",
-    level: "beginner",
-    topic: "CSS Basics",
-    question: "Which CSS property is used to change the text color of an element?",
-    options: [
-      { label: "A", text: "text-color", isCorrect: false },
-      { label: "B", text: "font-color", isCorrect: false },
-      { label: "C", text: "color", isCorrect: true },
-      { label: "D", text: "foreground-color", isCorrect: false },
-    ],
-    addedBy: "Admin",
-  },
-];
-
 const QuestionBank = () => {
   const navigate = useNavigate();
   const { courseId } = useParams();
   const user = useAuthStore((s) => s.user);
 
-  const [questions, setQuestions] = useState(DUMMY_QUESTIONS);
+  const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
@@ -255,7 +62,7 @@ const QuestionBank = () => {
   const [mcqFormData, setMcqFormData] = useState({
     type: "mcq",
     level: "beginner",
-    topic: "",
+    title: "",
     question: "",
     options: [
       { label: "A", text: "", isCorrect: false },
@@ -299,18 +106,56 @@ const QuestionBank = () => {
   const fetchQuestions = async () => {
     try {
       setLoading(true);
-      const response = await apiGet(`/courses/${courseId}/questions`);
-      if (response.ok) {
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (data.data && data.data.length > 0) {
-            setQuestions(data.data);
+      // Pass courseId as a filter parameter
+      const filters = courseId ? { course_id: courseId } : {};
+      const response = await getAllQuestions(filters);
+      if (response.success && response.data) {
+        // Transform backend data to match component structure
+        const transformedQuestions = response.data.map(q => {
+          // Parse MCQ options if they exist
+          let mcqOptions = [];
+          if (q.question_type === 'mcq' && q.mcq_options) {
+            try {
+              const parsedOptions = JSON.parse(q.mcq_options);
+              mcqOptions = parsedOptions.map(opt => ({
+                label: opt.id,
+                text: opt.text,
+                isCorrect: opt.id === q.mcq_correct_answer
+              }));
+            } catch (e) {
+              console.error('Error parsing MCQ options:', e);
+            }
           }
-        }
+
+          return {
+            id: `QS-${q.question_id}`,
+            type: q.question_type.toLowerCase() === 'mcq' ? 'mcq' : 'code',
+            level: q.difficulty_level?.toLowerCase() || 'beginner',
+            topic: q.course_name || 'General',
+            // MCQ specific
+            title: q.title || '',
+            question: q.description || '',
+            options: mcqOptions,
+            // Coding specific
+            description: q.description || '',
+            taskInstructions: q.description || '',
+            sampleHtmlCode: q.coding_starter_code || '',
+            sampleCssCode: q.coding_expected_output || '',
+            checklist: q.coding_test_cases ? (typeof q.coding_test_cases === 'string' ? JSON.parse(q.coding_test_cases) : q.coding_test_cases) : [],
+            maxMarks: q.max_score || 10,
+            mappedSkill: q.course_name || '',
+            addedBy: q.creator_name || "Admin",
+          };
+        });
+        setQuestions(transformedQuestions);
+      } else {
+        // No questions found, set empty array (not an error)
+        setQuestions([]);
       }
     } catch (error) {
       console.error("Error fetching questions:", error);
+      // Just set empty array - don't show error modal to user
+      setQuestions([]);
     } finally {
       setLoading(false);
     }
@@ -341,10 +186,24 @@ const QuestionBank = () => {
   }, [searchTerm, selectedLevel, activeTab]);
 
   const handleDelete = async (questionId) => {
-    setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-    showResult("success", "Question Deleted", "Question has been deleted successfully.");
-    setShowDeleteModal(false);
-    setDeleteTarget(null);
+    try {
+      // Extract numeric ID from QS-12345 format
+      const numericId = questionId.replace('QS-', '');
+      const response = await deleteQuestion(numericId);
+      
+      if (response.success) {
+        setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+        showResult("success", "Question Deleted", "Question has been deleted successfully.");
+      } else {
+        showResult("error", "Delete Failed", response.message || "Could not delete question");
+      }
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      showResult("error", "Delete Failed", error.message || "Could not delete question");
+    } finally {
+      setShowDeleteModal(false);
+      setDeleteTarget(null);
+    }
   };
 
   const handleDuplicate = (question) => {
@@ -366,7 +225,7 @@ const QuestionBank = () => {
       setMcqFormData({
         type: "mcq",
         level: "beginner",
-        topic: "",
+        title: "",
         question: "",
         options: [
           { label: "A", text: "", isCorrect: false },
@@ -402,7 +261,7 @@ const QuestionBank = () => {
       setMcqFormData({
         type: "mcq",
         level: question.level || "beginner",
-        topic: question.topic || "",
+        title: question.title || "",
         question: question.question || "",
         options: question.options || [
           { label: "A", text: "", isCorrect: false },
@@ -431,13 +290,13 @@ const QuestionBank = () => {
   };
 
   // Handle MCQ Form Submit
-  const handleMCQSubmit = () => {
+  const handleMCQSubmit = async () => {
     if (!mcqFormData.question.trim()) {
       showResult("error", "Missing Information", "Please enter a question.");
       return;
     }
-    if (!mcqFormData.topic.trim()) {
-      showResult("error", "Missing Information", "Please enter a topic.");
+    if (!mcqFormData.title.trim()) {
+      showResult("error", "Missing Information", "Please enter a title.");
       return;
     }
     if (!mcqFormData.options.some((opt) => opt.isCorrect)) {
@@ -447,31 +306,70 @@ const QuestionBank = () => {
 
     setSaving(true);
 
-    if (editingQuestion) {
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === editingQuestion.id
-            ? { ...q, ...mcqFormData, addedBy: user?.name || "Admin" }
-            : q
-        )
-      );
-      showResult("success", "Question Updated", "MCQ has been updated successfully.");
-    } else {
-      const newQuestion = {
-        id: `QS-${Date.now()}`,
-        ...mcqFormData,
-        addedBy: user?.name || "Admin",
+    try {
+      // Map frontend level to database difficulty_level
+      const mapLevelToDifficulty = (level) => {
+        const mapping = {
+          'beginner': 'Easy',
+          'intermediate': 'Medium',
+          'advanced': 'Hard'
+        };
+        return mapping[level] || 'Medium';
       };
-      setQuestions((prev) => [newQuestion, ...prev]);
-      showResult("success", "Question Created", "MCQ has been created successfully.");
-    }
 
-    setShowFormModal(false);
-    setSaving(false);
+      // Prepare data for backend
+      const questionData = {
+        course_id: parseInt(courseId),
+        title: mcqFormData.title,
+        description: mcqFormData.question,
+        question_type: 'mcq',
+        difficulty_level: mapLevelToDifficulty(mcqFormData.level),
+        mcq_options: JSON.stringify([
+          { id: 'A', text: mcqFormData.options[0].text },
+          { id: 'B', text: mcqFormData.options[1].text },
+          { id: 'C', text: mcqFormData.options[2].text },
+          { id: 'D', text: mcqFormData.options[3].text }
+        ]),
+        mcq_correct_answer: ['A', 'B', 'C', 'D'][mcqFormData.options.findIndex(opt => opt.isCorrect)],
+        mcq_explanation: 'See correct answer',
+        // Explicitly set coding fields to null for MCQ
+        coding_starter_code: null,
+        coding_language_support: null,
+        coding_test_cases: null,
+        coding_expected_output: null,
+        max_score: 100,
+        time_limit_minutes: 30,
+        hints: null,
+        status: 'Active'
+      };
+
+      if (editingQuestion) {
+        // Extract question ID from QS-12345 format
+        const questionId = editingQuestion.id.replace('QS-', '');
+        const response = await updateQuestion(questionId, questionData);
+        if (response.success) {
+          showResult("success", "Question Updated", "MCQ has been updated successfully.");
+          fetchQuestions(); // Reload questions
+        }
+      } else {
+        const response = await createQuestion(questionData);
+        if (response.success) {
+          showResult("success", "Question Created", "MCQ has been created successfully.");
+          fetchQuestions(); // Reload questions
+        }
+      }
+
+      setShowFormModal(false);
+    } catch (error) {
+      console.error("Error saving MCQ:", error);
+      showResult("error", "Save Failed", error.message || "Could not save question");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Handle Code Form Submit
-  const handleCodeSubmit = () => {
+  const handleCodeSubmit = async () => {
     if (!codeFormData.title.trim()) {
       showResult("error", "Missing Information", "Please enter a title.");
       return;
@@ -483,27 +381,60 @@ const QuestionBank = () => {
 
     setSaving(true);
 
-    if (editingQuestion) {
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === editingQuestion.id
-            ? { ...q, ...codeFormData, addedBy: user?.name || "Admin" }
-            : q
-        )
-      );
-      showResult("success", "Question Updated", "Question has been updated successfully.");
-    } else {
-      const newQuestion = {
-        id: `QS-${Date.now()}`,
-        ...codeFormData,
-        addedBy: user?.name || "Admin",
+    try {
+      // Map frontend level to database difficulty_level
+      const mapLevelToDifficulty = (level) => {
+        const mapping = {
+          'beginner': 'Easy',
+          'intermediate': 'Medium',
+          'advanced': 'Hard'
+        };
+        return mapping[level] || 'Medium';
       };
-      setQuestions((prev) => [newQuestion, ...prev]);
-      showResult("success", "Question Created", "Question has been created successfully.");
-    }
 
-    setShowFormModal(false);
-    setSaving(false);
+      // Prepare data for backend
+      const questionData = {
+        course_id: parseInt(courseId),
+        title: codeFormData.title,
+        description: codeFormData.description || codeFormData.title,
+        question_type: 'coding',
+        difficulty_level: mapLevelToDifficulty(codeFormData.level),
+        // Explicitly set MCQ fields to null for Coding
+        mcq_options: null,
+        mcq_correct_answer: null,
+        mcq_explanation: null,
+        coding_starter_code: codeFormData.sampleHtmlCode || '',
+        coding_language_support: 'html,css,javascript',
+        coding_test_cases: JSON.stringify(codeFormData.checklist || []),
+        coding_expected_output: codeFormData.sampleCssCode || '',
+        max_score: 100,
+        time_limit_minutes: 60,
+        hints: codeFormData.topic || '',
+        status: 'Active'
+      };
+
+      if (editingQuestion) {
+        const questionId = editingQuestion.id.replace('QS-', '');
+        const response = await updateQuestion(questionId, questionData);
+        if (response.success) {
+          showResult("success", "Question Updated", "Question has been updated successfully.");
+          fetchQuestions();
+        }
+      } else {
+        const response = await createQuestion(questionData);
+        if (response.success) {
+          showResult("success", "Question Created", "Question has been created successfully.");
+          fetchQuestions();
+        }
+      }
+
+      setShowFormModal(false);
+    } catch (error) {
+      console.error("Error saving coding question:", error);
+      showResult("error", "Save Failed", error.message || "Could not save question");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Handle Image Upload
@@ -579,7 +510,7 @@ const QuestionBank = () => {
               <span style={s.topicTag}>{question.topic?.toUpperCase()}</span>
             </div>
             <span style={s.collapsibleQuestion}>
-              {question.question?.length > 80 ? question.question.substring(0, 80) + "..." : question.question}
+              {question.title?.length > 80 ? question.title.substring(0, 80) + "..." : question.title}
             </span>
           </div>
           <div style={s.collapsibleRight}>
@@ -974,13 +905,13 @@ const QuestionBank = () => {
                     </select>
                   </div>
                   <div style={s.formGroup}>
-                    <label style={s.label}>Topic *</label>
+                    <label style={s.label}>Title *</label>
                     <input
                       type="text"
                       style={s.input}
-                      value={mcqFormData.topic}
-                      onChange={(e) => setMcqFormData({ ...mcqFormData, topic: e.target.value })}
-                      placeholder="e.g., React Hooks, CSS Basics"
+                      value={mcqFormData.title}
+                      onChange={(e) => setMcqFormData({ ...mcqFormData, title: e.target.value })}
+                      placeholder="e.g., Understanding React Hooks, CSS Flexbox Basics"
                     />
                   </div>
                 </div>

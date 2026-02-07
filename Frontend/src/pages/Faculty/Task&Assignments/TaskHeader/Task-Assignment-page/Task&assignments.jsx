@@ -41,6 +41,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
   const [skillFilter, setSkillFilter] = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
   const [skillOptions, setSkillOptions] = useState([]);
+  const [taskType, setTaskType] = useState('manual');
+  const [practiceType, setPracticeType] = useState('mcq');
 
   // Auto-populate venue from header selection
   useEffect(() => {
@@ -149,6 +151,8 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     setExternalUrl('');
     setFiles([]);
     setSkillFilter('');
+    setTaskType('manual');
+    setPracticeType('mcq');
   };
 
   const publishAssignment = async () => {
@@ -157,14 +161,25 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
       return;
     }
 
-    if (materialType === 'link' && !externalUrl) {
-      alert('Please provide an external URL or switch to file upload');
-      return;
+    // Validation for practice tasks
+    if (taskType === 'practice') {
+      if (!skillFilter) {
+        alert('Practice tasks require a skill filter');
+        return;
+      }
     }
 
-    if (materialType === 'file' && files.length === 0) {
-      alert('Please upload at least one file or switch to external link');
-      return;
+    // Validation for manual tasks
+    if (taskType === 'manual') {
+      if (materialType === 'link' && !externalUrl) {
+        alert('Please provide an external URL or switch to file upload');
+        return;
+      }
+
+      if (materialType === 'file' && files.length === 0) {
+        alert('Please upload at least one file or switch to external link');
+        return;
+      }
     }
 
     const isAllVenues = group === 'all';
@@ -189,11 +204,18 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     formData.append('skill_filter', skillFilter.trim());
     formData.append('course_type', selectedCourseType || 'frontend');
     formData.append('apply_to_all_venues', isAllVenues);
+    formData.append('task_type', taskType);
+    
+    if (taskType === 'practice') {
+      formData.append('practice_type', practiceType);
+    }
 
-    if (materialType === 'link') {
-      formData.append('external_url', externalUrl);
-    } else {
-      files.forEach(file => formData.append('files', file));
+    if (taskType === 'manual') {
+      if (materialType === 'link') {
+        formData.append('external_url', externalUrl);
+      } else {
+        files.forEach(file => formData.append('files', file));
+      }
     }
 
     try {
@@ -427,78 +449,128 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
               </div>
             </div>
 
-            {/* STUDY MATERIAL */}
+            {/* TASK TYPE SELECTOR */}
             <div style={styles.fieldGroup}>
-              <label style={styles.fieldLabel}>Study Material</label>
+              <label style={styles.fieldLabel}>Task Type</label>
               <div style={styles.tabToggleGroup}>
                 <button
-                  style={materialType === 'link' ? styles.toggleBtnActive : styles.toggleBtn}
-                  onClick={() => {
-                    setMaterialType('link');
-                    setFiles([]);
-                  }}
+                  style={taskType === 'manual' ? styles.toggleBtnActive : styles.toggleBtn}
+                  onClick={() => setTaskType('manual')}
                   disabled={loading}
                   type="button"
                 >
-                  External Link
+                  Regular Task
                 </button>
                 <button
-                  style={materialType === 'file' ? styles.toggleBtnActive : styles.toggleBtn}
-                  onClick={() => {
-                    setMaterialType('file');
-                    setExternalUrl('');
-                  }}
+                  style={taskType === 'practice' ? styles.toggleBtnActive : styles.toggleBtn}
+                  onClick={() => setTaskType('practice')}
                   disabled={loading}
                   type="button"
                 >
-                  Upload File
+                  Practice Question
                 </button>
               </div>
+            </div>
 
-              {materialType === 'link' ? (
-                <div style={styles.relativeWrapper}>
-                  <input
-                    style={styles.textInput}
-                    placeholder="e.g. https://resource.link"
-                    value={externalUrl}
-                    onChange={e => setExternalUrl(e.target.value)}
-                    onPaste={e => {
-                      e.stopPropagation();
-                      const pastedText = e.clipboardData.getData('text');
-                      setExternalUrl(pastedText);
+            {/* PRACTICE TYPE SELECTOR (only show when taskType === 'practice') */}
+            {taskType === 'practice' && (
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Question Type</label>
+                <div style={styles.tabToggleGroup}>
+                  <button
+                    style={practiceType === 'mcq' ? styles.toggleBtnActive : styles.toggleBtn}
+                    onClick={() => setPracticeType('mcq')}
+                    disabled={loading}
+                    type="button"
+                  >
+                    MCQ
+                  </button>
+                  <button
+                    style={practiceType === 'coding' ? styles.toggleBtnActive : styles.toggleBtn}
+                    onClick={() => setPracticeType('coding')}
+                    disabled={loading}
+                    type="button"
+                  >
+                    Coding
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STUDY MATERIAL (only show when taskType === 'manual') */}
+            {taskType === 'manual' && (
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Study Material</label>
+                <div style={styles.tabToggleGroup}>
+                  <button
+                    style={materialType === 'link' ? styles.toggleBtnActive : styles.toggleBtn}
+                    onClick={() => {
+                      setMaterialType('link');
+                      setFiles([]);
                     }}
                     disabled={loading}
-                  />
-                  <LinkIcon size={16} style={styles.dateIcon} />
-                </div>
-              ) : (
-                <div
-                  style={{ ...styles.uploadBox, cursor: loading ? 'not-allowed' : 'pointer' }}
-                  onClick={() => !loading && document.getElementById('fileUpload').click()}
-                >
-                  <CloudUpload size={28} style={styles.cloudIcon} />
-                  <input
-                    id="fileUpload"
-                    type="file"
-                    multiple
-                    accept=".pdf,.svg,.png,.jpg,.jpeg,.mp4,.webm,.zip,.cpp,.c,.py,.js,.java"
-                    hidden
-                    onChange={(e) => setFiles([...e.target.files])}
+                    type="button"
+                  >
+                    External Link
+                  </button>
+                  <button
+                    style={materialType === 'file' ? styles.toggleBtnActive : styles.toggleBtn}
+                    onClick={() => {
+                      setMaterialType('file');
+                      setExternalUrl('');
+                    }}
                     disabled={loading}
-                  />
-                  <div style={styles.uploadText}>
-                    <span style={styles.blueLink}>Click to upload</span> images, PDFs, or code files
-                  </div>
-                  {files.length > 0 && (
-                    <div style={{ marginTop: '10px', width: '100%' }}>
-                      {files.map((f, i) => (
-                        <div key={i} style={styles.uploadSubtext}>{f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)</div>
-                      ))}
-                    </div>
-                  )}
+                    type="button"
+                  >
+                    Upload File
+                  </button>
                 </div>
-              )}
-            </div>
+
+                {materialType === 'link' ? (
+                  <div style={styles.relativeWrapper}>
+                    <input
+                      style={styles.textInput}
+                      placeholder="e.g. https://resource.link"
+                      value={externalUrl}
+                      onChange={e => setExternalUrl(e.target.value)}
+                      onPaste={e => {
+                        e.stopPropagation();
+                        const pastedText = e.clipboardData.getData('text');
+                        setExternalUrl(pastedText);
+                      }}
+                      disabled={loading}
+                    />
+                    <LinkIcon size={16} style={styles.dateIcon} />
+                  </div>
+                ) : (
+                  <div
+                    style={{ ...styles.uploadBox, cursor: loading ? 'not-allowed' : 'pointer' }}
+                    onClick={() => !loading && document.getElementById('fileUpload').click()}
+                  >
+                    <CloudUpload size={28} style={styles.cloudIcon} />
+                    <input
+                      id="fileUpload"
+                      type="file"
+                      multiple
+                      accept=".pdf,.svg,.png,.jpg,.jpeg,.mp4,.webm,.zip,.cpp,.c,.py,.js,.java"
+                      hidden
+                      onChange={(e) => setFiles([...e.target.files])}
+                      disabled={loading}
+                    />
+                    <div style={styles.uploadText}>
+                      <span style={styles.blueLink}>Click to upload</span> images, PDFs, or code files
+                    </div>
+                    {files.length > 0 && (
+                      <div style={{ marginTop: '10px', width: '100%' }}>
+                        {files.map((f, i) => (
+                          <div key={i} style={styles.uploadSubtext}>{f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={styles.formFooter}>

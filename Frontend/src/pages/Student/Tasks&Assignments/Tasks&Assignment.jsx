@@ -938,11 +938,39 @@ const TasksAssignments = () => {
                     <div
                       key={task.id}
                       className={`task-card ${selectedTaskId === task.id ? "active" : ""}`}
-                      onClick={() => setSelectedTaskId(task.id)}
+                      onClick={() => {
+                        // Handle different task types
+                        if (task.taskType === 'practice') {
+                          // Navigate to appropriate practice page
+                          if (task.practiceType === 'mcq') {
+                            navigate(`/question-bank/mcq/${task.id}`);
+                          } else if (task.practiceType === 'coding') {
+                            navigate(`/question-bank/coding/${task.id}`);
+                          }
+                        } else {
+                          // Regular task - show in detail panel
+                          setSelectedTaskId(task.id);
+                        }
+                      }}
                     >
                       <div className="task-card-header">
                         <span className="card-day">{task.dayLabel}</span>
-                        <h4 className="card-title">{task.title}</h4>
+                        <h4 className="card-title">
+                          {task.title}
+                          {task.taskType === 'practice' && (
+                            <span style={{
+                              marginLeft: '8px',
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              background: task.practiceType === 'mcq' ? '#dbeafe' : '#fef3c7',
+                              color: task.practiceType === 'mcq' ? '#1e40af' : '#92400e',
+                              fontWeight: '600'
+                            }}>
+                              {task.practiceType === 'mcq' ? 'MCQ' : 'CODING'}
+                            </span>
+                          )}
+                        </h4>
                       </div>
                       <div className="card-meta">
                         <span className="subject-tag">{task.subject}</span>

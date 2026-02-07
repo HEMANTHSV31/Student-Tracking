@@ -37,6 +37,9 @@ const upload = multer({
   }
 });
 
+// Student lookup for auto-fill (MUST be before parameterized venue routes)
+router.get('/student-lookup/:rollNumber', authenticate, lookupStudentByRollNumber);
+
 // Venue routes
 router.get('/venues', authenticate, getAllVenues);
 router.get('/venues/group-specifications', authenticate, getGroupSpecifications);
@@ -54,9 +57,6 @@ router.post('/venues/:venueId/add-student', authenticate, addIndividualStudentTo
 router.get('/venues/:venueId/students', authenticate, getVenueStudents);
 router.delete('/venues/:venueId/students/:studentId', authenticate, removeStudentFromVenue);
 router.post('/venues/:venueId/bulk-remove-students', authenticate, bulkRemoveStudentsFromVenue);
-
-// Student lookup for auto-fill
-router.get('/student-lookup/:rollNumber', authenticate, lookupStudentByRollNumber);
 
 // Faculty routes
 router.get('/faculties', authenticate, getAllFacultiesForGroups);

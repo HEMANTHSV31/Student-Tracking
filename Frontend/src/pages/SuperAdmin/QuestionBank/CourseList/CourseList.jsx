@@ -13,71 +13,13 @@ import {
   ArrowForward,
 } from "@mui/icons-material";
 import useAuthStore from "../../../../store/useAuthStore";
-import { apiGet, apiPost, apiPut, apiDelete } from "../../../../utils/api";
-
-// Dummy courses data
-const DUMMY_COURSES = [
-  {
-    id: "course-1",
-    name: "React Fundamentals",
-    description:
-      "Learn the basics of React including components, props, state, and hooks.",
-    totalQuestions: 45,
-    mcqCount: 30,
-    codeCount: 15,
-    level: "beginner",
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "course-2",
-    name: "Advanced JavaScript",
-    description:
-      "Deep dive into JavaScript concepts like closures, prototypes, and async programming.",
-    totalQuestions: 62,
-    mcqCount: 40,
-    codeCount: 22,
-    level: "advanced",
-    createdAt: "2024-02-10",
-  },
-  {
-    id: "course-3",
-    name: "HTML & CSS Basics",
-    description:
-      "Master the fundamentals of web development with HTML5 and CSS3.",
-    totalQuestions: 38,
-    mcqCount: 25,
-    codeCount: 13,
-    level: "beginner",
-    createdAt: "2024-01-20",
-  },
-  {
-    id: "course-4",
-    name: "Node.js Backend",
-    description:
-      "Build server-side applications with Node.js, Express, and MongoDB.",
-    totalQuestions: 55,
-    mcqCount: 35,
-    codeCount: 20,
-    level: "intermediate",
-    createdAt: "2024-03-05",
-  },
-  {
-    id: "course-5",
-    name: "TypeScript Essentials",
-    description: "Learn TypeScript to write type-safe JavaScript applications.",
-    totalQuestions: 42,
-    mcqCount: 28,
-    codeCount: 14,
-    level: "intermediate",
-    createdAt: "2024-02-28",
-  },
-];
+import { getAllCourses, createCourse, updateCourse, deleteCourse } from "../../../../services/questionBankApi";
 
 const CourseList = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
-  const [courses, setCourses] = useState(DUMMY_COURSES);
+  const [courses, setCourses] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
   const [loading, setLoading] = useState(false);
@@ -92,11 +34,50 @@ const CourseList = () => {
     level: "beginner",
   });
 
+  // Fetch courses from backend
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  const fetchCourses = async () => {
+    try {
+      setLoading(true);
+      const response = await getAllCourses();
+      if (response.success && response.data) {
+        // Transform data to match component structure
+        const transformedCourses = response.data.map(course => ({
+          id: course.course_id,
+          name: course.course_name,
+          description: course.description || 'No description available',
+          courseType: course.course_type,
+          skillCategory: course.skill_category,
+          supportsMcq: course.supports_mcq,
+          supportsCoding: course.supports_coding,
+          totalQuestions: course.total_questions || 0,
+          mcqCount: course.mcq_count || 0,
+          codeCount: course.coding_count || 0,
+          level: course.course_level || 'beginner',
+          createdAt: new Date(course.created_at).toISOString().split('T')[0],
+        }));
+        setCourses(transformedCourses);
+      } else {
+        setCourses([]);
+      }
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      // Just set empty array - don't show error to user
+      setCourses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter courses
   const filteredCourses = courses.filter((course) => {
+    if (!course || !course.name) return false; // Safety check
     const matchesSearch =
       course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (course.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesLevel = !selectedLevel || course.level === selectedLevel;
     return matchesSearch && matchesLevel;
   });
@@ -123,33 +104,59 @@ const CourseList = () => {
   };
 
   // Handle form submit
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (modalMode === "add") {
-      const newCourse = {
-        id: `course-${Date.now()}`,
-        ...formData,
-        totalQuestions: 0,
-        mcqCount: 0,
-        codeCount: 0,
-        createdAt: new Date().toISOString().split("T")[0],
+    setLoading(true);
+    
+    try {
+      const courseData = {
+        course_name: formData.name,
+        course_type: 'frontend',
+        skill_category: formData.name.toUpperCase().replace(/[^A-Z0-9]/g, '_'),
+        course_level: formData.level,
+        description: formData.description,
+        supports_mcq: 1,
+        supports_coding: 1,
       };
-      setCourses([newCourse, ...courses]);
-    } else {
-      setCourses(
-        courses.map((c) =>
-          c.id === editingCourse.id ? { ...c, ...formData } : c,
-        ),
-      );
+
+      if (modalMode === "add") {
+        const response = await createCourse(courseData);
+        if (response.success) {
+          await fetchCourses(); // Refresh the list
+        }
+      } else {
+        const response = await updateCourse(editingCourse.id, courseData);
+        if (response.success) {
+          await fetchCourses(); // Refresh the list
+        }
+      }
+      setShowModal(false);
+    } catch (error) {
+      console.error('Error saving course:', error);
+      alert('Failed to save course. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    setShowModal(false);
   };
 
   // Handle delete
-  const handleDelete = (courseId, e) => {
+  const handleDelete = async (courseId, e) => {
     e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this course?")) {
-      setCourses(courses.filter((c) => c.id !== courseId));
+    if (window.confirm("Are you sure you want to delete this course? This will only work if there are no questions for this course.")) {
+      setLoading(true);
+      try {
+        const response = await deleteCourse(courseId);
+        if (response.success) {
+          await fetchCourses(); // Refresh the list
+        } else {
+          alert(response.message || 'Failed to delete course');
+        }
+      } catch (error) {
+        console.error('Error deleting course:', error);
+        alert('Failed to delete course. It may have existing questions.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -177,67 +184,68 @@ const CourseList = () => {
       {loading && <div style={s.loadingOverlay}>Loading...</div>}
 
       {/* Top Bar */}
-      <div style={s.topBar}>
-        <div style={s.topBarLeft}>
-          <div style={s.searchWrapper}>
-            <Search sx={{ color: "#94a3b8", fontSize: 20 }} />
-            <input
-              type="text"
-              placeholder="Search courses..."
-              style={s.searchInput}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+      <>
+        <div style={s.topBar}>
+            <div style={s.topBarLeft}>
+              <div style={s.searchWrapper}>
+                <Search sx={{ color: "#94a3b8", fontSize: 20 }} />
+                <input
+                  type="text"
+                  placeholder="Search courses..."
+                  style={s.searchInput}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
 
-          <div style={s.selectWrapper}>
-            <select
-              style={s.filterSelect}
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-            >
-              <option value="">All Levels</option>
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-            <ExpandMore
-              sx={{
-                fontSize: 20,
-                color: "#64748b",
-                position: "absolute",
-                right: 12,
-                top: "50%",
-                transform: "translateY(-50%)",
-                pointerEvents: "none",
-              }}
-            />
-          </div>
+              <div style={s.selectWrapper}>
+                <select
+                  style={s.filterSelect}
+                  value={selectedLevel}
+                  onChange={(e) => setSelectedLevel(e.target.value)}
+                >
+                  <option value="">All Levels</option>
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                </select>
+                <ExpandMore
+                  sx={{
+                    fontSize: 20,
+                    color: "#64748b",
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
 
-          <button style={s.addBtn} onClick={openAddModal}>
-            <Add sx={{ fontSize: 20 }} />
-            Add Course
-          </button>
-        </div>
-
-        <div style={s.topBarRight}>
-          <div style={s.headerStats}>
-            <div style={s.statBox}>
-              <span style={s.statNumber}>{courses.length}</span>
-              <span style={s.statLabel}>Total Courses</span>
+              <button style={s.addBtn} onClick={openAddModal}>
+                <Add sx={{ fontSize: 20 }} />
+                Add Course
+              </button>
             </div>
-            <div style={s.statBox}>
-              <span style={s.statNumber}>
-                {courses.reduce((sum, c) => sum + c.totalQuestions, 0)}
-              </span>
-              <span style={s.statLabel}>Total Questions</span>
+
+            <div style={s.topBarRight}>
+              <div style={s.headerStats}>
+                <div style={s.statBox}>
+                  <span style={s.statNumber}>{courses.length}</span>
+                  <span style={s.statLabel}>Total Courses</span>
+                </div>
+                <div style={s.statBox}>
+                  <span style={s.statNumber}>
+                    {courses.reduce((sum, c) => sum + c.totalQuestions, 0)}
+                  </span>
+                  <span style={s.statLabel}>Total Questions</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Courses Grid */}
-      <div style={s.coursesGrid}>
+          {/* Courses Grid */}
+          <div style={s.coursesGrid}>
         {filteredCourses.map((course) => (
           <div
             key={course.id}
@@ -316,6 +324,7 @@ const CourseList = () => {
           </button>
         </div>
       )}
+      </>
 
       {/* Modal */}
       {showModal && (
@@ -756,6 +765,41 @@ const s = {
   },
   submitBtn: {
     padding: "10px 20px",
+    fontSize: "14px",
+    fontWeight: "500",
+    border: "none",
+    borderRadius: "8px",
+    backgroundColor: "#4f46e5",
+    color: "#ffffff",
+    cursor: "pointer",
+  },
+  errorContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "60px 20px",
+    textAlign: "center",
+  },
+  errorIcon: {
+    fontSize: "64px",
+    marginBottom: "20px",
+  },
+  errorTitle: {
+    fontSize: "24px",
+    fontWeight: "600",
+    color: "#1e293b",
+    marginBottom: "12px",
+  },
+  errorMessage: {
+    fontSize: "16px",
+    color: "#64748b",
+    maxWidth: "600px",
+    lineHeight: "1.6",
+    marginBottom: "24px",
+  },
+  retryButton: {
+    padding: "12px 24px",
     fontSize: "14px",
     fontWeight: "500",
     border: "none",
