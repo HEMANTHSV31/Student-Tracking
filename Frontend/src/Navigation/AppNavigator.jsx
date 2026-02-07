@@ -31,6 +31,8 @@ import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights"
 //Super Admin -> Question Bank (Practice Courses)
 import CourseList from "../pages/SuperAdmin/QuestionBank/CourseList/CourseList";
 import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/QuestionBank";
+//Super Admin -> Venue Allocation
+import VenueAllocation from "../pages/SuperAdmin/VenueAllocation/VenueAllocation";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
@@ -110,6 +112,8 @@ const AppNavigator = () => {
             {/* Question Bank / Practice Courses */}
             <Route path="courses" element={<CourseList />} />
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            {/* Venue Allocation */}
+            <Route path="venue-allocation" element={<VenueAllocation />} />
           </Route>
         )}
 

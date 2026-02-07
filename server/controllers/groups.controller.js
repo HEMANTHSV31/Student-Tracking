@@ -581,10 +581,13 @@ export const createVenue = async (req, res) => {
       });
     }
 
-    // Check if faculty is already assigned to another venue
+    await connection.beginTransaction();
+
+    // If faculty is being assigned, check if they're already assigned elsewhere
+    // If so, remove them from the old venue first (auto-reassignment)
     if (assigned_faculty_id) {
       const [facultyCheck] = await connection.query(
-        `SELECT v.venue_name, u.name as faculty_name
+        `SELECT v.venue_id, v.venue_name, u.name as faculty_name
          FROM venue v 
          INNER JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
          INNER JOIN users u ON f.user_id = u.user_id
@@ -593,19 +596,27 @@ export const createVenue = async (req, res) => {
       );
 
       if (facultyCheck.length > 0) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `${facultyCheck[0].faculty_name} is already assigned to "${facultyCheck[0].venue_name}". Please choose a different faculty.` 
-        });
+        // Remove faculty from old venue
+        await connection.query(
+          'UPDATE venue SET assigned_faculty_id = NULL WHERE venue_id = ?',
+          [facultyCheck[0].venue_id]
+        );
+        // Also update the associated groups
+        await connection.query(
+          'UPDATE `groups` SET faculty_id = NULL WHERE venue_id = ?',
+          [facultyCheck[0].venue_id]
+        );
+        console.log(`[CREATE VENUE] Removed faculty from old venue "${facultyCheck[0].venue_name}" for reassignment`);
       }
     }
 
-    await connection.beginTransaction();
+    // Use the assigned faculty or NULL (no default assignment)
+    const facultyIdToUse = assigned_faculty_id || null;
 
     const [result] = await connection.query(`
       INSERT INTO venue (venue_name, capacity, location, assigned_faculty_id, year, group_specification, status, created_at) 
       VALUES (?, ?, ?, ?, ?, ?, 'Active', NOW())
-    `, [venue_name, capacity, location || '', assigned_faculty_id || null, year || null, group_specification || null]);
+    `, [venue_name, capacity, location || '', facultyIdToUse, year || null, group_specification || null]);
 
     const venueId = result.insertId;
 
@@ -615,7 +626,7 @@ export const createVenue = async (req, res) => {
     await connection.query(`
       INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, max_students, department, status, created_at)
       VALUES (?, ?, ?, ?, 'Mon-Fri', '09:00-17:00', ?, 'General', 'Active', NOW())
-    `, [groupCode, groupName, venueId, assigned_faculty_id || null, capacity || 50]);
+    `, [groupCode, groupName, venueId, facultyIdToUse, capacity || 50]);
 
     // Copy existing roadmap modules that were created for "all venues" to this new venue
     // console.log(`[CREATE VENUE] Copying existing "all venues" roadmaps to new venue ${venueId}`);

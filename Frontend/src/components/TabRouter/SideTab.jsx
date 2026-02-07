@@ -22,6 +22,7 @@ import {
   BookOpen,
   Code,
   Braces,
+  MapPin,
 } from "lucide-react";
 
 const SideTab = () => {
@@ -29,7 +30,7 @@ const SideTab = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
-  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice"].some((seg) =>
+  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice", "venue-allocation"].some((seg) =>
     location.pathname.includes(seg),
   );
 
@@ -73,6 +74,12 @@ const SideTab = () => {
         id: "group-insights",
         label: "Group Insights",
         icon: BarChart3,
+        section: "classes",
+      },
+      {
+        id: "venue-allocation",
+        label: "Venue Allocation",
+        icon: MapPin,
         section: "classes",
       },
 
@@ -193,6 +200,7 @@ const SideTab = () => {
     tasks: { title: "Task & Assignment" },
     "skill-reports": { title: "Progress Import" },
     "group-insights": { title: "Group Insights" },
+    "venue-allocation": { title: "Venue Allocation" },
     reports: { title: "Reports" },
     roadmap: { title: "Roadmap & Material" },
     "code-practice": { title: "P Skills Practice" },

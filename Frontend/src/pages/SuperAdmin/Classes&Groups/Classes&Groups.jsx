@@ -1184,11 +1184,11 @@ const GroupsClasses = () => {
                 <input
                   type="number"
                   style={s.input}
-                  value={newVenue.capacity}
+                  value={newVenue.capacity || ""}
                   onChange={(e) =>
                     setNewVenue({
                       ...newVenue,
-                      capacity: parseInt(e.target.value),
+                      capacity: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
                     })
                   }
                 />
@@ -1341,11 +1341,11 @@ const GroupsClasses = () => {
                 <input
                   type="number"
                   style={s.input}
-                  value={editingVenue.capacity}
+                  value={editingVenue.capacity || ""}
                   onChange={(e) =>
                     setEditingVenue({
                       ...editingVenue,
-                      capacity: parseInt(e.target.value),
+                      capacity: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
                     })
                   }
                 />
