@@ -86,6 +86,47 @@ export const getDepartments = async (req, res) => {
 };
 
 /**
+ * Get unique venue locations for filtering
+ * GET /api/venue-allocation/locations
+ */
+export const getVenueLocations = async (req, res) => {
+  try {
+    const [locations] = await db.query(`
+      SELECT DISTINCT 
+        v.location,
+        COUNT(v.venue_id) as venue_count,
+        SUM(v.capacity) as total_capacity,
+        SUM(v.capacity - COALESCE((SELECT COUNT(*) FROM group_students gs 
+            JOIN \`groups\` g ON gs.group_id = g.group_id 
+            WHERE g.venue_id = v.venue_id AND g.status = 'Active' AND gs.status = 'Active'), 0)) as available_seats
+      FROM venue v
+      WHERE v.deleted_at IS NULL 
+        AND v.status = 'Active'
+        AND v.location IS NOT NULL 
+        AND v.location != ''
+      GROUP BY v.location
+      ORDER BY v.location
+    `);
+
+    res.status(200).json({
+      success: true,
+      data: locations.map(loc => ({
+        location: loc.location,
+        venue_count: parseInt(loc.venue_count) || 0,
+        total_capacity: parseInt(loc.total_capacity) || 0,
+        available_seats: parseInt(loc.available_seats) || 0
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching venue locations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch venue locations'
+    });
+  }
+};
+
+/**
  * Get all real venues from database
  * GET /api/venue-allocation/venues
  */
@@ -162,6 +203,16 @@ export const getStudents = async (req, res) => {
       });
     }
 
+    // Check if schedule_end_date column exists
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME = 'schedule_end_date'
+    `);
+    const hasScheduleColumn = columns.length > 0;
+
     let whereConditions = ['s.year = ?', 'u.role_id = 3', 'u.is_active = 1'];
     let params = [year];
 
@@ -188,6 +239,16 @@ export const getStudents = async (req, res) => {
         )
       `;
     }
+
+    // Build schedule subquery conditionally
+    const scheduleSubquery = hasScheduleColumn ? `
+        (
+          SELECT g.schedule_end_date FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.student_id = s.student_id AND gs.status = 'Active'
+          LIMIT 1
+        ) as schedule_end_date
+    ` : `NULL as schedule_end_date`;
  
     // Enhanced query with venue mapping details
     const query = `
@@ -225,17 +286,12 @@ export const getStudents = async (req, res) => {
           LIMIT 1
         ) as current_group_name,
         (
-          SELECT gs.joined_at FROM group_students gs
+          SELECT COALESCE(gs.joined_at, gs.created_at) FROM group_students gs
           INNER JOIN \`groups\` g ON gs.group_id = g.group_id
           WHERE gs.student_id = s.student_id AND gs.status = 'Active'
           LIMIT 1
         ) as allocation_date,
-        (
-          SELECT g.schedule_end_date FROM group_students gs
-          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-          WHERE gs.student_id = s.student_id AND gs.status = 'Active'
-          LIMIT 1
-        ) as schedule_end_date
+        ${scheduleSubquery}
       FROM students s
       INNER JOIN users u ON s.user_id = u.user_id
       WHERE ${whereConditions.join(' AND ')}
@@ -552,7 +608,6 @@ export const executeAllocation = async (req, res) => {
       year, 
       venueIds, 
       departments,
-      studentIds,
       reservedSlots = 2, 
       groupDepartments = [],
       allocationMode = 'department_wise',
@@ -568,6 +623,16 @@ export const executeAllocation = async (req, res) => {
         message: 'Year and venue selection are required'
       });
     }
+
+    // Check if schedule columns exist
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME IN ('schedule_start_date', 'schedule_end_date', 'allocation_batch')
+    `);
+    const hasScheduleColumns = columns.length >= 3;
 
     // Validate schedule dates if provided
     let startDate = scheduleStartDate ? new Date(scheduleStartDate) : new Date();
@@ -629,11 +694,6 @@ export const executeAllocation = async (req, res) => {
     if (departments && departments.length > 0) {
       whereConditions.push(`u.department IN (${departments.map(() => '?').join(',')})`);
       params.push(...departments);
-    }
-
-    if (studentIds && studentIds.length > 0) {
-      whereConditions.push(`s.student_id IN (${studentIds.map(() => '?').join(',')})`);
-      params.push(...studentIds);
     }
 
     const orderBy = allocationMode === 'roll_number_wise' 
@@ -722,8 +782,8 @@ export const executeAllocation = async (req, res) => {
         groupId = existingGroups[0].group_id;
         groupName = existingGroups[0].group_name;
         
-        // Update schedule dates on existing group
-        if (scheduleStartDate || scheduleEndDate) {
+        // Update schedule dates on existing group if columns exist
+        if (hasScheduleColumns && (scheduleStartDate || scheduleEndDate)) {
           await connection.query(`
             UPDATE \`groups\` 
             SET schedule_start_date = ?, schedule_end_date = ?, allocation_batch = ?
@@ -737,12 +797,19 @@ export const executeAllocation = async (req, res) => {
           ? `${venue.venue_name} - ${groupSpecification}`
           : `${venue.venue_name} - Group`;
 
-        const [groupResult] = await connection.query(`
-          INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, schedule_start_date, schedule_end_date, allocation_batch, max_students, department, status, created_at)
-          VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, ?, ?, ?, 'Multiple', 'Active', NOW())
-        `, [groupCode, groupName, venue.venue_id, startDate, endDate, batchCode, venue.capacity]);
-
-        groupId = groupResult.insertId;
+        if (hasScheduleColumns) {
+          const [groupResult] = await connection.query(`
+            INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, schedule_start_date, schedule_end_date, allocation_batch, max_students, department, status, created_at)
+            VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, ?, ?, ?, 'Multiple', 'Active', NOW())
+          `, [groupCode, groupName, venue.venue_id, startDate, endDate, batchCode, venue.capacity]);
+          groupId = groupResult.insertId;
+        } else {
+          const [groupResult] = await connection.query(`
+            INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, max_students, department, status, created_at)
+            VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, 'Multiple', 'Active', NOW())
+          `, [groupCode, groupName, venue.venue_id, venue.capacity]);
+          groupId = groupResult.insertId;
+        }
       }
 
       const venueStudents = [];
@@ -752,8 +819,8 @@ export const executeAllocation = async (req, res) => {
         const student = orderedStudents[studentIndex];
 
         await connection.query(`
-          INSERT INTO group_students (group_id, student_id, joined_at, status)
-          VALUES (?, ?, NOW(), 'Active')
+          INSERT INTO group_students (group_id, student_id, status, created_at)
+          VALUES (?, ?, 'Active', NOW())
         `, [groupId, student.student_id]);
 
         venueStudents.push({
@@ -775,9 +842,8 @@ export const executeAllocation = async (req, res) => {
         newly_allocated: venueStudents.length,
         total_students: venue.current_students + venueStudents.length,
         capacity: venue.capacity,
-        schedule_start_date: startDate ? startDate.toISOString().split('T')[0] : null,
-        schedule_end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-        students: venueStudents
+        schedule_start_date: hasScheduleColumns && startDate ? startDate.toISOString().split('T')[0] : null,
+        schedule_end_date: hasScheduleColumns && endDate ? endDate.toISOString().split('T')[0] : null
       });
     }
 
@@ -789,11 +855,11 @@ export const executeAllocation = async (req, res) => {
       data: {
         totalAllocated: studentIndex,
         venuesUsed: allocationResults.length,
-        batchCode,
+        batchCode: hasScheduleColumns ? batchCode : `BATCH-${year}-${Date.now()}`,
         batchName: finalBatchName,
         scheduleId,
-        scheduleStartDate: startDate ? startDate.toISOString().split('T')[0] : null,
-        scheduleEndDate: endDate ? endDate.toISOString().split('T')[0] : null,
+        scheduleStartDate: hasScheduleColumns && startDate ? startDate.toISOString().split('T')[0] : null,
+        scheduleEndDate: hasScheduleColumns && endDate ? endDate.toISOString().split('T')[0] : null,
         allocation: allocationResults
       }
     });
@@ -941,6 +1007,29 @@ export const getExpiringAllocations = async (req, res) => {
     const warningDate = new Date();
     warningDate.setDate(warningDate.getDate() + parseInt(days));
 
+    // First check if the schedule columns exist
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME = 'schedule_end_date'
+    `);
+
+    // If schedule columns don't exist, return empty data
+    if (columns.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          expiring: [],
+          expired: [],
+          totalExpiring: 0,
+          totalExpired: 0,
+          message: 'Schedule columns not yet created. Please run the migration.'
+        }
+      });
+    }
+
     // Get groups with schedule_end_date approaching
     const [expiringGroups] = await db.query(`
       SELECT 
@@ -1076,6 +1165,120 @@ export const getActiveSchedules = async (req, res) => {
 };
 
 /**
+ * Check if a schedule exists for given date range
+ * POST /api/venue-allocation/check-schedule
+ */
+export const checkScheduleConflict = async (req, res) => {
+  try {
+    const { startDate, endDate, year } = req.body;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Start date and end date are required'
+      });
+    }
+
+    // First check if the schedule columns exist
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME IN ('schedule_start_date', 'schedule_end_date', 'allocation_batch')
+    `);
+
+    // If schedule columns don't exist, return no conflict (fresh database)
+    if (columns.length < 3) {
+      return res.status(200).json({
+        success: true,
+        hasConflict: false,
+        message: 'No existing schedule for the selected dates. You can proceed with allocation.',
+        columnsExist: false
+      });
+    }
+
+    // Check for overlapping schedules
+    let query = `
+      SELECT 
+        g.allocation_batch as batch_code,
+        MIN(g.schedule_start_date) as start_date,
+        MAX(g.schedule_end_date) as end_date,
+        COUNT(DISTINCT g.group_id) as venue_count,
+        COUNT(DISTINCT gs.student_id) as student_count,
+        v.venue_name,
+        v.location
+      FROM \`groups\` g
+      LEFT JOIN venue v ON g.venue_id = v.venue_id
+      LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+      WHERE g.status = 'Active'
+        AND g.allocation_batch IS NOT NULL
+        AND (
+          (g.schedule_start_date <= ? AND g.schedule_end_date >= ?) OR
+          (g.schedule_start_date <= ? AND g.schedule_end_date >= ?) OR
+          (g.schedule_start_date >= ? AND g.schedule_end_date <= ?)
+        )
+    `;
+    
+    const params = [endDate, startDate, startDate, startDate, startDate, endDate];
+
+    if (year) {
+      query += ` AND EXISTS (
+        SELECT 1 FROM students s 
+        INNER JOIN group_students gs2 ON s.student_id = gs2.student_id 
+        WHERE gs2.group_id = g.group_id AND s.year = ?
+      )`;
+      params.push(year);
+    }
+
+    query += ` GROUP BY g.allocation_batch, v.venue_id`;
+
+    const [existingSchedules] = await db.query(query, params);
+
+    if (existingSchedules.length > 0) {
+      // Group by batch_code
+      const batches = {};
+      existingSchedules.forEach(s => {
+        if (!batches[s.batch_code]) {
+          batches[s.batch_code] = {
+            batch_code: s.batch_code,
+            start_date: s.start_date ? new Date(s.start_date).toISOString().split('T')[0] : null,
+            end_date: s.end_date ? new Date(s.end_date).toISOString().split('T')[0] : null,
+            venues: [],
+            total_students: 0
+          };
+        }
+        batches[s.batch_code].venues.push({
+          venue_name: s.venue_name,
+          location: s.location,
+          student_count: parseInt(s.student_count) || 0
+        });
+        batches[s.batch_code].total_students += parseInt(s.student_count) || 0;
+      });
+
+      return res.status(200).json({
+        success: true,
+        hasConflict: true,
+        message: 'Schedule already exists for the selected date range',
+        existingSchedules: Object.values(batches)
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      hasConflict: false,
+      message: 'No existing schedule for the selected dates. You can proceed with allocation.'
+    });
+  } catch (error) {
+    console.error('Error checking schedule conflict:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check schedule conflict'
+    });
+  }
+};
+
+/**
  * Get detailed student-venue mapping for display
  * GET /api/venue-allocation/mappings?year=1&venueId=1
  */
@@ -1118,7 +1321,7 @@ export const getStudentVenueMapping = async (req, res) => {
         g.schedule_start_date,
         g.schedule_end_date,
         g.allocation_batch,
-        gs.joined_at as allocation_date,
+        COALESCE(gs.joined_at, gs.created_at) as allocation_date,
         DATEDIFF(g.schedule_end_date, CURDATE()) as days_until_expiry
       FROM group_students gs
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
@@ -1197,6 +1400,22 @@ export const updateScheduleDates = async (req, res) => {
       });
     }
 
+    // First check if the schedule columns exist
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME IN ('schedule_start_date', 'schedule_end_date')
+    `);
+
+    if (columns.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Schedule columns do not exist. Please run the migration first.'
+      });
+    }
+
     const endDate = new Date(newEndDate);
     const startDate = newStartDate ? new Date(newStartDate) : null;
 
@@ -1241,49 +1460,62 @@ export const updateScheduleDates = async (req, res) => {
 export const getAlerts = async (req, res) => {
   try {
     const alerts = [];
-    const today = new Date();
     
-    // Check for expiring allocations (within 7 days)
-    const [expiringSoon] = await db.query(`
-      SELECT COUNT(DISTINCT g.group_id) as count
-      FROM \`groups\` g
-      WHERE g.status = 'Active'
-        AND g.schedule_end_date IS NOT NULL
-        AND g.schedule_end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+    // First check if the schedule columns exist
+    const [columns] = await db.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'groups' 
+        AND COLUMN_NAME = 'schedule_end_date'
     `);
 
-    if (expiringSoon[0].count > 0) {
-      alerts.push({
-        type: 'warning',
-        title: 'Allocations Expiring Soon',
-        message: `${expiringSoon[0].count} venue allocation(s) will expire within the next 7 days`,
-        action: 'View expiring allocations',
-        actionUrl: '/admin/venue-allocation?tab=expiring',
-        priority: 'high'
-      });
+    const hasScheduleColumns = columns.length > 0;
+
+    // Only check schedule-related alerts if columns exist
+    if (hasScheduleColumns) {
+      // Check for expiring allocations (within 7 days)
+      const [expiringSoon] = await db.query(`
+        SELECT COUNT(DISTINCT g.group_id) as count
+        FROM \`groups\` g
+        WHERE g.status = 'Active'
+          AND g.schedule_end_date IS NOT NULL
+          AND g.schedule_end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+      `);
+
+      if (expiringSoon[0].count > 0) {
+        alerts.push({
+          type: 'warning',
+          title: 'Allocations Expiring Soon',
+          message: `${expiringSoon[0].count} venue allocation(s) will expire within the next 7 days`,
+          action: 'View expiring allocations',
+          actionUrl: '/admin/venue-allocation?tab=expiring',
+          priority: 'high'
+        });
+      }
+
+      // Check for already expired
+      const [expired] = await db.query(`
+        SELECT COUNT(DISTINCT g.group_id) as count
+        FROM \`groups\` g
+        WHERE g.status = 'Active'
+          AND g.schedule_end_date IS NOT NULL
+          AND g.schedule_end_date < CURDATE()
+      `);
+
+      if (expired[0].count > 0) {
+        alerts.push({
+          type: 'error',
+          title: 'Expired Allocations',
+          message: `${expired[0].count} venue allocation(s) have expired and need renewal`,
+          action: 'Renew allocations',
+          actionUrl: '/admin/venue-allocation?tab=expired',
+          priority: 'critical'
+        });
+      }
     }
 
-    // Check for already expired
-    const [expired] = await db.query(`
-      SELECT COUNT(DISTINCT g.group_id) as count
-      FROM \`groups\` g
-      WHERE g.status = 'Active'
-        AND g.schedule_end_date IS NOT NULL
-        AND g.schedule_end_date < CURDATE()
-    `);
-
-    if (expired[0].count > 0) {
-      alerts.push({
-        type: 'error',
-        title: 'Expired Allocations',
-        message: `${expired[0].count} venue allocation(s) have expired and need renewal`,
-        action: 'Renew allocations',
-        actionUrl: '/admin/venue-allocation?tab=expired',
-        priority: 'critical'
-      });
-    }
-
-    // Check for unallocated students
+    // Check for unallocated students (this doesn't need the new columns)
     const [unallocated] = await db.query(`
       SELECT COUNT(*) as count
       FROM students s
@@ -1312,7 +1544,8 @@ export const getAlerts = async (req, res) => {
       data: {
         alerts,
         totalAlerts: alerts.length,
-        hasHighPriority: alerts.some(a => a.priority === 'critical' || a.priority === 'high')
+        hasHighPriority: alerts.some(a => a.priority === 'critical' || a.priority === 'high'),
+        scheduleColumnsExist: hasScheduleColumns
       }
     });
   } catch (error) {

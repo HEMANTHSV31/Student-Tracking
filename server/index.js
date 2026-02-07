@@ -88,6 +88,12 @@ app.use(`${API_PREFIX}/api/uploads`, (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
+// Support both /pbl and no prefix routes for compatibility
+app.use(`/pbl/api/uploads`, (req, res, next) => {
+  res.setHeader('Content-Disposition', 'inline');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 app.use(`${API_PREFIX}/api/auth`, authRoutes);
 app.use(`${API_PREFIX}/api/faculty`, facultyRoutes);
 app.use(`${API_PREFIX}/api/students`, studentRoutes);
@@ -104,6 +110,24 @@ app.use(`${API_PREFIX}/api/schedule`, scheduleRoutes);
 app.use(`${API_PREFIX}/api/activity`, activityRoutes);
 app.use(`${API_PREFIX}/api/skill-order`, skillOrderRoutes);
 app.use(`${API_PREFIX}/api/venue-allocation`, venueAllocationRoutes);
+
+// Add /pbl prefix routes for compatibility
+app.use(`/pbl/api/auth`, authRoutes);
+app.use(`/pbl/api/faculty`, facultyRoutes);
+app.use(`/pbl/api/students`, studentRoutes);
+app.use(`/pbl/api/attendance`, attendanceRoutes);
+app.use(`/pbl/api/groups`, groupsRoutes);
+app.use(`/pbl/api/tasks`, tasksRoutes);
+app.use(`/pbl/api/roadmap`, roadmapRoutes);
+app.use(`/pbl/api/dashboard`, dashboardRoutes);
+app.use(`/pbl/api/assignments`, assignmentsRoutes);
+app.use(`/pbl/api/grades`, gradesRoutes);
+app.use(`/pbl/api/skill-reports`, skillReportRoutes);
+app.use(`/pbl/api/skill-completion`, skillCompletionRoutes);
+app.use(`/pbl/api/schedule`, scheduleRoutes);
+app.use(`/pbl/api/activity`, activityRoutes);
+app.use(`/pbl/api/skill-order`, skillOrderRoutes);
+app.use(`/pbl/api/venue-allocation`, venueAllocationRoutes);
 // app.use('/api/faculty/dashboard', facultyDashboardRoutes); 
 // Cron job to update schedule daily at 8 PM
 cron.schedule('0 20 * * *', () => {

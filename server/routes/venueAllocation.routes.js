@@ -3,6 +3,7 @@ import {
   getAvailableYears,
   getDepartments,
   getAllVenues,
+  getVenueLocations,
   getStudents,
   previewAllocation,
   executeAllocation,
@@ -11,6 +12,7 @@ import {
   getAllocationStats,
   getExpiringAllocations,
   getActiveSchedules,
+  checkScheduleConflict,
   getStudentVenueMapping,
   updateScheduleDates,
   getAlerts
@@ -29,6 +31,9 @@ router.get('/departments', authenticate, getDepartments);
 
 // Get all venues from database
 router.get('/venues', authenticate, getAllVenues);
+
+// Get unique venue locations
+router.get('/locations', authenticate, getVenueLocations);
 
 // Get students with filters
 router.post('/students', authenticate, getStudents);
@@ -55,6 +60,9 @@ router.get('/expiring', authenticate, getExpiringAllocations);
 
 // Get active allocation schedules/batches
 router.get('/schedules', authenticate, getActiveSchedules);
+
+// Check if schedule exists for date range
+router.post('/check-schedule', authenticate, checkScheduleConflict);
 
 // Get detailed student-venue mappings
 router.get('/mappings', authenticate, getStudentVenueMapping);
