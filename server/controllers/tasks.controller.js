@@ -278,12 +278,12 @@ export const createTask = async (req, res) => {
       });
     }
     
-    // Validate practice task requirements
-    if (task_type === 'practice') {
+    // Validate code_practice task requirements
+    if (task_type === 'code_practice') {
       if (!practice_type || !skill_filter) {
         return res.status(400).json({
           success: false,
-          message: 'Practice tasks require practice_type (mcq/coding) and skill_filter'
+          message: 'Code practice tasks require practice_type (mcq/coding) and skill_filter'
         });
       }
     }
@@ -435,11 +435,15 @@ export const createTask = async (req, res) => {
         }
       }
 
+      // Determine question count and type for code_practice tasks
+      const questionCount = task_type === 'code_practice' && practice_type === 'mcq' ? 20 : task_type === 'code_practice' ? 1 : null;
+      const questionType = task_type === 'code_practice' ? practice_type : null;
+      
       // Insert task
       const [taskResult] = await connection.query(`
-        INSERT INTO tasks (group_id, title, description, venue_id, faculty_id, day, due_date, max_score, material_type, external_url, skill_filter, course_type, status, is_template, task_type, practice_type, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?, NOW())
-      `, [group_id, title, description || '', target_venue_id, venue_faculty_id, day, due_date || null, max_score, material_type, external_url || null, skill_filter || null, course_type || null, group_id ? 1 : 0, task_type || 'manual', practice_type || null]);
+        INSERT INTO tasks (group_id, title, description, venue_id, faculty_id, day, due_date, max_score, material_type, external_url, skill_filter, course_type, status, is_template, task_type, question_type, total_questions, passing_score, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?, ?, ?, NOW())
+      `, [group_id, title, description || '', target_venue_id, venue_faculty_id, day, due_date || null, max_score, material_type, external_url || null, skill_filter || null, course_type || null, group_id ? 1 : 0, task_type || 'manual', questionType, questionCount, 50.00]);
 
       const taskId = taskResult.insertId;
       createdTasks.push({ task_id: taskId, venue_id: target_venue_id });
@@ -488,25 +492,29 @@ export const createTask = async (req, res) => {
       // Student/Faculty views use LEFT JOIN and treat missing submissions as "Not Submitted".
       totalStudents += eligibleStudents.length;
 
-      // For practice tasks, assign random questions to each eligible student
-      if (task_type === 'practice' && eligibleStudents.length > 0) {
+      // For code_practice tasks, assign random questions to each eligible student
+      if (task_type === 'code_practice' && eligibleStudents.length > 0) {
+        const numQuestions = practice_type === 'mcq' ? 20 : 1;
+        
         for (const student of eligibleStudents) {
-          // Get a random question from question_bank for this skill and practice_type
+          // Get random questions from question_bank for this skill and practice_type
           const [questions] = await connection.query(`
             SELECT qb.question_id 
             FROM question_bank qb
             JOIN skill_courses sc ON qb.course_id = sc.course_id
-            WHERE sc.skill_name = ? AND qb.question_type = ? AND qb.status = 'Active'
+            WHERE sc.skill_category = ? AND qb.question_type = ? AND qb.status = 'Active'
             ORDER BY RAND() 
-            LIMIT 1
-          `, [skill_filter, practice_type]);
+            LIMIT ?
+          `, [skill_filter, practice_type, numQuestions]);
           
           if (questions.length > 0) {
-            // Assign this question to the student for this task
-            await connection.query(`
-              INSERT INTO task_question_assignments (task_id, student_id, question_id, assigned_at)
-              VALUES (?, ?, ?, NOW())
-            `, [taskId, student.student_id, questions[0].question_id]);
+            // Assign questions to the student for this task
+            for (let i = 0; i < questions.length; i++) {
+              await connection.query(`
+                INSERT INTO task_question_assignments (task_id, student_id, question_id, question_order, assigned_at)
+                VALUES (?, ?, ?, ?, NOW())
+              `, [taskId, student.student_id, questions[i].question_id, i + 1]);
+            }
           }
         }
       }
@@ -1484,8 +1492,6 @@ export const getStudentTasks = async (req, res) => {
     // console.log('Unlocked skills set:', Array.from(unlockedSkills));
     // console.log('======================================================\n');
 
-    // Get tasks from CURRENT venue only (new venues start with no tasks)
-    // Include both regular tasks (task_type='manual' or NULL) AND practice tasks (task_type='practice')
     let tasksQuery = `
       SELECT DISTINCT
         t.task_id,
@@ -1502,6 +1508,8 @@ export const getStudentTasks = async (req, res) => {
         t.created_at,
         t.venue_id as task_venue_id,
         t.task_type,
+        t.question_type,
+        t.total_questions,
         v.venue_name as task_venue_name,
         u.name as faculty_name,
         ts.submission_id,
@@ -1669,7 +1677,8 @@ export const getStudentTasks = async (req, res) => {
         skillFilter: task.skill_filter || '',
         courseType: task.course_type || '',
         taskType: task.task_type || 'manual',
-        practiceType: task.practice_type || null,
+        questionType: task.question_type || null,
+        totalQuestions: task.total_questions || null,
         moduleTitle: `Day ${task.day}`,
         instructor: task.faculty_name || 'Faculty',
         submittedDate: task.submitted_at,
@@ -1714,6 +1723,116 @@ export const getStudentTasks = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch tasks',
+      error: error.message
+    });
+  }
+};
+
+// Get single task details for student by task ID
+export const getStudentTaskById = async (req, res) => {
+  try {
+    const { task_id } = req.params;
+    const user_id = req.user.user_id;
+
+    // Get student info
+    const [studentInfo] = await db.query(`
+      SELECT s.student_id, gs.group_id, g.venue_id
+      FROM students s
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
+      WHERE s.user_id = ?
+    `, [user_id]);
+
+    if (studentInfo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const { student_id, venue_id } = studentInfo[0];
+
+    // Get task details with submission status
+    const [tasks] = await db.query(`
+      SELECT 
+        t.task_id,
+        t.venue_id,
+        t.title,
+        t.description,
+        t.skill_filter as skillFilter,
+        t.task_type as taskType,
+        t.question_type as questionType,
+        t.due_date as dueDate,
+        t.total_questions as totalQuestions,
+        t.passing_score as passingScore,
+        t.course_type as courseType,
+        ts.status as submissionStatus,
+        ts.submitted_at as submittedDate,
+        ts.file_name as fileName,
+        ts.file_path as filePath,
+        ts.link_url,
+        cs.code_content
+      FROM tasks t
+      LEFT JOIN task_submissions ts ON t.task_id = ts.task_id AND ts.student_id = ?
+      LEFT JOIN code_submissions cs ON ts.submission_id = cs.submission_id
+      WHERE t.task_id = ? AND t.status = 'Active' AND t.deleted_at IS NULL
+    `, [student_id, task_id]);
+
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or not accessible'
+      });
+    }
+
+    const task = tasks[0];
+
+    // Prepare saved code if exists
+    let savedCode = null;
+    if (task.code_content) {
+      try {
+        // Try to parse as JSON (combined code)
+        savedCode = JSON.parse(task.code_content);
+      } catch (e) {
+        // If not JSON, treat as single code string
+        savedCode = {
+          html: task.code_content,
+          css: '',
+          js: ''
+        };
+      }
+    }
+
+    // Format response
+    const taskData = {
+      id: task.task_id,
+      title: task.title,
+      description: task.description,
+      skillFilter: task.skillFilter,
+      taskType: task.taskType,
+      questionType: task.questionType,
+      dueDate: task.dueDate,
+      totalQuestions: task.totalQuestions,
+      passingScore: task.passingScore,
+      courseType: task.courseType,
+      submissionStatus: task.submissionStatus,
+      submittedDate: task.submittedDate,
+      fileName: task.fileName,
+      filePath: task.filePath,
+      link_url: task.link_url,
+      savedCode: savedCode
+    };
+
+    res.json({
+      success: true,
+      data: taskData
+    });
+
+  } catch (error) {
+    console.error('Error fetching student task by ID:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch task details',
       error: error.message
     });
   }
@@ -2327,6 +2446,358 @@ export const deleteTask = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while deleting task',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Get student's assigned questions for a task
+export const getStudentTaskQuestions = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { task_id } = req.params;
+    const user_id = req.user.user_id;
+
+    console.log('Getting questions for task_id:', task_id, 'user_id:', user_id);
+
+    // Get student_id from user_id
+    const [student] = await connection.execute(
+      'SELECT student_id FROM students WHERE user_id = ?',
+      [user_id]
+    );
+
+    console.log('Student lookup result:', student);
+
+    if (student.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student_id = student[0].student_id;
+    console.log('Found student_id:', student_id);
+
+    // Verify task exists and is code_practice
+    const [tasks] = await connection.execute(
+      `SELECT task_id, task_type, question_type 
+       FROM tasks 
+       WHERE task_id = ? AND task_type = 'code_practice'`,
+      [task_id]
+    );
+
+    console.log('Task lookup result:', tasks);
+
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or is not a code practice task'
+      });
+    }
+
+    // Get assigned questions for this student
+    console.log('Querying task_question_assignments with task_id:', task_id, 'student_id:', student_id);
+    
+    // First check what records exist for this task
+    const [allTaskAssignments] = await connection.execute(
+      'SELECT * FROM task_question_assignments WHERE task_id = ?',
+      [task_id]
+    );
+    console.log('All assignments for this task:', allTaskAssignments);
+    
+    const [questions] = await connection.execute(
+      `SELECT 
+        tqa.assignment_id,
+        tqa.question_id,
+        tqa.question_order,
+        qb.title as question_text,
+        qb.description,
+        qb.question_type,
+        qb.mcq_options as sample_answer,
+        qb.mcq_correct_answer as correct_answer,
+        qb.sample_image
+       FROM task_question_assignments tqa
+       JOIN question_bank qb ON tqa.question_id = qb.question_id
+       WHERE tqa.task_id = ? AND tqa.student_id = ?
+       ORDER BY tqa.question_order`,
+      [task_id, student_id]
+    );
+
+    console.log('Questions found:', questions.length);
+    console.log('Questions data:', questions);
+
+    res.json({
+      success: true,
+      data: questions
+    });
+
+  } catch (error) {
+    console.error('Error fetching student task questions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching task questions',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Submit MCQ test answers
+export const submitMCQTest = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { task_id } = req.params;
+    const { answers } = req.body;
+    const user_id = req.user.user_id;
+
+    console.log('Submit MCQ - task_id:', task_id, 'user_id:', user_id);
+    console.log('Answers received:', answers);
+
+    // Get student_id from user_id
+    const [studentResult] = await connection.execute(
+      'SELECT student_id FROM students WHERE user_id = ?',
+      [user_id]
+    );
+
+    if (studentResult.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student_id = studentResult[0].student_id;
+    console.log('Found student_id:', student_id);
+
+    // Verify task exists and is MCQ
+    const [tasks] = await connection.execute(
+      `SELECT task_id, question_type, passing_score, max_score 
+       FROM tasks 
+       WHERE task_id = ? AND task_type = 'code_practice' AND question_type = 'mcq'`,
+      [task_id]
+    );
+
+    if (tasks.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or is not an MCQ test'
+      });
+    }
+
+    const task = tasks[0];
+
+    // Get assigned questions with correct answers
+    const [questions] = await connection.execute(
+      `SELECT tqa.question_id, qb.mcq_correct_answer 
+       FROM task_question_assignments tqa
+       JOIN question_bank qb ON tqa.question_id = qb.question_id
+       WHERE tqa.task_id = ? AND tqa.student_id = ?
+       ORDER BY tqa.question_order`,
+      [task_id, student_id]
+    );
+
+    console.log('Questions for grading:', questions);
+
+    // Calculate score
+    let correctCount = 0;
+    const totalQuestions = questions.length;
+
+    questions.forEach(q => {
+      const studentAnswer = answers[q.question_id];
+      const correctAnswer = q.mcq_correct_answer;
+      console.log(`Question ${q.question_id}: student=${studentAnswer}, correct=${correctAnswer}`);
+      if (studentAnswer === correctAnswer) {
+        correctCount++;
+      }
+    });
+
+    const score = correctCount;
+    const percentage = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+    const passed = percentage >= parseFloat(task.passing_score || 50);
+
+    console.log(`Score: ${score}/${totalQuestions} = ${percentage.toFixed(2)}% - Passed: ${passed}`);
+
+    // Check if submission already exists
+    const [existingSubmissions] = await connection.execute(
+      `SELECT submission_id, attempt_number 
+       FROM student_submissions 
+       WHERE task_id = ? AND student_id = ? 
+       ORDER BY attempt_number DESC LIMIT 1`,
+      [task_id, student_id]
+    );
+
+    const attemptNumber = existingSubmissions.length > 0 
+      ? existingSubmissions[0].attempt_number + 1 
+      : 1;
+
+    // Insert submission (using first question_id for single-question tests, or null for multi-question)
+    const questionId = questions.length === 1 ? questions[0].question_id : null;
+    
+    const [submissionResult] = await connection.execute(
+      `INSERT INTO student_submissions 
+       (task_id, student_id, question_id, submission_type, auto_graded_score, percentage, 
+        grade, status, attempt_number, submitted_at) 
+       VALUES (?, ?, ?, 'mcq', ?, ?, ?, ?, ?, NOW())`,
+      [
+        task_id, 
+        student_id,
+        questionId,
+        score, 
+        percentage.toFixed(2),
+        passed ? task.max_score : Math.floor(task.max_score * (percentage / 100)),
+        'Auto-Graded',
+        attemptNumber
+      ]
+    );
+
+    const submissionId = submissionResult.insertId;
+
+    // MCQ answers are stored in student_submissions table
+    // Update task_submissions status if passed
+    if (passed) {
+      await connection.execute(
+        `UPDATE task_submissions 
+         SET status = 'Submitted', grade = ?, submitted_at = NOW() 
+         WHERE task_id = ? AND student_id = ?`,
+        [task.max_score, task_id, student_id]
+      );
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: passed ? 'Test passed successfully!' : 'Test completed. Please retry to pass.',
+      data: {
+        submission_id: submissionId,
+        score,
+        total: totalQuestions,
+        percentage: percentage.toFixed(2),
+        passed,
+        attempt_number: attemptNumber
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error submitting MCQ test:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while submitting test',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Submit coding task (HTML/CSS/JS combined)
+export const submitCodingTask = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { task_id } = req.params;
+    const { code, html, css, js } = req.body;
+    const student_id = req.user.user_id;
+
+    // Verify task exists and is coding type
+    const [tasks] = await connection.execute(
+      `SELECT task_id, question_type, points 
+       FROM tasks 
+       WHERE task_id = ? AND task_type = 'code_practice' AND question_type = 'coding'`,
+      [task_id]
+    );
+
+    if (tasks.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or is not a coding task'
+      });
+    }
+
+    const task = tasks[0];
+
+    // Check if submission already exists
+    const [existingSubmissions] = await connection.execute(
+      `SELECT submission_id 
+       FROM student_submissions 
+       WHERE task_id = ? AND student_id = ?`,
+      [task_id, student_id]
+    );
+
+    let submissionId;
+
+    if (existingSubmissions.length > 0) {
+      // Update existing submission
+      submissionId = existingSubmissions[0].submission_id;
+      
+      await connection.execute(
+        `UPDATE student_submissions 
+         SET submission_type = 'code', status = 'pending', submitted_at = NOW() 
+         WHERE submission_id = ?`,
+        [submissionId]
+      );
+
+      // Update code submission
+      await connection.execute(
+        `UPDATE code_submissions 
+         SET combined_code = ?, html_code = ?, css_code = ?, js_code = ?, submitted_at = NOW() 
+         WHERE submission_id = ?`,
+        [code, html, css, js, submissionId]
+      );
+    } else {
+      // Create new submission
+      const [submissionResult] = await connection.execute(
+        `INSERT INTO student_submissions 
+         (task_id, student_id, submission_type, status, submitted_at) 
+         VALUES (?, ?, 'code', 'pending', NOW())`,
+        [task_id, student_id]
+      );
+
+      submissionId = submissionResult.insertId;
+
+      // Store code in code_submissions table
+      await connection.execute(
+        `INSERT INTO code_submissions 
+         (submission_id, student_id, task_id, combined_code, html_code, css_code, js_code, submitted_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [submissionId, student_id, task_id, code, html, css, js]
+      );
+    }
+
+    // Update task submission status
+    await connection.execute(
+      `UPDATE task_submissions 
+       SET submission_status = 'submitted', submitted_at = NOW() 
+       WHERE task_id = ? AND student_id = ?`,
+      [task_id, student_id]
+    );
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Code submitted successfully! Your submission is pending faculty review.',
+      data: {
+        submission_id: submissionId
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error submitting coding task:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while submitting code',
       error: error.message
     });
   } finally {

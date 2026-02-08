@@ -29,6 +29,7 @@ export default function CodePracticePage() {
   const [code, setCode] = useState(null);
   const [showSelector, setShowSelector] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  const [modal, setModal] = useState({ show: false, title: '', message: '', type: 'info' });
 
   // Demo tasks with workspace modes
   const demoTasks = {
@@ -125,7 +126,7 @@ export default function CodePracticePage() {
             setCode(JSON.parse(savedCode));
           }
         } 
-        // If no taskId, check for mode in URL or show selector
+        // If no taskId, show selector but lock it
         else if (!taskId) {
           if (urlMode) {
             setWorkspaceMode(urlMode);
@@ -136,18 +137,25 @@ export default function CodePracticePage() {
         }
         // Fetch from API for real tasks
         else {
-          const response = await apiGet(`/tasks/student/${taskId}`);
+          const responseRaw = await apiGet(`/tasks/student/${taskId}`);
+          const response = await responseRaw.json();
           if (response.success) {
-            setTask(response.data);
+            const taskData = response.data;
+            setTask(taskData);
             
-            // Determine workspace mode based on task type
-            const mode = urlMode || 
-              (response.data.courseType === 'p1' ? 'html-css' : 'html-css-js');
-            setWorkspaceMode(mode);
-            
-            // Load saved code
-            if (response.data.savedCode) {
-              setCode(response.data.savedCode);
+            // If URL has explicit mode, use it and skip selector
+            if (urlMode) {
+              setWorkspaceMode(urlMode);
+              setShowSelector(false);
+              
+              // Load saved code
+              if (taskData.savedCode) {
+                setCode(taskData.savedCode);
+              }
+            } else {
+              // Show selector to let user choose workspace mode
+              setShowSelector(true);
+              setWorkspaceMode(null);
             }
           }
         }
@@ -162,9 +170,70 @@ export default function CodePracticePage() {
   }, [taskId, searchParams]);
 
   // Handle workspace mode selection
-  const handleModeSelect = (mode) => {
-    setWorkspaceMode(mode);
-    setShowSelector(false);
+  const handleModeSelect = async (mode) => {
+    // If no taskId, check if student has any assigned coding task
+    if (!taskId) {
+      setModal({
+        show: true,
+        title: 'No Task Assigned',
+        message: 'Please select a coding task from your assignments first.',
+        type: 'warning'
+      });
+      return;
+    }
+    
+    // Verify task is code_practice and student has assigned questions
+    try {
+      const responseRaw = await apiGet(`/tasks/student/${taskId}`);
+      const response = await responseRaw.json();
+      if (!response.success) {
+        setModal({
+          show: true,
+          title: 'Verification Failed',
+          message: 'Unable to verify task assignment.',
+          type: 'error'
+        });
+        return;
+      }
+      
+      const taskData = response.data;
+      
+      // Check if this is a code_practice task
+      if (taskData.taskType !== 'code_practice' || taskData.questionType !== 'coding') {
+        setModal({
+          show: true,
+          title: 'Invalid Task Type',
+          message: 'This task is not a coding practice assignment.',
+          type: 'warning'
+        });
+        return;
+      }
+      
+      // Verify student has assigned questions
+      const questionsResponseRaw = await apiGet(`/tasks/${taskId}/questions`);
+      const questionsResponse = await questionsResponseRaw.json();
+      if (!questionsResponse.success || !questionsResponse.data || questionsResponse.data.length === 0) {
+        setModal({
+          show: true,
+          title: 'No Questions Assigned',
+          message: 'No coding question assigned to you for this task.',
+          type: 'warning'
+        });
+        return;
+      }
+      
+      // All validations passed, open the workspace
+      setWorkspaceMode(mode);
+      setShowSelector(false);
+    } catch (error) {
+      console.error('Error validating task:', error);
+      setModal({
+        show: true,
+        title: 'Error',
+        message: 'Unable to open workspace. Please try again.',
+        type: 'error'
+      });
+    }
   };
 
   // Handle code changes
@@ -202,37 +271,94 @@ export default function CodePracticePage() {
 
   // Submit assignment
   const handleSubmit = async () => {
-    if (!confirm('Are you sure you want to submit? You won\'t be able to edit after submission.')) {
-      return;
-    }
-    
-    setSubmitting(true);
-    try {
-      if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
-        await apiPost(`/tasks/student/${taskId}/save`, { code });
-        const response = await apiPost(`/tasks/student/${taskId}/submit`, { code });
-        
-        if (response.success) {
-          alert('✓ Assignment submitted successfully!');
-          navigate('/student/tasks');
-          return;
+    setModal({
+      show: true,
+      title: 'Confirm Submission',
+      message: 'Are you sure you want to submit? You won\'t be able to edit after submission.',
+      type: 'confirm',
+      onConfirm: async () => {
+        setModal({ show: false });
+        setSubmitting(true);
+        try {
+          if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
+            // Combine HTML, CSS, and JS into a single file
+            const combinedCode = combineCodeFiles(code);
+            
+            // Submit combined code
+            const response = await apiPost(`/tasks/${taskId}/submit-code`, { 
+              code: combinedCode,
+              html: code.html,
+              css: code.css,
+              js: mode === 'html-css-js' ? code.js : ''
+            });
+            
+            if (response.success) {
+              setModal({
+                show: true,
+                title: 'Success',
+                message: 'Assignment submitted successfully!',
+                type: 'success',
+                onClose: () => navigate('/tasks')
+              });
+              return;
+            }
+          }
+          
+          // Demo submission
+          localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
+          setModal({
+            show: true,
+            title: 'Demo Submission',
+            message: 'This is a demo task. In a real scenario, your code would be submitted to the instructor.',
+            type: 'info'
+          });
+        } catch (error) {
+          setModal({
+            show: true,
+            title: 'Submission Failed',
+            message: 'Failed to submit. Please try again.',
+            type: 'error'
+          });
+        } finally {
+          setSubmitting(false);
         }
       }
-      
-      // Demo submission
-      alert('✓ This is a demo task. In a real scenario, your code would be submitted to the instructor.');
-      localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
-    } catch (error) {
-      alert('❌ Failed to submit. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   // Go back to selector
   const handleChangeWorkspace = () => {
     setShowSelector(true);
     setWorkspaceMode(null);
+  };
+
+  // Combine HTML, CSS, and JS files into a single file
+  const combineCodeFiles = (code) => {
+    let combined = code.html || '';
+    
+    // Inject CSS
+    if (code.css) {
+      const styleTag = `\n<style>\n${code.css}\n</style>`;
+      if (combined.includes('</head>')) {
+        combined = combined.replace('</head>', `${styleTag}\n</head>`);
+      } else if (combined.includes('<head>')) {
+        combined = combined.replace('<head>', `<head>${styleTag}`);
+      } else {
+        combined = styleTag + '\n' + combined;
+      }
+    }
+    
+    // Inject JS (only if mode includes JavaScript)
+    if (workspaceMode === 'html-css-js' && code.js) {
+      const scriptTag = `\n<script>\n${code.js}\n</script>`;
+      if (combined.includes('</body>')) {
+        combined = combined.replace('</body>', `${scriptTag}\n</body>`);
+      } else {
+        combined = combined + '\n' + scriptTag;
+      }
+    }
+    
+    return combined;
   };
 
   // Loading state
@@ -390,6 +516,53 @@ export default function CodePracticePage() {
           />
         </div>
       </div>
+
+      {/* Modal */}
+      {modal.show && (
+        <div className="modal-overlay" onClick={() => modal.type !== 'confirm' && setModal({ show: false })}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className={`modal-header ${modal.type}`}>
+              {modal.type === 'success' && <CheckCircle size={24} />}
+              {modal.type === 'warning' && <AlertCircle size={24} />}
+              {modal.type === 'error' && <AlertCircle size={24} />}
+              {modal.type === 'info' && <AlertCircle size={24} />}
+              {modal.type === 'confirm' && <AlertCircle size={24} />}
+              <h3>{modal.title}</h3>
+            </div>
+            <div className="modal-body">
+              <p>{modal.message}</p>
+            </div>
+            <div className="modal-footer">
+              {modal.type === 'confirm' ? (
+                <>
+                  <button 
+                    className="modal-btn cancel"
+                    onClick={() => setModal({ show: false })}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    className="modal-btn confirm"
+                    onClick={() => modal.onConfirm && modal.onConfirm()}
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button 
+                  className="modal-btn primary"
+                  onClick={() => {
+                    setModal({ show: false });
+                    modal.onClose && modal.onClose();
+                  }}
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

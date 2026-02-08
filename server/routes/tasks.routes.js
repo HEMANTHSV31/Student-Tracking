@@ -12,10 +12,14 @@ import {
   submitAssignmentFile,
   getVenuesByEmail,
   getStudentTasks,
+  getStudentTaskById,
   submitTask,
   downloadSubmission,
   syncTaskSubmissions,
   extendTaskDueDate,
+  getStudentTaskQuestions,
+  submitMCQTest,
+  submitCodingTask,
   upload,
   studentUpload
 } from '../controllers/tasks.controller.js';
@@ -27,6 +31,18 @@ const router = express.Router();
 // ============ STUDENT ROUTES ============
 // Get all tasks for authenticated student (uses JWT)
 router.get('/student', authenticate, studentOnly, getStudentTasks);
+
+// Get single task details for student
+router.get('/student/:task_id', authenticate, studentOnly, getStudentTaskById);
+
+// Get student's assigned questions for a task (for validation)
+router.get('/:task_id/questions', authenticate, studentOnly, getStudentTaskQuestions);
+
+// Submit MCQ test answers
+router.post('/:task_id/submit-mcq', authenticate, studentOnly, submitMCQTest);
+
+// Submit coding task (HTML/CSS/JS)
+router.post('/:task_id/submit-code', authenticate, studentOnly, submitCodingTask);
 
 // Submit task assignment (file or link) - STRICT: PDF/DOCX only
 router.post('/:task_id/submit', authenticate, studentOnly, studentUpload.single('file'), submitTask);

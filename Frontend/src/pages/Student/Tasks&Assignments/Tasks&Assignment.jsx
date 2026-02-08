@@ -89,6 +89,9 @@ const TasksAssignments = () => {
                 resources: task.materials || [],
                 dayLabel: task.moduleTitle,
                 skillFilter: task.skillFilter || '',
+                taskType: task.taskType || 'manual',
+                questionType: task.questionType || null,
+                totalQuestions: task.totalQuestions || null,
                 submissionStatus: task.submissionStatus,
                 submittedDate: task.submittedDate,
                 fileName: task.fileName,
@@ -1061,14 +1064,31 @@ const TasksAssignments = () => {
                   <div className="description-section">
                     <p className="description-text">{selectedTask.description}</p>
                     
-                    {/* Practice Code Button for Frontend/Backend tasks */}
-                    {(selectedTask.subject === 'frontend' || selectedTask.subject === 'backend' || selectedTask.subject === 'react-native') && (
+                    {/* Practice/Test Button - Only show for code_practice tasks */}
+                    {selectedTask.taskType === 'code_practice' && (
                       <button
-                        onClick={() => navigate(`/code-practice/${selectedTask.id}`)}
+                        onClick={() => {
+                          if (selectedTask.questionType === 'mcq') {
+                            navigate(`/test/${selectedTask.id}`);
+                          } else if (selectedTask.questionType === 'coding') {
+                            // Determine workspace mode based on skill filter
+                            const skillName = (selectedTask.skillFilter || '').toLowerCase();
+                            let mode = 'html-css-js'; // default
+                            
+                            // Check for HTML/CSS skills (P1)
+                            if (skillName.includes('html') || skillName.includes('css')) {
+                              if (!skillName.includes('javascript') && !skillName.includes('js')) {
+                                mode = 'html-css';
+                              }
+                            }
+                            
+                            navigate(`/code-practice/${selectedTask.id}?mode=${mode}`);
+                          }
+                        }}
                         className="mt-4 flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm hover:shadow-md"
                       >
                         <Code size={18} />
-                        Practice Code
+                        {selectedTask.questionType === 'mcq' ? 'Start MCQ Test' : 'Start Coding Test'}
                         <ChevronRight size={16} />
                       </button>
                     )}
@@ -1104,7 +1124,7 @@ const TasksAssignments = () => {
                   )}
 
                   {/* Submission Section */}
-                  {selectedTask.status === "completed" ? (
+                  {selectedTask.taskType === 'manual' && selectedTask.status === "completed" && (
                     <>
                       <div
                         className="submission-area"
@@ -1177,7 +1197,9 @@ const TasksAssignments = () => {
                         </div>
                       )}
                     </>
-                  ) : selectedTask.status === "revision" ? (
+                  )}
+
+                  {selectedTask.taskType === 'manual' && selectedTask.status === "revision" && (
                     <>
                       <div
                         className="submission-area"
@@ -1383,7 +1405,9 @@ const TasksAssignments = () => {
                         </div>
                       </div>
                     </>
-                  ) : (selectedTask.status === "submitted" || (selectedTask.fileName && selectedTask.status !== "revision")) ? (
+                  )}
+
+                  {selectedTask.taskType === 'manual' && (selectedTask.status === "submitted" || (selectedTask.fileName && selectedTask.status !== "revision")) && (
                     <div
                       className="submission-area"
                       style={{ background: "#f0f9ff", borderColor: "#bae6fd" }}
@@ -1457,7 +1481,9 @@ const TasksAssignments = () => {
                         <span>Upload locked. Waiting for faculty review. You can resubmit only if revision is required.</span>
                       </div>
                     </div>
-                  ) : (
+                  )}
+
+                  {selectedTask.taskType === 'manual' && (
                     <div className="submission-area">
                       <h3 className="section-title" style={{ marginTop: 0 }}>
                         Your Submission

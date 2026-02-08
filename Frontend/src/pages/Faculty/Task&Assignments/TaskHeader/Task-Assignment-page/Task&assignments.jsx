@@ -161,10 +161,10 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
       return;
     }
 
-    // Validation for practice tasks
-    if (taskType === 'practice') {
+    // Validation for code_practice tasks
+    if (taskType === 'code_practice') {
       if (!skillFilter) {
-        alert('Practice tasks require a skill filter');
+        alert('Code practice tasks require a skill filter');
         return;
       }
     }
@@ -206,7 +206,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
     formData.append('apply_to_all_venues', isAllVenues);
     formData.append('task_type', taskType);
     
-    if (taskType === 'practice') {
+    if (taskType === 'code_practice') {
       formData.append('practice_type', practiceType);
     }
 
@@ -451,7 +451,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
 
             {/* TASK TYPE SELECTOR */}
             <div style={styles.fieldGroup}>
-              <label style={styles.fieldLabel}>Task Type</label>
+              <label style={styles.fieldLabel}>Assignment Type</label>
               <div style={styles.tabToggleGroup}>
                 <button
                   style={taskType === 'manual' ? styles.toggleBtnActive : styles.toggleBtn}
@@ -459,23 +459,23 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                   disabled={loading}
                   type="button"
                 >
-                  Regular Task
+                  Manual Submission
                 </button>
                 <button
-                  style={taskType === 'practice' ? styles.toggleBtnActive : styles.toggleBtn}
-                  onClick={() => setTaskType('practice')}
+                  style={taskType === 'code_practice' ? styles.toggleBtnActive : styles.toggleBtn}
+                  onClick={() => setTaskType('code_practice')}
                   disabled={loading}
                   type="button"
                 >
-                  Practice Question
+                  Code Practice Test
                 </button>
               </div>
             </div>
 
-            {/* PRACTICE TYPE SELECTOR (only show when taskType === 'practice') */}
-            {taskType === 'practice' && (
+            {/* PRACTICE TYPE SELECTOR (only show when taskType === 'code_practice') */}
+            {taskType === 'code_practice' && (
               <div style={styles.fieldGroup}>
-                <label style={styles.fieldLabel}>Question Type</label>
+                <label style={styles.fieldLabel}>Test Type</label>
                 <div style={styles.tabToggleGroup}>
                   <button
                     style={practiceType === 'mcq' ? styles.toggleBtnActive : styles.toggleBtn}
@@ -483,7 +483,7 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                     disabled={loading}
                     type="button"
                   >
-                    MCQ
+                    MCQ (20 Questions)
                   </button>
                   <button
                     style={practiceType === 'coding' ? styles.toggleBtnActive : styles.toggleBtn}
@@ -491,8 +491,13 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                     disabled={loading}
                     type="button"
                   >
-                    Coding
+                    Coding (1 Question)
                   </button>
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
+                  {practiceType === 'mcq' 
+                    ? '20 random MCQ questions will be assigned. Auto-graded on submission.'
+                    : '1 random coding question will be assigned. Graded by faculty.'}
                 </div>
               </div>
             )}
