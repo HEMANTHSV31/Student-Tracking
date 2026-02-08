@@ -2480,11 +2480,11 @@ export const getStudentTaskQuestions = async (req, res) => {
     const student_id = student[0].student_id;
     console.log('Found student_id:', student_id);
 
-    // Verify task exists and is code_practice
+    // Verify task exists and get related info
     const [tasks] = await connection.execute(
-      `SELECT task_id, task_type, question_type 
+      `SELECT task_id, task_type, question_type, skill_filter, course_type
        FROM tasks 
-       WHERE task_id = ? AND task_type = 'code_practice'`,
+       WHERE task_id = ?`,
       [task_id]
     );
 
@@ -2493,9 +2493,12 @@ export const getStudentTaskQuestions = async (req, res) => {
     if (tasks.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found or is not a code practice task'
+        message: 'Task not found'
       });
     }
+
+    const taskData = tasks[0];
+    console.log('Task data:', taskData);
 
     // Get assigned questions for this student
     console.log('Querying task_question_assignments with task_id:', task_id, 'student_id:', student_id);
@@ -2505,9 +2508,12 @@ export const getStudentTaskQuestions = async (req, res) => {
       'SELECT * FROM task_question_assignments WHERE task_id = ?',
       [task_id]
     );
-    console.log('All assignments for this task:', allTaskAssignments);
+    console.log('All assignments for this task:', allTaskAssignments.length);
     
-    const [questions] = await connection.execute(
+    let questions = [];
+    
+    // Try to get student-specific assigned questions first
+    const [assignedQuestions] = await connection.execute(
       `SELECT 
         tqa.assignment_id,
         tqa.question_id,
@@ -2517,7 +2523,10 @@ export const getStudentTaskQuestions = async (req, res) => {
         qb.question_type,
         qb.mcq_options as sample_answer,
         qb.mcq_correct_answer as correct_answer,
-        qb.sample_image
+        qb.sample_image,
+        qb.coding_test_cases,
+        qb.coding_expected_output,
+        qb.coding_starter_code
        FROM task_question_assignments tqa
        JOIN question_bank qb ON tqa.question_id = qb.question_id
        WHERE tqa.task_id = ? AND tqa.student_id = ?
@@ -2525,12 +2534,120 @@ export const getStudentTaskQuestions = async (req, res) => {
       [task_id, student_id]
     );
 
-    console.log('Questions found:', questions.length);
-    console.log('Questions data:', questions);
+    console.log('Student-specific questions found:', assignedQuestions.length);
+    
+    if (assignedQuestions.length > 0) {
+      questions = assignedQuestions;
+    } else {
+      // Fallback: Use task data already fetched to find questions by skill
+      console.log('No student-specific questions, trying fallback...');
+      console.log('Task skill_filter:', taskData.skill_filter, 'question_type:', taskData.question_type, 'course_type:', taskData.course_type);
+      
+      const questionType = taskData.question_type || 'coding';
+      let skillQuestions = [];
+      
+      // Try 1: Match by skill_filter via skill_courses
+      if (taskData.skill_filter) {
+        const skillFilter = taskData.skill_filter;
+        console.log('Fallback 1: Looking for questions with skill_filter:', skillFilter);
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           JOIN skill_courses sc ON qb.course_id = sc.course_id
+           WHERE sc.skill_category = ? AND qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [skillFilter, questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 1 questions found:', skillQuestions.length);
+      }
+      
+      // Try 2: Match by course_type directly from skill_courses
+      if (skillQuestions.length === 0 && taskData.course_type) {
+        console.log('Fallback 2: Looking for questions with course_type:', taskData.course_type);
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           JOIN skill_courses sc ON qb.course_id = sc.course_id
+           WHERE sc.course_name LIKE ? AND qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [`%${taskData.course_type}%`, questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 2 questions found:', skillQuestions.length);
+      }
+      
+      // Try 3: Just get any coding question
+      if (skillQuestions.length === 0) {
+        console.log('Fallback 3: Getting any active coding question');
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           WHERE qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 3 questions found:', skillQuestions.length);
+      }
+      
+      questions = skillQuestions;
+    }
+
+    console.log('Final questions count:', questions.length);
+
+    // Parse coding_test_cases JSON for each question
+    const processedQuestions = questions.map(q => ({
+      ...q,
+      coding_test_cases: q.coding_test_cases ? (() => {
+        try {
+          return JSON.parse(q.coding_test_cases);
+        } catch (e) {
+          return [];
+        }
+      })() : [],
+      sample_image_url: q.sample_image ? `/uploads/${q.sample_image.replace(/\\/g, '/').replace('uploads/', '')}` : null
+    }));
 
     res.json({
       success: true,
-      data: questions
+      data: processedQuestions
     });
 
   } catch (error) {

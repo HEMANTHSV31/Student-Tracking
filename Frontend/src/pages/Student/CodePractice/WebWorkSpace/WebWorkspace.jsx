@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { 
-  Play, Eye, EyeOff, Maximize2, Minimize2, RefreshCw,
-  Layout, Code2, FileCode, FileType, Palette, Braces,
-  SplitSquareHorizontal, Monitor, Smartphone, Tablet,
-  ChevronLeft, ChevronRight, Settings, Download, Copy, Check,
-  Plus, X, FolderPlus, File, FileText, Trash2
+  Eye, EyeOff, Maximize2, Minimize2,
+  Code2, FileCode, FileType, Palette, Braces,
+  Monitor, Smartphone, Tablet,
+  Download, Copy, Check,
+  Plus, X, File, FileText, Trash2,
+  BookOpen, CheckCircle, Image, ClipboardList
 } from 'lucide-react';
 import './WebWorkspace.css';
 
@@ -21,9 +22,14 @@ export default function WebWorkspace({
   onChange,
   readOnly = false,
   taskTitle = 'Untitled Task',
-  onRun
+  onRun,
+  question = null,  // Question data with instructions, checklist, sample image
+  apiUrl = ''       // API URL for image paths
 }) {
-  // Default code templates based on mode
+  // Question panel state - show by default if question exists
+  const [showQuestionPanel, setShowQuestionPanel] = useState(true);
+  const [showSampleImage, setShowSampleImage] = useState(false);
+  // Empty code templates for assessment - students start with blank code
   const getDefaultCode = () => {
     if (mode === 'html-css') {
       return {
@@ -36,130 +42,16 @@ export default function WebWorkspace({
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Write your HTML here -->
-  <div class="container">
-    <header class="header">
-      <h1>Welcome to My Page</h1>
-      <nav class="nav">
-        <a href="#home">Home</a>
-        <a href="#about">About</a>
-        <a href="#contact">Contact</a>
-      </nav>
-    </header>
-    
-    <main class="main-content">
-      <section class="hero">
-        <h2>Build Amazing Websites</h2>
-        <p>Learn HTML & CSS to create beautiful web pages.</p>
-        <button class="btn">Get Started</button>
-      </section>
-    </main>
-    
-    <footer class="footer">
-      <p>&copy; 2026 My Website. All rights reserved.</p>
-    </footer>
-  </div>
+  <!-- Write your HTML code here -->
+  
 </body>
 </html>`,
-        css: `/* CSS Styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+        css: `/* Write your CSS styles here */
 
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  line-height: 1.6;
-  color: #333;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.header {
-  background: rgba(255, 255, 255, 0.95);
-  padding: 20px 30px;
-  border-radius: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.header h1 {
-  color: #667eea;
-  font-size: 1.5rem;
-}
-
-.nav {
-  display: flex;
-  gap: 20px;
-}
-
-.nav a {
-  text-decoration: none;
-  color: #555;
-  font-weight: 500;
-  transition: color 0.3s ease;
-}
-
-.nav a:hover {
-  color: #667eea;
-}
-
-.hero {
-  background: white;
-  padding: 60px 40px;
-  border-radius: 16px;
-  text-align: center;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-}
-
-.hero h2 {
-  font-size: 2.5rem;
-  color: #333;
-  margin-bottom: 20px;
-}
-
-.hero p {
-  font-size: 1.2rem;
-  color: #666;
-  margin-bottom: 30px;
-}
-
-.btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 15px 40px;
-  font-size: 1rem;
-  border-radius: 30px;
-  cursor: pointer;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-}
-
-.footer {
-  text-align: center;
-  padding: 30px;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 30px;
-}`,
+`,
         js: ''
       };
     }
-    
     // HTML + CSS + JS mode
     return {
       html: `<!DOCTYPE html>
@@ -171,367 +63,17 @@ body {
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Interactive Web Application -->
-  <div class="app-container">
-    <header class="app-header">
-      <h1>Interactive App</h1>
-      <div class="theme-toggle">
-        <button id="themeBtn" class="icon-btn" title="Toggle Theme">🌙</button>
-      </div>
-    </header>
-    
-    <main class="app-main">
-      <!-- Counter Section -->
-      <section class="card counter-section">
-        <h2>Counter</h2>
-        <div class="counter-display">
-          <span id="counterValue">0</span>
-        </div>
-        <div class="counter-controls">
-          <button id="decrementBtn" class="btn btn-danger">-</button>
-          <button id="resetBtn" class="btn btn-secondary">Reset</button>
-          <button id="incrementBtn" class="btn btn-success">+</button>
-        </div>
-      </section>
-      
-      <!-- Todo Section -->
-      <section class="card todo-section">
-        <h2>Quick Todo</h2>
-        <div class="todo-input-group">
-          <input type="text" id="todoInput" placeholder="Add a new task..." />
-          <button id="addTodoBtn" class="btn btn-primary">Add</button>
-        </div>
-        <ul id="todoList" class="todo-list"></ul>
-      </section>
-    </main>
-    
-    <footer class="app-footer">
-      <p>Built with HTML, CSS & JavaScript</p>
-    </footer>
-  </div>
-
+  <!-- Write your HTML code here -->
+  
   <script src="script.js"></script>
 </body>
 </html>`,
-      css: `/* Modern App Styles */
-:root {
-  --primary: #667eea;
-  --primary-dark: #5a67d8;
-  --success: #48bb78;
-  --danger: #f56565;
-  --secondary: #718096;
-  --bg-light: #f7fafc;
-  --bg-dark: #1a202c;
-  --text-light: #2d3748;
-  --text-dark: #e2e8f0;
-  --card-light: #ffffff;
-  --card-dark: #2d3748;
-}
+      css: `/* Write your CSS styles here */
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+`,
+      js: `// Write your JavaScript code here
 
-body {
-  font-family: 'Inter', 'Segoe UI', sans-serif;
-  background: var(--bg-light);
-  color: var(--text-light);
-  min-height: 100vh;
-  transition: all 0.3s ease;
-}
-
-body.dark-theme {
-  background: var(--bg-dark);
-  color: var(--text-dark);
-}
-
-.app-container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  background: var(--card-light);
-  border-radius: 12px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-}
-
-body.dark-theme .app-header {
-  background: var(--card-dark);
-}
-
-.app-header h1 {
-  font-size: 1.5rem;
-  background: linear-gradient(135deg, var(--primary), #764ba2);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.icon-btn {
-  background: none;
-  border: 2px solid var(--secondary);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 1.2rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.icon-btn:hover {
-  border-color: var(--primary);
-  transform: scale(1.1);
-}
-
-.card {
-  background: var(--card-light);
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-body.dark-theme .card {
-  background: var(--card-dark);
-}
-
-.card h2 {
-  font-size: 1.2rem;
-  margin-bottom: 20px;
-  color: var(--primary);
-}
-
-/* Counter Styles */
-.counter-display {
-  font-size: 4rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 30px;
-  background: linear-gradient(135deg, var(--primary), #764ba2);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.counter-controls {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-/* Buttons */
-.btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.btn-primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-2px);
-}
-
-.btn-success {
-  background: var(--success);
-  color: white;
-}
-
-.btn-danger {
-  background: var(--danger);
-  color: white;
-}
-
-.btn-secondary {
-  background: var(--secondary);
-  color: white;
-}
-
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* Todo Styles */
-.todo-input-group {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.todo-input-group input {
-  flex: 1;
-  padding: 12px 16px;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: border-color 0.3s ease;
-}
-
-body.dark-theme .todo-input-group input {
-  background: var(--bg-dark);
-  border-color: var(--secondary);
-  color: var(--text-dark);
-}
-
-.todo-input-group input:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-.todo-list {
-  list-style: none;
-}
-
-.todo-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--bg-light);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  transition: all 0.3s ease;
-}
-
-body.dark-theme .todo-item {
-  background: var(--bg-dark);
-}
-
-.todo-item.completed span {
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-
-.todo-item button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
-  opacity: 0.6;
-  transition: opacity 0.3s ease;
-}
-
-.todo-item button:hover {
-  opacity: 1;
-}
-
-.app-footer {
-  text-align: center;
-  padding: 20px;
-  color: var(--secondary);
-  font-size: 0.9rem;
-}`,
-      js: `// Interactive JavaScript Application
-
-// DOM Elements
-const themeBtn = document.getElementById('themeBtn');
-const counterValue = document.getElementById('counterValue');
-const incrementBtn = document.getElementById('incrementBtn');
-const decrementBtn = document.getElementById('decrementBtn');
-const resetBtn = document.getElementById('resetBtn');
-const todoInput = document.getElementById('todoInput');
-const addTodoBtn = document.getElementById('addTodoBtn');
-const todoList = document.getElementById('todoList');
-
-// State
-let count = 0;
-let todos = [];
-let isDarkTheme = false;
-
-// Theme Toggle
-themeBtn.addEventListener('click', () => {
-  isDarkTheme = !isDarkTheme;
-  document.body.classList.toggle('dark-theme');
-  themeBtn.textContent = isDarkTheme ? '☀️' : '🌙';
-});
-
-// Counter Functions
-function updateCounter() {
-  counterValue.textContent = count;
-  counterValue.style.transform = 'scale(1.2)';
-  setTimeout(() => {
-    counterValue.style.transform = 'scale(1)';
-  }, 150);
-}
-
-incrementBtn.addEventListener('click', () => {
-  count++;
-  updateCounter();
-});
-
-decrementBtn.addEventListener('click', () => {
-  count--;
-  updateCounter();
-});
-
-resetBtn.addEventListener('click', () => {
-  count = 0;
-  updateCounter();
-});
-
-// Todo Functions
-function renderTodos() {
-  todoList.innerHTML = '';
-  todos.forEach((todo, index) => {
-    const li = document.createElement('li');
-    li.className = \`todo-item \${todo.completed ? 'completed' : ''}\`;
-    li.innerHTML = \`
-      <span onclick="toggleTodo(\${index})">\${todo.text}</span>
-      <button onclick="deleteTodo(\${index})">🗑️</button>
-    \`;
-    todoList.appendChild(li);
-  });
-}
-
-function addTodo() {
-  const text = todoInput.value.trim();
-  if (text) {
-    todos.push({ text, completed: false });
-    todoInput.value = '';
-    renderTodos();
-  }
-}
-
-window.toggleTodo = function(index) {
-  todos[index].completed = !todos[index].completed;
-  renderTodos();
-};
-
-window.deleteTodo = function(index) {
-  todos.splice(index, 1);
-  renderTodos();
-};
-
-addTodoBtn.addEventListener('click', addTodo);
-
-todoInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    addTodo();
-  }
-});
-
-// Initialize
-console.log('🚀 Application initialized!');
-console.log('Features: Theme Toggle, Counter, Todo List');`
+`
     };
   };
 
@@ -541,7 +83,6 @@ console.log('Features: Theme Toggle, Counter, Todo List');`
   const [previewSize, setPreviewSize] = useState('desktop'); // desktop, tablet, mobile
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [splitRatio, setSplitRatio] = useState(50);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
@@ -550,10 +91,98 @@ console.log('Features: Theme Toggle, Counter, Todo List');`
   // Custom files created by user (in addition to default files)
   const [customFiles, setCustomFiles] = useState([]);
   
+  // Preview content for srcdoc (avoids cross-origin issues)
+  const [previewContent, setPreviewContent] = useState('');
+  
   const iframeRef = useRef(null);
   const editorRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const newFileInputRef = useRef(null);
+  const workspaceContainerRef = useRef(null);
+
+  // Auto fullscreen on mount
+  useEffect(() => {
+    const enterFullscreen = async () => {
+      try {
+        const elem = workspaceContainerRef.current;
+        if (elem && document.fullscreenElement === null) {
+          // Small delay to ensure component is mounted
+          setTimeout(async () => {
+            try {
+              if (elem.requestFullscreen) {
+                await elem.requestFullscreen();
+              } else if (elem.webkitRequestFullscreen) {
+                await elem.webkitRequestFullscreen();
+              } else if (elem.msRequestFullscreen) {
+                await elem.msRequestFullscreen();
+              }
+              setIsFullscreen(true);
+            } catch (err) {
+              console.log('Fullscreen request was denied:', err);
+            }
+          }, 300);
+        }
+      } catch (err) {
+        console.log('Fullscreen not supported:', err);
+      }
+    };
+
+    enterFullscreen();
+
+    // Listen for fullscreen changes
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Disable copy/paste/cut/drag globally for this workspace
+  useEffect(() => {
+    const preventCopyPaste = (e) => {
+      // Block Ctrl+C, Ctrl+V, Ctrl+X
+      if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    };
+
+    const preventContextMenu = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const preventDragDrop = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const container = workspaceContainerRef.current;
+    if (container) {
+      container.addEventListener('keydown', preventCopyPaste, true);
+      container.addEventListener('contextmenu', preventContextMenu, true);
+      container.addEventListener('dragstart', preventDragDrop, true);
+      container.addEventListener('drop', preventDragDrop, true);
+      container.addEventListener('dragover', preventDragDrop, true);
+      container.addEventListener('paste', (e) => { e.preventDefault(); }, true);
+      container.addEventListener('copy', (e) => { e.preventDefault(); }, true);
+      container.addEventListener('cut', (e) => { e.preventDefault(); }, true);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('keydown', preventCopyPaste, true);
+        container.removeEventListener('contextmenu', preventContextMenu, true);
+        container.removeEventListener('dragstart', preventDragDrop, true);
+        container.removeEventListener('drop', preventDragDrop, true);
+        container.removeEventListener('dragover', preventDragDrop, true);
+      }
+    };
+  }, []);
 
   // Default files configuration based on mode
   const defaultFiles = mode === 'html-css' 
@@ -690,28 +319,21 @@ console.log('Features: Theme Toggle, Counter, Todo List');`
 
   // Update preview when code changes - INSTANT live preview
   useEffect(() => {
-    if (autoRefresh) {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      // Instant update with minimal debounce for performance
-      refreshTimeoutRef.current = setTimeout(() => {
-        updatePreview();
-      }, 100); // Reduced to 100ms for near-instant updates
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
     }
+    // Instant update with minimal debounce for performance
+    refreshTimeoutRef.current = setTimeout(() => {
+      updatePreview();
+    }, 100); // Reduced to 100ms for near-instant updates
     
     // Notify parent of changes
     if (onChange) {
       onChange(code);
     }
-  }, [code, autoRefresh]);
+  }, [code]);
 
   const updatePreview = useCallback(() => {
-    if (!iframeRef.current) return;
-    
-    const iframe = iframeRef.current;
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    
     // Build the complete HTML document
     let htmlContent = code.html || '';
     
@@ -767,14 +389,9 @@ console.log('Features: Theme Toggle, Counter, Todo List');`
       );
     }
     
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
+    // Use state to set srcdoc (avoids cross-origin security issues)
+    setPreviewContent(htmlContent);
   }, [code, mode, customFiles]);
-
-  const handleManualRefresh = () => {
-    updatePreview();
-  };
 
   const handleEditorChange = (value) => {
     if (readOnly) return;
@@ -815,6 +432,32 @@ console.log('Features: Theme Toggle, Counter, Todo List');`
     });
     
     monaco.editor.setTheme('workspace-dark');
+    
+    // Disable copy/paste/cut keyboard shortcuts in the editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {
+      console.log('Copy disabled');
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
+      console.log('Paste disabled');
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => {
+      console.log('Cut disabled');
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV, () => {
+      console.log('Paste disabled');
+    });
+    
+    // Disable context menu in editor
+    editor.onContextMenu((e) => {
+      e.event.preventDefault();
+      e.event.stopPropagation();
+    });
+    
+    // Disable drag and drop in editor
+    editor.updateOptions({
+      dragAndDrop: false,
+      dropIntoEditor: { enabled: false }
+    });
     
     // Add keyboard shortcuts
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -870,7 +513,16 @@ ${code.js}` : ''}`;
   };
 
   return (
-    <div className={`web-workspace ${isFullscreen ? 'fullscreen' : ''}`}>
+    <div 
+      ref={workspaceContainerRef}
+      className={`web-workspace ${isFullscreen ? 'fullscreen' : ''}`}
+      onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => e.preventDefault()}
+      onPaste={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
       {/* Workspace Header */}
       <div className="workspace-header">
         <div className="workspace-title">
@@ -880,23 +532,19 @@ ${code.js}` : ''}`;
         </div>
         
         <div className="workspace-actions">
-          {/* Auto Refresh Toggle */}
-          <button 
-            className={`ws-action-btn ${autoRefresh ? 'active' : ''}`}
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            title={autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
-          >
-            <RefreshCw size={16} />
-          </button>
+          {/* Toggle Question Panel Visibility */}
+          {question && (
+            <button 
+              className={`ws-action-btn question-btn ${showQuestionPanel ? 'active' : ''}`}
+              onClick={() => setShowQuestionPanel(!showQuestionPanel)}
+              title={showQuestionPanel ? 'Hide Question Panel' : 'Show Question Panel'}
+            >
+              <BookOpen size={16} />
+              <span className="btn-label">{showQuestionPanel ? 'Hide Question' : 'Show Question'}</span>
+            </button>
+          )}
           
-          {/* Manual Refresh */}
-          <button 
-            className="ws-action-btn"
-            onClick={handleManualRefresh}
-            title="Refresh Preview"
-          >
-            <Play size={16} />
-          </button>
+          <div className="action-divider" />
           
           {/* Copy Code */}
           <button 
@@ -967,11 +615,98 @@ ${code.js}` : ''}`;
 
       {/* Main Workspace Area */}
       <div className="workspace-body">
-        {/* Editor Panel */}
-        <div 
-          className="editor-panel"
-          style={{ width: showPreview ? `${splitRatio}%` : '100%' }}
-        >
+        {/* Question Panel - Left Side */}
+        {showQuestionPanel && question && (
+          <div className="question-side-panel">
+            <div className="question-panel-header">
+              <div className="panel-title-row">
+                <BookOpen size={18} />
+                <h3>Task Instructions</h3>
+              </div>
+              <button 
+                className="panel-close-btn"
+                onClick={() => setShowQuestionPanel(false)}
+                title="Hide Question Panel"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="question-panel-content">
+              {/* Question Title */}
+              <div className="question-section">
+                <h4 className="section-label">
+                  <ClipboardList size={16} />
+                  Question
+                </h4>
+                <p className="question-title">{question.question_text || 'No title'}</p>
+              </div>
+              
+              {/* Task Instructions */}
+              {question.description && (
+                <div className="question-section">
+                  <h4 className="section-label">
+                    <FileText size={16} />
+                    Instructions
+                  </h4>
+                  <div className="instructions-content">
+                    {question.description}
+                  </div>
+                </div>
+              )}
+              
+              {/* Checklist / Evaluation Points */}
+              {question.coding_test_cases && question.coding_test_cases.length > 0 && (
+                <div className="question-section">
+                  <h4 className="section-label">
+                    <CheckCircle size={16} />
+                    Evaluation Checklist
+                  </h4>
+                  <ul className="checklist">
+                    {question.coding_test_cases.map((item, idx) => (
+                      <li key={idx} className="checklist-item">
+                        <span className="check-number">{idx + 1}</span>
+                        <span className="check-text">{typeof item === 'string' ? item : item.description || item.name || JSON.stringify(item)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Sample Output Image */}
+              {question.sample_image_url && (
+                <div className="question-section">
+                  <h4 className="section-label">
+                    <Image size={16} />
+                    Expected Output
+                  </h4>
+                  <div className="sample-image-container">
+                    <img 
+                      src={`${apiUrl}${question.sample_image_url}`}
+                      alt="Expected Output"
+                      className="sample-image"
+                      onClick={() => setShowSampleImage(true)}
+                    />
+                    <span 
+                      className="image-hint" 
+                      onClick={() => setShowSampleImage(true)}
+                    >
+                      Click to enlarge
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Editor + Preview Area */}
+        <div className="editor-preview-area">
+            {/* Editor Panel */}
+            <div 
+              className="editor-panel"
+              style={{ width: showPreview ? `${splitRatio}%` : '100%' }}
+            >
           {/* File Tabs */}
           <div className="file-tabs">
             <div className="file-tabs-scroll">
@@ -1124,13 +859,29 @@ ${code.js}` : ''}`;
                   ref={iframeRef}
                   className="preview-frame"
                   title="Live Preview"
-                  sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
+                  sandbox="allow-scripts allow-modals allow-forms allow-popups"
+                  srcDoc={previewContent}
                 />
               </div>
             </div>
           </div>
         )}
+        </div>
       </div>
+
+      {/* Sample Image Modal - Fullscreen View */}
+      {showSampleImage && question?.sample_image_url && (
+        <div className="sample-image-modal" onClick={() => setShowSampleImage(false)}>
+          <button className="modal-close-btn" onClick={() => setShowSampleImage(false)}>
+            <X size={24} />
+          </button>
+          <img 
+            src={`${apiUrl}${question.sample_image_url}`}
+            alt="Expected Output - Full Size"
+            className="sample-image-full"
+          />
+        </div>
+      )}
 
       {/* New File Modal */}
       {showNewFileModal && (

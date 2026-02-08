@@ -1066,31 +1066,113 @@ const TasksAssignments = () => {
                     
                     {/* Practice/Test Button - Only show for code_practice tasks */}
                     {selectedTask.taskType === 'code_practice' && (
-                      <button
-                        onClick={() => {
-                          if (selectedTask.questionType === 'mcq') {
-                            navigate(`/test/${selectedTask.id}`);
-                          } else if (selectedTask.questionType === 'coding') {
-                            // Determine workspace mode based on skill filter
-                            const skillName = (selectedTask.skillFilter || '').toLowerCase();
-                            let mode = 'html-css-js'; // default
-                            
-                            // Check for HTML/CSS skills (P1)
-                            if (skillName.includes('html') || skillName.includes('css')) {
-                              if (!skillName.includes('javascript') && !skillName.includes('js')) {
-                                mode = 'html-css';
+                      <div className="practice-action-container" style={{
+                        marginTop: '20px',
+                        padding: '20px',
+                        background: 'linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%)',
+                        borderRadius: '12px',
+                        border: '1px solid #c7dff7'
+                      }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          marginBottom: '12px' 
+                        }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            background: selectedTask.questionType === 'mcq' 
+                              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                              : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white'
+                          }}>
+                            <Code size={20} />
+                          </div>
+                          <div>
+                            <h4 style={{ 
+                              margin: 0, 
+                              fontSize: '14px', 
+                              fontWeight: '600', 
+                              color: '#1e293b' 
+                            }}>
+                              {selectedTask.questionType === 'mcq' ? 'MCQ Assessment' : 'P Skills Practice'}
+                            </h4>
+                            <p style={{ 
+                              margin: '2px 0 0 0', 
+                              fontSize: '12px', 
+                              color: '#64748b' 
+                            }}>
+                              {selectedTask.questionType === 'mcq' 
+                                ? 'Multiple choice questions to test your knowledge'
+                                : `Build with ${
+                                    (selectedTask.skillFilter || '').toLowerCase().includes('javascript') || 
+                                    (selectedTask.skillFilter || '').toLowerCase().includes('js')
+                                      ? 'HTML + CSS + JavaScript'
+                                      : 'HTML + CSS'
+                                  }`
                               }
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={() => {
+                            if (selectedTask.questionType === 'mcq') {
+                              navigate(`/test/${selectedTask.id}`);
+                            } else {
+                              // For coding tasks or any other type, navigate to code-practice
+                              // Determine workspace mode based on skill filter
+                              const skillName = (selectedTask.skillFilter || selectedTask.title || '').toLowerCase();
+                              let mode = 'html-css-js'; // default
+                              
+                              // Check for HTML/CSS skills (P1)
+                              if (skillName.includes('html') || skillName.includes('css')) {
+                                if (!skillName.includes('javascript') && !skillName.includes('js')) {
+                                  mode = 'html-css';
+                                }
+                              }
+                              
+                              navigate(`/code-practice/${selectedTask.id}?mode=${mode}`);
                             }
-                            
-                            navigate(`/code-practice/${selectedTask.id}?mode=${mode}`);
-                          }
-                        }}
-                        className="mt-4 flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm hover:shadow-md"
-                      >
-                        <Code size={18} />
-                        {selectedTask.questionType === 'mcq' ? 'Start MCQ Test' : 'Start Coding Test'}
-                        <ChevronRight size={16} />
-                      </button>
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '12px 24px',
+                            background: selectedTask.questionType === 'mcq'
+                              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                              : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
+                            transition: 'all 0.2s ease',
+                            width: '100%',
+                            justifyContent: 'center'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.4)';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.3)';
+                          }}
+                        >
+                          <Code size={18} />
+                          {selectedTask.questionType === 'mcq' ? 'Start MCQ Test' : 'Start Coding Practice'}
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
 

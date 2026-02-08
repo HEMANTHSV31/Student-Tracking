@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Send, Play, FileCode, Clock, 
-  CheckCircle, AlertCircle, Loader, Home, RefreshCw
+  CheckCircle, AlertCircle, Loader, Home
 } from 'lucide-react';
 import WebWorkspace from './WebWorkSpace/WebWorkspace';
 import WorkspaceSelector from './WorkSpaceSelecter/WorkspaceSelector';
@@ -19,9 +19,11 @@ export default function CodePracticePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const API_URL = import.meta.env.VITE_API_URL;
   
   // State
   const [task, setTask] = useState(null);
+  const [question, setQuestion] = useState(null); // Question data with instructions, checklist, sample image
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -30,6 +32,7 @@ export default function CodePracticePage() {
   const [showSelector, setShowSelector] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [modal, setModal] = useState({ show: false, title: '', message: '', type: 'info' });
+  const [openingWorkspace, setOpeningWorkspace] = useState(false); // For workspace opening animation
 
   // Demo tasks with workspace modes
   const demoTasks = {
@@ -116,9 +119,22 @@ export default function CodePracticePage() {
           const demoTask = demoTasks[taskId];
           setTask(demoTask);
           
+          // Set demo question data
+          setQuestion({
+            question_text: demoTask.title,
+            description: demoTask.description,
+            coding_test_cases: demoTask.requirements || [],
+            sample_image_url: null
+          });
+          
           // Set workspace mode from task or URL
           const mode = urlMode || demoTask.workspaceMode;
           setWorkspaceMode(mode);
+          setShowSelector(false);
+          
+          // Show opening animation
+          setOpeningWorkspace(true);
+          setTimeout(() => setOpeningWorkspace(false), 1500);
           
           // Load saved code from localStorage
           const savedCode = localStorage.getItem(`code-practice-${taskId}`);
@@ -139,23 +155,85 @@ export default function CodePracticePage() {
         else {
           const responseRaw = await apiGet(`/tasks/student/${taskId}`);
           const response = await responseRaw.json();
+          console.log('Task response:', response);
           if (response.success) {
             const taskData = response.data;
             setTask(taskData);
+            
+            // Fetch question data for this task
+            try {
+              console.log('Fetching questions for task:', taskId);
+              const questionsResponseRaw = await apiGet(`/tasks/${taskId}/questions`);
+              const questionsResponse = await questionsResponseRaw.json();
+              console.log('Questions response:', questionsResponse);
+              
+              if (questionsResponse.success && questionsResponse.data && questionsResponse.data.length > 0) {
+                const questionData = questionsResponse.data[0]; // Get first question
+                console.log('Question data to set:', questionData);
+                setQuestion({
+                  question_text: questionData.question_text,
+                  description: questionData.description,
+                  coding_test_cases: questionData.coding_test_cases || [],
+                  sample_image_url: questionData.sample_image_url,
+                  coding_starter_code: questionData.coding_starter_code
+                });
+              } else {
+                console.log('No questions found from API, using task data as fallback');
+                // Fallback: Use task data as question if available
+                if (taskData.description) {
+                  setQuestion({
+                    question_text: taskData.title,
+                    description: taskData.description,
+                    coding_test_cases: taskData.requirements || taskData.checklist || [],
+                    sample_image_url: taskData.sample_image || null,
+                    coding_starter_code: null
+                  });
+                }
+              }
+            } catch (qErr) {
+              console.error('Error fetching question data:', qErr);
+              // Fallback: Use task data as question if available
+              if (taskData.description) {
+                setQuestion({
+                  question_text: taskData.title,
+                  description: taskData.description,
+                  coding_test_cases: taskData.requirements || taskData.checklist || [],
+                  sample_image_url: taskData.sample_image || null,
+                  coding_starter_code: null
+                });
+              }
+            }
             
             // If URL has explicit mode, use it and skip selector
             if (urlMode) {
               setWorkspaceMode(urlMode);
               setShowSelector(false);
               
+              // Show opening animation
+              setOpeningWorkspace(true);
+              setTimeout(() => setOpeningWorkspace(false), 1500);
+              
               // Load saved code
               if (taskData.savedCode) {
                 setCode(taskData.savedCode);
               }
             } else {
-              // Show selector to let user choose workspace mode
-              setShowSelector(true);
-              setWorkspaceMode(null);
+              // No mode in URL - determine from task skill filter
+              const skillName = (taskData.skillFilter || taskData.title || '').toLowerCase();
+              let autoMode = 'html-css-js'; // default
+              
+              if (skillName.includes('html') || skillName.includes('css')) {
+                if (!skillName.includes('javascript') && !skillName.includes('js')) {
+                  autoMode = 'html-css';
+                }
+              }
+              
+              setWorkspaceMode(autoMode);
+              setShowSelector(false);
+              
+              // Show opening animation
+              setOpeningWorkspace(true);
+              setTimeout(() => setOpeningWorkspace(false), 1500);
             }
           }
         }
@@ -326,12 +404,6 @@ export default function CodePracticePage() {
     });
   };
 
-  // Go back to selector
-  const handleChangeWorkspace = () => {
-    setShowSelector(true);
-    setWorkspaceMode(null);
-  };
-
   // Combine HTML, CSS, and JS files into a single file
   const combineCodeFiles = (code) => {
     let combined = code.html || '';
@@ -368,6 +440,44 @@ export default function CodePracticePage() {
         <div className="loading-content">
           <Loader className="loading-spinner" size={40} />
           <p>Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Opening workspace animation
+  if (openingWorkspace && workspaceMode) {
+    return (
+      <div className="code-practice-page opening-workspace">
+        <div className="opening-animation">
+          <div className="workspace-icon-container">
+            <div className={`workspace-icon ${workspaceMode}`}>
+              {workspaceMode === 'html-css' ? (
+                <>
+                  <span className="icon-badge html">H</span>
+                  <span className="icon-badge css">C</span>
+                </>
+              ) : (
+                <>
+                  <span className="icon-badge html">H</span>
+                  <span className="icon-badge css">C</span>
+                  <span className="icon-badge js">J</span>
+                </>
+              )}
+            </div>
+            <div className="pulse-ring"></div>
+            <div className="pulse-ring delay-1"></div>
+            <div className="pulse-ring delay-2"></div>
+          </div>
+          <h2 className="opening-title">
+            Opening {workspaceMode === 'html-css' ? 'HTML + CSS' : 'HTML + CSS + JS'} Workspace
+          </h2>
+          <p className="opening-subtitle">
+            {task?.title || 'P Skills Practice'}
+          </p>
+          <div className="opening-progress">
+            <div className="progress-bar"></div>
+          </div>
         </div>
       </div>
     );
@@ -411,25 +521,13 @@ export default function CodePracticePage() {
               <span className={`mode-badge ${workspaceMode}`}>
                 {workspaceMode === 'html-css' ? 'P1' : 'P2'}
               </span>
-            </div>
-            {task && (
-              <div className="task-meta">
-                <span className="meta-item">
+              {task?.dueDate && (
+                <span className="due-badge">
                   <Clock size={14} />
                   Due: {task.dueDate}
                 </span>
-                {task.points && (
-                  <span className="meta-item points">
-                    {task.points} points
-                  </span>
-                )}
-                {lastSaved && (
-                  <span className="meta-item saved">
-                    Last saved: {lastSaved.toLocaleTimeString()}
-                  </span>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -447,15 +545,6 @@ export default function CodePracticePage() {
               <span>Overdue</span>
             </div>
           )}
-
-          {/* Change Workspace Button */}
-          <button 
-            className="action-btn secondary"
-            onClick={handleChangeWorkspace}
-          >
-            <RefreshCw size={16} />
-            <span>Change Workspace</span>
-          </button>
 
           {/* Save Button */}
           <button 
@@ -483,28 +572,6 @@ export default function CodePracticePage() {
 
       {/* Main Content */}
       <div className="page-content">
-        {/* Task Description Panel (collapsible) */}
-        {task && task.description && (
-          <div className="task-panel">
-            <div className="panel-header">
-              <h3>Task Description</h3>
-            </div>
-            <div className="panel-body">
-              <p className="task-description">{task.description}</p>
-              {task.requirements && (
-                <div className="requirements">
-                  <h4>Requirements:</h4>
-                  <ul>
-                    {task.requirements.map((req, idx) => (
-                      <li key={idx}>{req}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Workspace */}
         <div className="workspace-container">
           <WebWorkspace
@@ -513,6 +580,8 @@ export default function CodePracticePage() {
             onChange={handleCodeChange}
             readOnly={isSubmitted}
             taskTitle={task?.title || 'Practice'}
+            question={question}
+            apiUrl={API_URL}
           />
         </div>
       </div>
