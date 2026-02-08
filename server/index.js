@@ -47,21 +47,17 @@ app.use(cors({
 }));
 app.use(cookieParser()); // Parse cookies
 
-// Conditional body parser - skip COMPLETELY for file upload routes
+// Conditional body parser
+// IMPORTANT: Never run JSON/urlencoded parsers on multipart/form-data requests
+// (multer needs to read the raw stream for uploads).
 app.use((req, res, next) => {
-  const fullPath = req.originalUrl || req.url;
-  
-  // Skip ALL body parsing for file upload routes (multer handles it)
-  // But allow /submit-mcq (it needs JSON body parsing)
-  if ((fullPath.includes('/upload') || 
-       fullPath.includes('/submit') ||
-       fullPath.includes('/resources')) &&
-      !fullPath.includes('/submit-mcq')) {
-    // console.log(`[BODY PARSER] ✓ Bypassing ALL body parsers for: ${req.method} ${fullPath}`);
+  const contentType = (req.headers['content-type'] || '').toLowerCase();
+  const isMultipart = contentType.includes('multipart/form-data');
+
+  if (isMultipart) {
     return next();
   }
-  
-  // Apply body parsers for non-upload routes
+
   express.json({ limit: '100mb' })(req, res, (err) => {
     if (err) {
       console.error('[BODY PARSER] JSON parsing error:', err.message);

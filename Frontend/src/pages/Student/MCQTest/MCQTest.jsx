@@ -181,6 +181,20 @@ const MCQTest = () => {
     }
   };
 
+  const handleNavigateToQuestion = (index) => {
+    // Save current answer before navigating
+    if (selectedOption !== null) {
+      setAnswers(prev => ({
+        ...prev,
+        [questions[currentQuestionIndex].id]: selectedOption
+      }));
+    }
+    
+    setCurrentQuestionIndex(index);
+    const targetQuestion = questions[index];
+    setSelectedOption(answers[targetQuestion.id] || null);
+  };
+
   const handleSubmit = async () => {
     // Save current answer first
     const finalAnswers = {
@@ -327,7 +341,7 @@ const MCQTest = () => {
         <div className="test-info">
           <h2>{task?.title || 'MCQ Test'}</h2>
           <div className="test-meta">
-            <span className="badge badge-primary">
+            <span className="badge">
               Question {currentQuestionIndex + 1} of {questions.length}
             </span>
           </div>
@@ -338,6 +352,37 @@ const MCQTest = () => {
             <span className="timer-value">{formatTime(timeRemaining)}</span>
           </div>
         )}
+        
+        <div className="question-navigator">
+          <h4>Questions</h4>
+          <div className="question-nav-grid">
+            {questions.map((q, index) => (
+              <div
+                key={index}
+                className={`question-nav-item ${
+                  index === currentQuestionIndex ? 'active' : ''
+                } ${answers[q.id] !== undefined ? 'answered' : ''}`}
+                onClick={() => handleNavigateToQuestion(index)}
+              >
+                {index + 1}
+              </div>
+            ))}
+          </div>
+          <div className="nav-legend">
+            <div className="nav-legend-item">
+              <div className="nav-legend-dot answered"></div>
+              <span>Answered</span>
+            </div>
+            <div className="nav-legend-item">
+              <div className="nav-legend-dot current"></div>
+              <span>Current</span>
+            </div>
+            <div className="nav-legend-item">
+              <div className="nav-legend-dot unanswered"></div>
+              <span>Not Answered</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="test-content">
@@ -367,25 +412,14 @@ const MCQTest = () => {
                     className={`option-card ${selectedOption === optionId ? 'selected' : ''}`}
                     onClick={() => !submitting && setSelectedOption(optionId)}
                   >
-                    <div className="option-radio">
-                      <input
-                        type="radio"
-                        name="mcq-option"
-                        checked={selectedOption === optionId}
-                        onChange={() => setSelectedOption(optionId)}
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div className="option-content">
-                      <span className="option-label">
-                        {optionId}
-                      </span>
+                    <span className="option-label">
+                      {optionId}
+                    </span>
                     <p className="option-text">
                       {typeof option === 'object' && option.text ? option.text : option}
                     </p>
                   </div>
-                </div>
-              );
+                );
               })
             ) : (
               <p className="no-options">No options available</p>

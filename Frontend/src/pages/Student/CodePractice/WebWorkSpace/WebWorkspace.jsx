@@ -6,7 +6,8 @@ import {
   Monitor, Smartphone, Tablet,
   Download, Copy, Check,
   Plus, X, File, FileText, Trash2,
-  BookOpen, CheckCircle, Image, ClipboardList
+  BookOpen, CheckCircle, Image, ClipboardList,
+  Send, Loader2, FolderPlus
 } from 'lucide-react';
 import './WebWorkspace.css';
 
@@ -24,7 +25,9 @@ export default function WebWorkspace({
   taskTitle = 'Untitled Task',
   onRun,
   question = null,  // Question data with instructions, checklist, sample image
-  apiUrl = ''       // API URL for image paths
+  apiUrl = '',       // API URL for image paths
+  onSubmit = null,   // Submit callback - receives { files, code, customFiles }
+  isSubmitting = false // Loading state for submit button
 }) {
   // Question panel state - show by default if question exists
   const [showQuestionPanel, setShowQuestionPanel] = useState(true);
@@ -94,51 +97,196 @@ export default function WebWorkspace({
   // Preview content for srcdoc (avoids cross-origin issues)
   const [previewContent, setPreviewContent] = useState('');
   
+  // Assessment security - track violations
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showViolationWarning, setShowViolationWarning] = useState(false);
+  const isSubmittingRef = useRef(false); // Track submit state for fullscreen handler
+  
   const iframeRef = useRef(null);
   const editorRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const newFileInputRef = useRef(null);
   const workspaceContainerRef = useRef(null);
 
-  // Auto fullscreen on mount
+  // Auto fullscreen on mount and prevent exit until submit
   useEffect(() => {
     const enterFullscreen = async () => {
-      try {
-        const elem = workspaceContainerRef.current;
-        if (elem && document.fullscreenElement === null) {
-          // Small delay to ensure component is mounted
-          setTimeout(async () => {
-            try {
-              if (elem.requestFullscreen) {
-                await elem.requestFullscreen();
-              } else if (elem.webkitRequestFullscreen) {
-                await elem.webkitRequestFullscreen();
-              } else if (elem.msRequestFullscreen) {
-                await elem.msRequestFullscreen();
+      const elem = workspaceContainerRef.current;
+      if (!elem) return;
+      
+      // Small delay to ensure component is mounted
+      setTimeout(async () => {
+        if (document.fullscreenElement === null && !isSubmittingRef.current) {
+          try {
+            await elem.requestFullscreen();
+            setIsFullscreen(true);
+            
+            // Try to lock keyboard to prevent Escape key from exiting fullscreen
+            // This is an experimental API that requires HTTPS and user gesture
+            if (navigator.keyboard && navigator.keyboard.lock) {
+              try {
+                await navigator.keyboard.lock(['Escape']);
+                console.log('Keyboard Escape key locked');
+              } catch (err) {
+                console.log('Keyboard lock not available:', err.message);
               }
-              setIsFullscreen(true);
-            } catch (err) {
-              console.log('Fullscreen request was denied:', err);
             }
-          }, 300);
+          } catch (err) {
+            // Fullscreen might be blocked, try again on user interaction
+            console.log('Fullscreen auto-enter blocked, will retry on interaction');
+          }
         }
-      } catch (err) {
-        console.log('Fullscreen not supported:', err);
-      }
+      }, 500);
     };
 
     enterFullscreen();
 
-    // Listen for fullscreen changes
+    // Prevent Escape key from exiting fullscreen by capturing it
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !isSubmittingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // Note: Violation counting is handled by blockExitKeys useEffect to avoid double counting
+        return false;
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, { capture: true, passive: false });
+
+    // Listen for fullscreen changes - re-enter if exited without submitting
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isCurrentlyFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isCurrentlyFullscreen);
+      
+      // If exited fullscreen but not submitted, count as violation and re-enter IMMEDIATELY
+      if (!isCurrentlyFullscreen && !isSubmittingRef.current) {
+        setTabSwitchCount(prev => {
+          const newCount = prev + 1;
+          // Auto-submit after 5 violations
+          if (newCount >= 5 && onSubmit) {
+            triggerAutoSubmit();
+          }
+          return newCount;
+        });
+        setShowViolationWarning(true);
+        setTimeout(() => setShowViolationWarning(false), 3000);
+        
+        // Re-enter fullscreen immediately (reduced delay from 200ms to 100ms)
+        setTimeout(() => {
+          const elem = workspaceContainerRef.current;
+          if (elem && document.fullscreenElement === null && !isSubmittingRef.current) {
+            elem.requestFullscreen().catch((err) => {
+              console.log('Re-entering fullscreen, attempt 1 failed, retrying...');
+              // Retry after 200ms if first attempt fails
+              setTimeout(() => {
+                if (document.fullscreenElement === null && !isSubmittingRef.current) {
+                  elem.requestFullscreen().catch(() => console.log('Fullscreen re-entry failed'));
+                }
+              }, 200);
+            });
+          }
+        }, 100);
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      // Unlock keyboard on cleanup
+      if (navigator.keyboard && navigator.keyboard.unlock) {
+        navigator.keyboard.unlock();
+      }
     };
-  }, []);
+  }, [onSubmit]);
+
+  // Detect tab switches / visibility changes
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && !isSubmittingRef.current) {
+        // User switched away from this tab
+        setTabSwitchCount(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 5 && onSubmit) {
+            triggerAutoSubmit();
+          }
+          return newCount;
+        });
+        setShowViolationWarning(true);
+        setTimeout(() => setShowViolationWarning(false), 3000);
+      }
+    };
+
+    // Detect window blur (alt+tab, clicking other windows)
+    const handleWindowBlur = () => {
+      if (!isSubmittingRef.current) {
+        setTabSwitchCount(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 5 && onSubmit) {
+            triggerAutoSubmit();
+          }
+          return newCount;
+        });
+        setShowViolationWarning(true);
+        setTimeout(() => setShowViolationWarning(false), 3000);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [onSubmit]);
+
+  // Block keyboard shortcuts that might exit fullscreen or switch tabs
+  useEffect(() => {
+    const blockExitKeys = (e) => {
+      // Block Escape key to prevent fullscreen exit - CRITICAL for assessment security
+      if (e.key === 'Escape' && !isSubmittingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        // Count as violation attempt
+        setTabSwitchCount(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 5 && onSubmit) {
+            triggerAutoSubmit();
+          }
+          return newCount;
+        });
+        setShowViolationWarning(true);
+        setTimeout(() => setShowViolationWarning(false), 3000);
+        
+        return false;
+      }
+      // Block Alt+Tab, Alt+F4, Cmd+Tab
+      if ((e.altKey || e.metaKey) && e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      // Block F11 (fullscreen toggle)
+      if (e.key === 'F11') {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    };
+
+    // Use capture phase and non-passive to ensure we can preventDefault
+    document.addEventListener('keydown', blockExitKeys, { capture: true, passive: false });
+    document.addEventListener('keyup', blockExitKeys, { capture: true, passive: false });
+    
+    return () => {
+      document.removeEventListener('keydown', blockExitKeys, { capture: true });
+      document.removeEventListener('keyup', blockExitKeys, { capture: true });
+    };
+  }, [onSubmit]);
 
   // Disable copy/paste/cut/drag globally for this workspace
   useEffect(() => {
@@ -220,6 +368,39 @@ export default function WebWorkspace({
       default: return 'plaintext';
     }
   };
+
+  // Auto-submit function triggered after 5 violations
+  const triggerAutoSubmit = useCallback(() => {
+    if (isSubmittingRef.current || !onSubmit) return;
+    
+    isSubmittingRef.current = true;
+    setIsSubmitted(true);
+    
+    // Collect all files
+    const allFilesData = [
+      { name: 'index.html', content: code.html || '' },
+      { name: 'style.css', content: code.css || '' },
+      ...(mode === 'html-css-js' ? [{ name: 'script.js', content: code.js || '' }] : []),
+      ...customFiles.map(file => ({
+        name: file.name,
+        content: code[file.id] || ''
+      }))
+    ];
+    
+    // Exit fullscreen
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+    
+    // Submit with auto-submit flag
+    onSubmit({
+      files: allFilesData,
+      code,
+      customFiles,
+      violations: 5,
+      autoSubmitted: true
+    });
+  }, [code, customFiles, mode, onSubmit]);
 
   // Create a new file
   const handleCreateFile = () => {
@@ -523,6 +704,19 @@ ${code.js}` : ''}`;
       onDragStart={(e) => e.preventDefault()}
       onDrop={(e) => e.preventDefault()}
     >
+      {/* Violation Warning Overlay */}
+      {showViolationWarning && (
+        <div className="violation-warning-overlay">
+          <div className="violation-warning-box">
+            <h3>⚠️ Warning!</h3>
+            <p>Tab switching or exiting fullscreen is not allowed during assessment.</p>
+            <p style={{ marginTop: '8px', color: '#F85149' }}>
+              Violation #{tabSwitchCount} of 5 - {5 - tabSwitchCount > 0 ? `${5 - tabSwitchCount} remaining before auto-submit` : 'Auto-submitting...'}
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Workspace Header */}
       <div className="workspace-header">
         <div className="workspace-title">
@@ -602,14 +796,61 @@ ${code.js}` : ''}`;
             </div>
           )}
           
-          {/* Fullscreen Toggle */}
-          <button 
-            className="ws-action-btn"
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
+          {/* Tab Switch Violation Counter */}
+          {tabSwitchCount > 0 && (
+            <div className="violation-counter" title="Tab switch/exit attempts detected">
+              <span className="violation-icon">⚠️</span>
+              <span className="violation-count">{tabSwitchCount}</span>
+            </div>
+          )}
+          
+          {/* Submit Button */}
+          {onSubmit && (
+            <>
+              <div className="action-divider" />
+              <button 
+                className="ws-submit-btn"
+                onClick={() => {
+                  // Mark as submitting to allow fullscreen exit
+                  isSubmittingRef.current = true;
+                  setIsSubmitted(true);
+                  
+                  // Collect all files
+                  const allFilesData = [
+                    { name: 'index.html', content: code.html || '' },
+                    { name: 'style.css', content: code.css || '' },
+                    ...(mode === 'html-css-js' ? [{ name: 'script.js', content: code.js || '' }] : []),
+                    ...customFiles.map(file => ({
+                      name: file.name,
+                      content: code[file.id] || ''
+                    }))
+                  ];
+                  
+                  // Exit fullscreen first
+                  if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(console.error);
+                  }
+                  
+                  // Call submit with all data including violation count
+                  onSubmit({
+                    files: allFilesData,
+                    code,
+                    customFiles,
+                    violations: tabSwitchCount
+                  });
+                }}
+                disabled={isSubmitting}
+                title="Submit Code"
+              >
+                {isSubmitting ? (
+                  <Loader2 size={16} className="spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+                <span>Submit</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

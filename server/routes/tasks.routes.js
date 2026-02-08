@@ -20,6 +20,10 @@ import {
   getStudentTaskQuestions,
   submitMCQTest,
   submitCodingTask,
+  submitWebCode,
+  getWebCodeSubmissions,
+  getWebCodeSubmissionDetail,
+  gradeWebCodeSubmission,
   upload,
   studentUpload
 } from '../controllers/tasks.controller.js';
@@ -43,6 +47,9 @@ router.post('/:task_id/submit-mcq', authenticate, studentOnly, submitMCQTest);
 
 // Submit coding task (HTML/CSS/JS)
 router.post('/:task_id/submit-code', authenticate, studentOnly, submitCodingTask);
+
+// Submit web workspace code (multiple files - P Skills)
+router.post('/:task_id/submit-web-code', authenticate, studentOnly, submitWebCode);
 
 // Submit task assignment (file or link) - STRICT: PDF/DOCX only
 router.post('/:task_id/submit', authenticate, studentOnly, studentUpload.single('file'), submitTask);
@@ -74,6 +81,16 @@ router.put('/grade/:submission_id', authenticate, facultyOrAdmin, gradeSubmissio
 
 // Extend task due date for specific student
 router.put('/extend/:task_id/student/:student_id', authenticate, facultyOrAdmin, extendTaskDueDate);
+
+// ============ WEB CODE SUBMISSIONS (P Skills) ============
+// Get all web code submissions for a venue
+router.get('/web-submissions/venue/:venue_id', authenticate, facultyOrAdmin, getWebCodeSubmissions);
+
+// Get single web code submission with all files
+router.get('/web-submissions/:submission_id', authenticate, facultyOrAdmin, getWebCodeSubmissionDetail);
+
+// Grade a web code submission
+router.put('/web-submissions/:submission_id/grade', authenticate, facultyOrAdmin, gradeWebCodeSubmission);
 
 // Error handling middleware for multer errors
 router.use((err, req, res, next) => {

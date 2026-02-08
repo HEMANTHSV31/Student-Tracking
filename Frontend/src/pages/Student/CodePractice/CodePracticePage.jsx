@@ -5,6 +5,7 @@ import {
   CheckCircle, AlertCircle, Loader, Home
 } from 'lucide-react';
 import WebWorkspace from './WebWorkSpace/WebWorkspace';
+import MCQWorkspace from './MCQWorkspace/MCQWorkspace';
 import WorkspaceSelector from './WorkSpaceSelecter/WorkspaceSelector';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet, apiPost } from '../../../utils/api';
@@ -24,6 +25,7 @@ export default function CodePracticePage() {
   // State
   const [task, setTask] = useState(null);
   const [question, setQuestion] = useState(null); // Question data with instructions, checklist, sample image
+  const [mcqQuestions, setMcqQuestions] = useState([]); // Array of MCQ questions
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -160,6 +162,9 @@ export default function CodePracticePage() {
             const taskData = response.data;
             setTask(taskData);
             
+            // Check if this is an MCQ task
+            const isMCQTask = taskData.question_type === 'mcq';
+            
             // Fetch question data for this task
             try {
               console.log('Fetching questions for task:', taskId);
@@ -168,19 +173,27 @@ export default function CodePracticePage() {
               console.log('Questions response:', questionsResponse);
               
               if (questionsResponse.success && questionsResponse.data && questionsResponse.data.length > 0) {
-                const questionData = questionsResponse.data[0]; // Get first question
-                console.log('Question data to set:', questionData);
-                setQuestion({
-                  question_text: questionData.question_text,
-                  description: questionData.description,
-                  coding_test_cases: questionData.coding_test_cases || [],
-                  sample_image_url: questionData.sample_image_url,
-                  coding_starter_code: questionData.coding_starter_code
-                });
+                if (isMCQTask) {
+                  // For MCQ tasks, set all questions
+                  setMcqQuestions(questionsResponse.data);
+                  console.log('MCQ questions loaded:', questionsResponse.data.length);
+                } else {
+                  // For coding tasks, use first question
+                  const questionData = questionsResponse.data[0];
+                  console.log('Question data to set:', questionData);
+                  setQuestion({
+                    question_id: questionData.question_id,
+                    question_text: questionData.question_text,
+                    description: questionData.description,
+                    coding_test_cases: questionData.coding_test_cases || [],
+                    sample_image_url: questionData.sample_image_url,
+                    coding_starter_code: questionData.coding_starter_code
+                  });
+                }
               } else {
                 console.log('No questions found from API, using task data as fallback');
                 // Fallback: Use task data as question if available
-                if (taskData.description) {
+                if (taskData.description && !isMCQTask) {
                   setQuestion({
                     question_text: taskData.title,
                     description: taskData.description,
@@ -193,7 +206,7 @@ export default function CodePracticePage() {
             } catch (qErr) {
               console.error('Error fetching question data:', qErr);
               // Fallback: Use task data as question if available
-              if (taskData.description) {
+              if (taskData.description && !isMCQTask) {
                 setQuestion({
                   question_text: taskData.title,
                   description: taskData.description,
@@ -347,61 +360,160 @@ export default function CodePracticePage() {
     }
   };
 
-  // Submit assignment
-  const handleSubmit = async () => {
-    setModal({
-      show: true,
-      title: 'Confirm Submission',
-      message: 'Are you sure you want to submit? You won\'t be able to edit after submission.',
-      type: 'confirm',
-      onConfirm: async () => {
-        setModal({ show: false });
-        setSubmitting(true);
-        try {
-          if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
-            // Combine HTML, CSS, and JS into a single file
-            const combinedCode = combineCodeFiles(code);
-            
-            // Submit combined code
-            const response = await apiPost(`/tasks/${taskId}/submit-code`, { 
-              code: combinedCode,
-              html: code.html,
-              css: code.css,
-              js: mode === 'html-css-js' ? code.js : ''
-            });
-            
-            if (response.success) {
-              setModal({
-                show: true,
-                title: 'Success',
-                message: 'Assignment submitted successfully!',
-                type: 'success',
-                onClose: () => navigate('/tasks')
-              });
-              return;
+  // Submit assignment - called from WebWorkspace submit button
+  const handleSubmit = async (submittedData = null) => {
+    // If called from WebWorkspace, we get the files data
+    const performSubmit = async () => {
+      setSubmitting(true);
+      try {
+        if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
+          // Use the new web code submission API with multiple files
+          const files = submittedData?.files || [
+            { name: 'index.html', content: code.html || '' },
+            { name: 'style.css', content: code.css || '' },
+            ...(workspaceMode === 'html-css-js' ? [{ name: 'script.js', content: code.js || '' }] : [])
+          ];
+          
+          const responseRaw = await apiPost(`/tasks/${taskId}/submit-web-code`, { 
+            files,
+            question_id: question?.question_id || null,
+            workspace_mode: workspaceMode,
+            time_taken_minutes: null, // Could track time in future
+            violations: submittedData?.violations || 0 // Tab switch/fullscreen exit count
+          });
+          
+          // Check if response is ok before parsing JSON
+          if (!responseRaw.ok) {
+            const errorText = await responseRaw.text();
+            console.error('Server error response:', errorText);
+
+            let message = `Server error (${responseRaw.status})`;
+            try {
+              const parsed = JSON.parse(errorText);
+              if (parsed?.message) message = parsed.message;
+              if (parsed?.error) message = `${message}: ${parsed.error}`;
+            } catch {
+              if (errorText?.trim()) message = `${message}: ${errorText.trim()}`;
             }
+
+            throw new Error(message);
           }
           
-          // Demo submission
-          localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
+          const response = await responseRaw.json();
+          
+          if (response.success) {
+            setModal({
+              show: true,
+              title: 'Success',
+              message: 'Your code has been submitted successfully! Faculty will review and grade your submission.',
+              type: 'success',
+              onClose: () => navigate('/pbl/tasks')
+            });
+            return;
+          } else {
+            throw new Error(response.message || 'Submission failed');
+          }
+        }
+        
+        // Demo submission
+        localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
+        setModal({
+          show: true,
+          title: 'Demo Submission',
+          message: 'This is a demo task. In a real scenario, your code would be submitted to the instructor.',
+          type: 'info'
+        });
+      } catch (error) {
+        console.error('Submit error:', error);
+        setModal({
+          show: true,
+          title: 'Submission Failed',
+          message: error.message || 'Failed to submit. Please try again.',
+          type: 'error'
+        });
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    // If called directly from header button, show confirmation
+    // If called from WebWorkspace submit, data is already provided so submit directly
+    if (submittedData) {
+      await performSubmit();
+    } else {
+      setModal({
+        show: true,
+        title: 'Confirm Submission',
+        message: 'Are you sure you want to submit? You won\'t be able to edit after submission.',
+        type: 'confirm',
+        onConfirm: performSubmit
+      });
+    }
+  };
+
+  // Submit MCQ answers - called from MCQWorkspace submit button
+  const handleMCQSubmit = async (submittedData = null) => {
+    setSubmitting(true);
+    try {
+      if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
+        const responseRaw = await apiPost(`/tasks/${taskId}/submit-mcq`, {
+          answers: submittedData?.answers || {},
+          violations: submittedData?.violations || 0,
+          time_taken_minutes: submittedData?.timeTaken || null
+        });
+        
+        // Check if response is ok before parsing JSON
+        if (!responseRaw.ok) {
+          const errorText = await responseRaw.text();
+          console.error('Server error response:', errorText);
+
+          let message = `Server error (${responseRaw.status})`;
+          try {
+            const parsed = JSON.parse(errorText);
+            if (parsed?.message) message = parsed.message;
+            if (parsed?.error) message = `${message}: ${parsed.error}`;
+          } catch {
+            if (errorText?.trim()) message = `${message}: ${errorText.trim()}`;
+          }
+
+          throw new Error(message);
+        }
+        
+        const response = await responseRaw.json();
+        
+        if (response.success) {
+          const data = response.data || {};
           setModal({
             show: true,
-            title: 'Demo Submission',
-            message: 'This is a demo task. In a real scenario, your code would be submitted to the instructor.',
-            type: 'info'
+            title: data.passed ? 'Test Passed!' : 'Test Completed',
+            message: `Score: ${data.score}/${data.total} (${data.percentage}%)${data.passed ? ' - Congratulations!' : ' - Try again to pass.'}`,
+            type: data.passed ? 'success' : 'warning',
+            onClose: () => navigate('/pbl/tasks')
           });
-        } catch (error) {
-          setModal({
-            show: true,
-            title: 'Submission Failed',
-            message: 'Failed to submit. Please try again.',
-            type: 'error'
-          });
-        } finally {
-          setSubmitting(false);
+          return;
+        } else {
+          throw new Error(response.message || 'Submission failed');
         }
       }
-    });
+      
+      // Demo submission
+      setModal({
+        show: true,
+        title: 'Demo Submission',
+        message: 'This is a demo task. In a real scenario, your MCQ answers would be submitted.',
+        type: 'info'
+      });
+    } catch (error) {
+      console.error('MCQ Submit error:', error);
+      setModal({
+        show: true,
+        title: 'Submission Failed',
+        message: error.message || 'Failed to submit. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Combine HTML, CSS, and JS files into a single file
@@ -572,17 +684,29 @@ export default function CodePracticePage() {
 
       {/* Main Content */}
       <div className="page-content">
-        {/* Workspace */}
+        {/* Workspace - Render MCQ or Web based on question type */}
         <div className="workspace-container">
-          <WebWorkspace
-            mode={workspaceMode}
-            initialCode={code}
-            onChange={handleCodeChange}
-            readOnly={isSubmitted}
-            taskTitle={task?.title || 'Practice'}
-            question={question}
-            apiUrl={API_URL}
-          />
+          {task?.question_type === 'mcq' ? (
+            <MCQWorkspace
+              questions={mcqQuestions}
+              taskTitle={task?.title || 'MCQ Assessment'}
+              onSubmit={handleMCQSubmit}
+              isSubmitting={submitting}
+              timeLimit={task?.time_limit || 30}
+            />
+          ) : (
+            <WebWorkspace
+              mode={workspaceMode}
+              initialCode={code}
+              onChange={handleCodeChange}
+              readOnly={isSubmitted}
+              taskTitle={task?.title || 'Practice'}
+              question={question}
+              apiUrl={API_URL}
+              onSubmit={handleSubmit}
+              isSubmitting={submitting}
+            />
+          )}
         </div>
       </div>
 

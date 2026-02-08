@@ -21,6 +21,26 @@
   border-radius: 0;
 }
 
+/* Hide fullscreen exit button/hint when in fullscreen mode */
+.web-workspace:fullscreen::backdrop {
+  background: #0D1117;
+}
+
+/* Chrome/Edge fullscreen hint - attempt to hide */
+.web-workspace:fullscreen {
+  /* Ensure no browser UI overlays */
+  cursor: default;
+}
+
+/* Try to prevent fullscreen exit notification bar */
+:fullscreen {
+  background: #0D1117;
+}
+
+:fullscreen::backdrop {
+  background: #0D1117 !important;
+}
+
 /* Workspace Header */
 .workspace-header {
   display: flex;
@@ -83,6 +103,118 @@
 .ws-action-btn.active {
   background: rgba(88, 166, 255, 0.15);
   color: #58A6FF;
+}
+
+/* Submit Button */
+.ws-submit-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border: none;
+  background: linear-gradient(135deg, #238636 0%, #2EA043 100%);
+  color: #FFFFFF;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(35, 134, 54, 0.3);
+}
+
+.ws-submit-btn:hover {
+  background: linear-gradient(135deg, #2EA043 0%, #3FB950 100%);
+  box-shadow: 0 4px 12px rgba(46, 160, 67, 0.4);
+  transform: translateY(-1px);
+}
+
+.ws-submit-btn:active {
+  transform: translateY(0);
+}
+
+.ws-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ws-submit-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Violation Counter - Tab switch warning */
+.violation-counter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 8px;
+  color: #F85149;
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.violation-icon {
+  font-size: 14px;
+}
+
+.violation-count {
+  color: #F85149;
+}
+
+/* Violation Warning Overlay */
+.violation-warning-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(248, 81, 73, 0.1);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: warningFlash 0.3s ease-in-out;
+}
+
+.violation-warning-box {
+  background: linear-gradient(135deg, #21262D 0%, #161B22 100%);
+  border: 2px solid #F85149;
+  border-radius: 16px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(248, 81, 73, 0.3);
+}
+
+.violation-warning-box h3 {
+  color: #F85149;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.violation-warning-box p {
+  color: #8B949E;
+  font-size: 14px;
+  margin: 0;
+}
+
+@keyframes warningFlash {
+  0%, 100% { background: rgba(248, 81, 73, 0.1); }
+  50% { background: rgba(248, 81, 73, 0.2); }
 }
 
 .action-divider {
@@ -651,23 +783,41 @@
 .file-name-input {
   width: 100%;
   padding: 12px 16px;
-  background: #0D1117;
+  background-color: #0D1117 !important;
   border: 2px solid #30363D;
   border-radius: 10px;
-  color: #E6EDF3;
+  color: #E6EDF3 !important;
   font-size: 14px;
   font-family: 'Fira Code', 'JetBrains Mono', monospace;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease;
+  color-scheme: dark;
+  -webkit-appearance: none;
+  -webkit-text-fill-color: #E6EDF3 !important;
+  caret-color: #58A6FF;
 }
 
 .file-name-input:focus {
   outline: none;
   border-color: #58A6FF;
-  background: #0D1117;
+  background-color: #0D1117 !important;
+  color: #E6EDF3 !important;
+  -webkit-text-fill-color: #E6EDF3 !important;
+}
+
+.file-name-input:-webkit-autofill,
+.file-name-input:-webkit-autofill:hover,
+.file-name-input:-webkit-autofill:focus,
+.file-name-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #0D1117 inset !important;
+  -webkit-text-fill-color: #E6EDF3 !important;
+  background-color: #0D1117 !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 .file-name-input::placeholder {
-  color: #484F58;
+  color: #6B7280 !important;
+  -webkit-text-fill-color: #6B7280 !important;
+  opacity: 1;
 }
 
 .modal-footer {
