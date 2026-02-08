@@ -52,9 +52,11 @@ app.use((req, res, next) => {
   const fullPath = req.originalUrl || req.url;
   
   // Skip ALL body parsing for file upload routes (multer handles it)
-  if (fullPath.includes('/upload') || 
-      fullPath.includes('/submit') ||
-      fullPath.includes('/resources')) {
+  // But allow /submit-mcq (it needs JSON body parsing)
+  if ((fullPath.includes('/upload') || 
+       fullPath.includes('/submit') ||
+       fullPath.includes('/resources')) &&
+      !fullPath.includes('/submit-mcq')) {
     // console.log(`[BODY PARSER] ✓ Bypassing ALL body parsers for: ${req.method} ${fullPath}`);
     return next();
   }

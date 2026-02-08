@@ -53,19 +53,47 @@ const CodeEvaluation = () => {
       
       if (response.success) {
         const data = response.data;
+        
+        // Parse code - check if it's combined or separate
+        let html = '', css = '', js = '';
+        
+        if (data.html_code || data.css_code || data.js_code) {
+          // Separate code files
+          html = data.html_code || '';
+          css = data.css_code || '';
+          js = data.js_code || '';
+        } else if (data.combined_code || data.code_solution) {
+          // Combined code - extract HTML, CSS, JS
+          const combined = data.combined_code || data.code_solution || '';
+          
+          // Extract CSS from <style> tags
+          const cssMatch = combined.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+          css = cssMatch ? cssMatch[1].trim() : '';
+          
+          // Extract JS from <script> tags
+          const jsMatch = combined.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+          js = jsMatch ? jsMatch[1].trim() : '';
+          
+          // Get HTML (remove style and script tags)
+          html = combined
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .trim();
+        }
+        
         // Transform API data to match component structure
         const transformedSubmission = {
           id: data.submission_id,
           studentName: data.student_name,
           studentId: data.roll_number || 'N/A',
-          title: data.skill_name,
+          title: data.skill_name || data.question_text?.substring(0, 50) || 'Code Practice',
           submittedAt: new Date(data.submitted_at).toLocaleString(),
           status: data.score >= 50 ? 'PASSED' : 'PENDING',
           autoTestOutcome: 'N/A',
           code: {
-            html: data.code_solution || '// No code submitted',
-            css: '',
-            js: '',
+            html: html || '<!-- No HTML code submitted -->',
+            css: css || '/* No CSS code submitted */',
+            js: js || '// No JavaScript code submitted',
           },
           rubric: {
             codeQuality: { max: 40, current: data.score ? Math.round(data.score * 0.4) : 0 },
@@ -74,8 +102,9 @@ const CodeEvaluation = () => {
           },
           totalScore: data.score || 0,
           maxScore: 100,
-          language: data.language || 'python',
+          language: data.language || 'html',
           questionText: data.question_text,
+          sampleImage: data.sample_image, // Sample image from question_bank
         };
         
         setSubmission(transformedSubmission);
@@ -216,7 +245,7 @@ const CodeEvaluation = () => {
           <div className="code-editor">
             <Editor
               height="500px"
-              language={submission.language || 'python'}
+              language={activeTab === 'html' ? 'html' : activeTab === 'css' ? 'css' : 'javascript'}
               value={submission.code[activeTab]}
               theme="vs-dark"
               options={{
@@ -228,6 +257,29 @@ const CodeEvaluation = () => {
               }}
             />
           </div>
+
+          {/* Sample Image Reference */}
+          {submission.sampleImage && (
+            <div className="sample-image-section">
+              <h3>EXPECTED OUTPUT / REFERENCE</h3>
+              <div className="sample-image-container">
+                <img 
+                  src={submission.sampleImage} 
+                  alt="Expected output" 
+                  className="sample-image"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Question Text */}
+          {submission.questionText && (
+            <div className="question-text-section">
+              <h3>QUESTION</h3>
+              <p className="question-text">{submission.questionText}</p>
+            </div>
+          )}
 
           {/* Telemetry */}
           <div className="telemetry-section">
