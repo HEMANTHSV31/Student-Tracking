@@ -7,7 +7,7 @@ import {
   Download, Copy, Check,
   Plus, X, File, FileText, Trash2,
   BookOpen, CheckCircle, Image, ClipboardList,
-  Send, Loader2, FolderPlus
+  Send, Loader2, FolderPlus, ArrowLeft
 } from 'lucide-react';
 import './WebWorkspace.css';
 
@@ -27,7 +27,9 @@ export default function WebWorkspace({
   question = null,  // Question data with instructions, checklist, sample image
   apiUrl = '',       // API URL for image paths
   onSubmit = null,   // Submit callback - receives { files, code, customFiles }
-  isSubmitting = false // Loading state for submit button
+  isSubmitting = false, // Loading state for submit button
+  demoMode = false,  // Demo mode - no fullscreen enforcement, no submit, just practice
+  onBack = null      // Back button callback for demo mode
 }) {
   // Question panel state - show by default if question exists
   const [showQuestionPanel, setShowQuestionPanel] = useState(true);
@@ -113,8 +115,19 @@ export default function WebWorkspace({
   const lastFullscreenExitRef = useRef(0);
   const fullscreenEnforcementIntervalRef = useRef(null);
 
-  // Auto fullscreen on mount and prevent exit until submit
+  // Auto fullscreen on mount and prevent exit until submit (skip in demo mode)
   useEffect(() => {
+    // In demo mode, just track fullscreen state without enforcement
+    if (demoMode) {
+      const handleFullscreenChange = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+      };
+      document.addEventListener('fullscreenchange', handleFullscreenChange);
+      return () => {
+        document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      };
+    }
+
     const enterFullscreen = async () => {
       const elem = workspaceContainerRef.current;
       if (!elem) return;
@@ -235,10 +248,15 @@ export default function WebWorkspace({
         clearInterval(fullscreenEnforcementIntervalRef.current);
       }
     };
-  }, [onSubmit]);
+  }, [onSubmit, demoMode]);
 
-  // Detect tab switches / visibility changes
+  // Detect tab switches / visibility changes (skip in demo mode)
   useEffect(() => {
+    // Skip tab switch detection in demo mode
+    if (demoMode) {
+      return;
+    }
+
     const handleVisibilityChange = () => {
       if (document.hidden && !isSubmittingRef.current) {
         // User switched away from this tab
@@ -276,10 +294,15 @@ export default function WebWorkspace({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [onSubmit]);
+  }, [onSubmit, demoMode]);
 
-  // Block keyboard shortcuts that might exit fullscreen or switch tabs
+  // Block keyboard shortcuts that might exit fullscreen or switch tabs (skip in demo mode)
   useEffect(() => {
+    // Skip keyboard blocking in demo mode
+    if (demoMode) {
+      return;
+    }
+
     const blockExitKeys = (e) => {
       // Block Escape key to prevent fullscreen exit - CRITICAL for assessment security
       if (e.key === 'Escape' && !isSubmittingRef.current) {
@@ -322,10 +345,15 @@ export default function WebWorkspace({
       document.removeEventListener('keydown', blockExitKeys, { capture: true });
       document.removeEventListener('keyup', blockExitKeys, { capture: true });
     };
-  }, [onSubmit]);
+  }, [onSubmit, demoMode]);
 
-  // Disable copy/paste/cut/drag globally for this workspace
+  // Disable copy/paste/cut/drag globally for this workspace (skip in demo mode)
   useEffect(() => {
+    // Skip copy/paste blocking in demo mode - allow normal editing
+    if (demoMode) {
+      return;
+    }
+
     const preventCopyPaste = (e) => {
       // Block Ctrl+C, Ctrl+V, Ctrl+X
       if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key.toLowerCase())) {
@@ -366,7 +394,7 @@ export default function WebWorkspace({
         container.removeEventListener('dragover', preventDragDrop, true);
       }
     };
-  }, []);
+  }, [demoMode]);
 
   // Default files configuration based on mode
   const defaultFiles = mode === 'html-css' 
@@ -756,6 +784,30 @@ ${code.js}` : ''}`;
       {/* Workspace Header */}
       <div className="workspace-header">
         <div className="workspace-title">
+          {demoMode && onBack && (
+            <button 
+              onClick={onBack}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                marginRight: '12px',
+                background: '#21262D',
+                border: '1px solid #30363D',
+                borderRadius: '8px',
+                color: '#E6EDF3',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              title="Back to Workspace Selector"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          )}
           <Code2 size={20} />
           <span>{mode === 'html-css' ? 'HTML + CSS Workspace' : 'HTML + CSS + JS Workspace'}</span>
           <span className="workspace-badge">{mode === 'html-css' ? 'P1' : 'P2'}</span>
@@ -838,6 +890,52 @@ ${code.js}` : ''}`;
               <span className="violation-icon">⚠️</span>
               <span className="violation-count">{tabSwitchCount}</span>
             </div>
+          )}
+
+          {/* Demo Mode Badge */}
+          {demoMode && (
+            <div className="demo-mode-badge">
+              <span>Demo Mode</span>
+            </div>
+          )}
+
+          {/* Fullscreen Toggle - Only in demo mode */}
+          {demoMode && (
+            <>
+              <div className="action-divider" />
+              <button 
+                className="fullscreen-toggle-btn"
+                onClick={() => {
+                  if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                    setIsFullscreen(false);
+                  } else {
+                    workspaceContainerRef.current?.requestFullscreen();
+                    setIsFullscreen(true);
+                  }
+                }}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                style={{
+                  background: 'linear-gradient(135deg, #10B981, #059669)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  minWidth: 'fit-content'
+                }}
+              >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                <span style={{ whiteSpace: 'nowrap' }}>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+              </button>
+            </>
           )}
           
           {/* Submit Button */}
@@ -1215,14 +1313,21 @@ ${code.js}` : ''}`;
                     if (e.key === 'Escape') setShowNewFileModal(false);
                   }}
                   autoFocus
+                  style={{ 
+                    backgroundColor: '#0D1117', 
+                    color: '#E6EDF3', 
+                    WebkitTextFillColor: '#E6EDF3',
+                    caretColor: '#58A6FF'
+                  }}
                 />
               </div>
             </div>
             
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ background: '#161B22', backgroundColor: '#161B22' }}>
               <button 
                 className="btn-cancel" 
                 onClick={() => setShowNewFileModal(false)}
+                style={{ background: '#21262D', color: '#E6EDF3', border: '1px solid #484F58' }}
               >
                 Cancel
               </button>
@@ -1230,6 +1335,7 @@ ${code.js}` : ''}`;
                 className="btn-create" 
                 onClick={handleCreateFile}
                 disabled={!newFileName.trim()}
+                style={{ background: 'linear-gradient(135deg, #58A6FF, #3B82F6)', color: 'white' }}
               >
                 <Plus size={16} />
                 Create File

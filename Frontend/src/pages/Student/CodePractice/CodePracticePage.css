@@ -13,6 +13,20 @@
   justify-content: center;
 }
 
+/* No header mode - workspace takes full height */
+.code-practice-page.no-header {
+  padding: 0;
+}
+
+.code-practice-page.no-header .page-content {
+  flex: 1;
+  height: 100%;
+}
+
+.code-practice-page.no-header .workspace-container {
+  height: 100%;
+}
+
 .loading-content {
   display: flex;
   flex-direction: column;
@@ -393,7 +407,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 10000; 
   animation: fadeIn 0.2s ease;
 }
 

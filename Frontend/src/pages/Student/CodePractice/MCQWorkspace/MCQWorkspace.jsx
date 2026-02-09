@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ClipboardList, CheckCircle, Circle, Send, Loader2,
   ChevronLeft, ChevronRight, Clock, AlertTriangle,
-  BookOpen, Flag
+  BookOpen, Flag, Maximize2, Minimize2, ArrowLeft
 } from 'lucide-react';
 import './MCQWorkspace.css';
 
@@ -15,7 +15,9 @@ export default function MCQWorkspace({
   taskTitle = 'MCQ Assessment',
   onSubmit = null,     // Submit callback - receives { answers, violations }
   isSubmitting = false,
-  timeLimit = 30       // Time limit in minutes
+  timeLimit = 30,      // Time limit in minutes
+  demoMode = false,    // Demo mode - no fullscreen enforcement, no submit, just practice
+  onBack = null        // Back button callback for demo mode
 }) {
   // Current question index
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -135,8 +137,19 @@ export default function MCQWorkspace({
     }
   }, [isTimeUp, triggerAutoSubmit]);
 
-  // Auto fullscreen on mount
+  // Auto fullscreen on mount (skip in demo mode)
   useEffect(() => {
+    // In demo mode, just track fullscreen state without enforcement
+    if (demoMode) {
+      const handleFullscreenChange = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+      };
+      document.addEventListener('fullscreenchange', handleFullscreenChange);
+      return () => {
+        document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      };
+    }
+
     const enterFullscreen = async () => {
       const elem = workspaceContainerRef.current;
       if (!elem) return;
@@ -248,10 +261,15 @@ export default function MCQWorkspace({
         clearInterval(fullscreenEnforcementIntervalRef.current);
       }
     };
-  }, [onSubmit, triggerAutoSubmit]);
+  }, [onSubmit, triggerAutoSubmit, demoMode]);
 
-  // Detect tab switches
+  // Detect tab switches (skip in demo mode)
   useEffect(() => {
+    // Skip tab switch detection in demo mode
+    if (demoMode) {
+      return;
+    }
+
     const handleVisibilityChange = () => {
       if (document.hidden && !isSubmittingRef.current) {
         setTabSwitchCount(prev => {
@@ -287,10 +305,15 @@ export default function MCQWorkspace({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [onSubmit, triggerAutoSubmit]);
+  }, [onSubmit, triggerAutoSubmit, demoMode]);
 
-  // Block keyboard shortcuts
+  // Block keyboard shortcuts (skip in demo mode)
   useEffect(() => {
+    // Skip keyboard blocking in demo mode
+    if (demoMode) {
+      return;
+    }
+
     const blockExitKeys = (e) => {
       if (e.key === 'Escape' || e.key === 'F11') {
         e.preventDefault();
@@ -315,7 +338,7 @@ export default function MCQWorkspace({
     return () => {
       document.removeEventListener('keydown', blockExitKeys, true);
     };
-  }, []);
+  }, [demoMode]);
 
   // Select an answer
   const selectAnswer = (questionId, optionId) => {
@@ -398,6 +421,39 @@ export default function MCQWorkspace({
       {/* Workspace Header - Same style as WebWorkspace */}
       <div className="workspace-header">
         <div className="workspace-title">
+          {/* Back Button - Only in demo mode */}
+          {demoMode && onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                marginRight: '12px',
+                background: '#21262D',
+                border: '1px solid #30363D',
+                borderRadius: '8px',
+                color: '#E6EDF3',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#30363D';
+                e.target.style.borderColor = '#484F58';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#21262D';
+                e.target.style.borderColor = '#30363D';
+              }}
+              title="Back to Workspace Selector"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          )}
           <ClipboardList size={20} />
           <span>{taskTitle}</span>
           <span className="workspace-badge mcq">MCQ</span>
@@ -407,7 +463,7 @@ export default function MCQWorkspace({
           {/* Timer */}
           <div className={`mcq-timer ${timeRemaining < 300 ? 'warning' : ''} ${timeRemaining < 60 ? 'critical' : ''}`}>
             <Clock size={18} />
-            <span>{formatTime(timeRemaining)}</span>
+            <span>{demoMode ? '--:--' : formatTime(timeRemaining)}</span>
           </div>
 
           <div className="action-divider" />
@@ -415,32 +471,81 @@ export default function MCQWorkspace({
           {/* Progress */}
           <div className="mcq-progress">
             <CheckCircle size={16} />
-            <span>{answeredCount} / {totalQuestions}</span>
+            <span>{answeredCount} / {totalQuestions || '--'}</span>
           </div>
 
           {/* Violations Counter */}
-          {tabSwitchCount > 0 && (
+          {!demoMode && tabSwitchCount > 0 && (
             <div className="violation-counter" title="Tab switch/exit attempts detected">
               <span className="violation-icon">⚠️</span>
               <span className="violation-count">{tabSwitchCount}</span>
             </div>
           )}
 
-          <div className="action-divider" />
+          {/* Demo Mode Badge */}
+          {demoMode && (
+            <div className="demo-mode-badge">
+              <span>Demo Mode</span>
+            </div>
+          )}
 
-          {/* Submit Button - Same style as WebWorkspace */}
-          <button 
-            className="ws-submit-btn"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <Loader2 size={16} className="spin" />
-            ) : (
-              <Send size={16} />
-            )}
-            <span>Submit</span>
-          </button>
+          {/* Fullscreen Toggle - Only in demo mode */}
+          {demoMode && (
+            <>
+              <div className="action-divider" />
+              <button 
+                className="fullscreen-toggle-btn"
+                onClick={() => {
+                  if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                    setIsFullscreen(false);
+                  } else {
+                    workspaceContainerRef.current?.requestFullscreen();
+                    setIsFullscreen(true);
+                  }
+                }}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                style={{
+                  background: 'linear-gradient(135deg, #10B981, #059669)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  minWidth: 'fit-content'
+                }}
+              >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                <span style={{ whiteSpace: 'nowrap' }}>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+              </button>
+            </>
+          )}
+
+          {/* Submit Button - Only show when not in demo mode */}
+          {!demoMode && (
+            <>
+              <div className="action-divider" />
+              <button 
+                className="ws-submit-btn"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <Loader2 size={16} className="spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+                <span>Submit</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -553,9 +658,23 @@ export default function MCQWorkspace({
               </div>
             </>
           ) : (
-            <div className="no-questions">
+            <div className="no-questions demo-mode">
               <BookOpen size={48} />
-              <p>No questions available</p>
+              {demoMode ? (
+                <>
+                  <h3>MCQ Practice Workspace</h3>
+                  <p>This is a demo workspace for MCQ-style assessments.</p>
+                  <ul className="demo-features">
+                    <li>Timed assessments with countdown</li>
+                    <li>Multiple choice questions with instant selection</li>
+                    <li>Question navigation and flagging for review</li>
+                    <li>Fullscreen mode during actual assessments</li>
+                  </ul>
+                  <p className="demo-note">Start a real MCQ task from your assignments to begin an assessment.</p>
+                </>
+              ) : (
+                <p>No questions available</p>
+              )}
             </div>
           )}
         </div>

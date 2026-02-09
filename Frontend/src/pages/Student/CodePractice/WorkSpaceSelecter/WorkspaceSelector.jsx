@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
   Code2, Palette, Braces, ArrowRight, Check,
-  FileCode, Eye, Smartphone
+  FileCode, Eye, Smartphone, ClipboardList
 } from 'lucide-react';
 import './WorkspaceSelector.css';
 
@@ -45,6 +45,22 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
       icon: Braces,
       color: '#6366f1',
       bgColor: '#eef2ff'
+    },
+    {
+      id: 'mcq',
+      title: 'MCQ Practice',
+      badge: 'MCQ',
+      subtitle: 'Multiple Choice Questions',
+      description: 'Practice with multiple choice questions to test your web development knowledge and concepts.',
+      features: [
+        'Timed assessments',
+        'Instant feedback',
+        'Question navigation',
+        'Flag for review'
+      ],
+      icon: ClipboardList,
+      color: '#f59e0b',
+      bgColor: '#fffbeb'
     }
   ];
 

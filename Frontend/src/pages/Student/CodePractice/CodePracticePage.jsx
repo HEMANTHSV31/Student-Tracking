@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  ArrowLeft, Save, Send, Play, FileCode, Clock, 
-  CheckCircle, AlertCircle, Loader, Home
-} from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import WebWorkspace from './WebWorkSpace/WebWorkspace';
 import MCQWorkspace from './MCQWorkspace/MCQWorkspace';
 import WorkspaceSelector from './WorkSpaceSelecter/WorkspaceSelector';
@@ -262,14 +259,10 @@ export default function CodePracticePage() {
 
   // Handle workspace mode selection
   const handleModeSelect = async (mode) => {
-    // If no taskId, check if student has any assigned coding task
+    // If no taskId, allow demo mode - just open the workspace without validation
     if (!taskId) {
-      setModal({
-        show: true,
-        title: 'No Task Assigned',
-        message: 'Please select a coding task from your assignments first.',
-        type: 'warning'
-      });
+      setWorkspaceMode(mode);
+      setShowSelector(false);
       return;
     }
     
@@ -598,14 +591,7 @@ export default function CodePracticePage() {
   // Show workspace selector
   if (showSelector || !workspaceMode) {
     return (
-      <div className="code-practice-page">
-        <div className="page-header selector-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
-            <span>Back</span>
-          </button>
-          <h1 className="page-title">P Skills Practice</h1>
-        </div>
+      <div className="code-practice-page no-header">
         <WorkspaceSelector 
           onSelect={handleModeSelect}
           selectedMode={workspaceMode}
@@ -615,84 +601,25 @@ export default function CodePracticePage() {
   }
 
   const isSubmitted = task?.status === 'completed';
-  const isOverdue = task?.status === 'overdue';
+  
+  // Demo mode: No taskId or using demo task - no questions, no submit, just practice
+  const isDemoMode = !taskId || (taskId && demoTasks[taskId]) || !task;
 
   return (
-    <div className="code-practice-page">
-      {/* Header */}
-      <div className="page-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
-          </button>
-          
-          <div className="task-info">
-            <div className="task-title-row">
-              <FileCode size={20} className="task-icon" />
-              <h1 className="task-title">{task?.title || 'Practice Workspace'}</h1>
-              <span className={`mode-badge ${workspaceMode}`}>
-                {workspaceMode === 'html-css' ? 'P1' : 'P2'}
-              </span>
-              {task?.dueDate && (
-                <span className="due-badge">
-                  <Clock size={14} />
-                  Due: {task.dueDate}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="header-right">
-          {/* Status Badges */}
-          {isSubmitted && (
-            <div className="status-badge submitted">
-              <CheckCircle size={16} />
-              <span>Submitted</span>
-            </div>
-          )}
-          {isOverdue && !isSubmitted && (
-            <div className="status-badge overdue">
-              <AlertCircle size={16} />
-              <span>Overdue</span>
-            </div>
-          )}
-
-          {/* Save Button */}
-          <button 
-            className="action-btn secondary"
-            onClick={handleSave}
-            disabled={saving || isSubmitted}
-          >
-            {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
-            <span>Save</span>
-          </button>
-
-          {/* Submit Button */}
-          {task && (
-            <button 
-              className="action-btn primary"
-              onClick={handleSubmit}
-              disabled={submitting || isSubmitted}
-            >
-              {submitting ? <Loader size={16} className="animate-spin" /> : <Send size={16} />}
-              <span>Submit</span>
-            </button>
-          )}
-        </div>
-      </div>
-
+    <div className="code-practice-page no-header">
       {/* Main Content */}
       <div className="page-content">
-        {/* Workspace - Render MCQ or Web based on question type */}
+        {/* Workspace - Render MCQ or Web based on workspace mode or question type */}
         <div className="workspace-container">
-          {task?.questionType === 'mcq' ? (
+          {workspaceMode === 'mcq' || task?.questionType === 'mcq' ? (
             <MCQWorkspace
-              questions={mcqQuestions}
-              taskTitle={task?.title || 'MCQ Assessment'}
-              onSubmit={handleMCQSubmit}
+              questions={isDemoMode ? [] : mcqQuestions}
+              taskTitle={isDemoMode ? 'MCQ Practice' : (task?.title || 'MCQ Assessment')}
+              onSubmit={isDemoMode ? null : handleMCQSubmit}
               isSubmitting={submitting}
               timeLimit={task?.time_limit || 30}
+              demoMode={isDemoMode}
+              onBack={isDemoMode ? () => { setShowSelector(true); setWorkspaceMode(null); } : null}
             />
           ) : (
             <WebWorkspace
@@ -700,11 +627,13 @@ export default function CodePracticePage() {
               initialCode={code}
               onChange={handleCodeChange}
               readOnly={isSubmitted}
-              taskTitle={task?.title || 'Practice'}
-              question={question}
+              taskTitle={isDemoMode ? 'Practice Workspace' : (task?.title || 'Practice')}
+              question={isDemoMode ? null : question}
               apiUrl={API_URL}
-              onSubmit={handleSubmit}
+              onSubmit={isDemoMode ? null : handleSubmit}
               isSubmitting={submitting}
+              demoMode={isDemoMode}
+              onBack={isDemoMode ? () => { setShowSelector(true); setWorkspaceMode(null); } : null}
             />
           )}
         </div>
