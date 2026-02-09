@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ClipboardList, CheckCircle, Circle, Send, Loader2,
   ChevronLeft, ChevronRight, Clock, AlertTriangle,
-  X, BookOpen, Flag
+  BookOpen, Flag
 } from 'lucide-react';
 import './MCQWorkspace.css';
 
@@ -52,20 +52,27 @@ export default function MCQWorkspace({
   const currentQuestion = questions[currentIndex] || null;
   
   // Parse MCQ options from JSON string if needed
+  // Backend returns options in 'sample_answer' or 'mcq_options' field
   const getOptions = (question) => {
-    if (!question?.mcq_options) return [];
+    // Check both possible field names from backend
+    const rawOptions = question?.sample_answer || question?.mcq_options;
+    if (!rawOptions) {
+      console.log('No options found in question:', question);
+      return [];
+    }
     try {
-      let options = question.mcq_options;
-      // Handle double-encoded JSON
+      let options = rawOptions;
+      // Handle double-encoded JSON (sometimes backend returns double-stringified)
       if (typeof options === 'string') {
         options = JSON.parse(options);
       }
       if (typeof options === 'string') {
         options = JSON.parse(options);
       }
+      console.log('Parsed options:', options);
       return Array.isArray(options) ? options : [];
     } catch (e) {
-      console.error('Error parsing MCQ options:', e);
+      console.error('Error parsing MCQ options:', e, 'Raw options:', rawOptions);
       return [];
     }
   };
@@ -371,51 +378,59 @@ export default function MCQWorkspace({
       onContextMenu={(e) => e.preventDefault()}
       onCopy={(e) => e.preventDefault()}
       onPaste={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
     >
-      {/* Violation Warning Overlay */}
+      {/* Violation Warning Overlay - Same as WebWorkspace */}
       {showViolationWarning && (
-        <div className="mcq-violation-overlay">
-          <div className="mcq-violation-box">
+        <div className="violation-warning-overlay">
+          <div className="violation-warning-box">
             <h3>⚠️ Warning!</h3>
             <p>Tab switching or exiting fullscreen is not allowed during assessment.</p>
-            <p className="violation-count-text">
+            <p style={{ marginTop: '8px', color: '#F85149' }}>
               Violation #{tabSwitchCount} of 5 - {5 - tabSwitchCount > 0 ? `${5 - tabSwitchCount} remaining before auto-submit` : 'Auto-submitting...'}
             </p>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="mcq-header">
-        <div className="mcq-title">
+      {/* Workspace Header - Same style as WebWorkspace */}
+      <div className="workspace-header">
+        <div className="workspace-title">
           <ClipboardList size={20} />
           <span>{taskTitle}</span>
-          <span className="mcq-badge">MCQ</span>
+          <span className="workspace-badge mcq">MCQ</span>
         </div>
 
-        <div className="mcq-header-right">
+        <div className="workspace-actions">
           {/* Timer */}
           <div className={`mcq-timer ${timeRemaining < 300 ? 'warning' : ''} ${timeRemaining < 60 ? 'critical' : ''}`}>
             <Clock size={18} />
             <span>{formatTime(timeRemaining)}</span>
           </div>
 
+          <div className="action-divider" />
+
           {/* Progress */}
           <div className="mcq-progress">
-            <span>{answeredCount} / {totalQuestions} answered</span>
+            <CheckCircle size={16} />
+            <span>{answeredCount} / {totalQuestions}</span>
           </div>
 
           {/* Violations Counter */}
           {tabSwitchCount > 0 && (
-            <div className="mcq-violations">
-              <AlertTriangle size={16} />
-              <span>{tabSwitchCount}</span>
+            <div className="violation-counter" title="Tab switch/exit attempts detected">
+              <span className="violation-icon">⚠️</span>
+              <span className="violation-count">{tabSwitchCount}</span>
             </div>
           )}
 
-          {/* Submit Button */}
+          <div className="action-divider" />
+
+          {/* Submit Button - Same style as WebWorkspace */}
           <button 
-            className="mcq-submit-btn"
+            className="ws-submit-btn"
             onClick={handleSubmit}
             disabled={isSubmitting}
           >
@@ -429,11 +444,13 @@ export default function MCQWorkspace({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="mcq-content">
+      {/* Main Content - Workspace Body */}
+      <div className="workspace-body">
         {/* Question Navigator - Left Sidebar */}
         <div className="mcq-navigator">
-          <h4>Questions</h4>
+          <div className="nav-header">
+            <h4>Questions</h4>
+          </div>
           <div className="mcq-nav-grid">
             {questions.map((q, idx) => (
               <button
@@ -483,26 +500,35 @@ export default function MCQWorkspace({
               </div>
 
               <div className="mcq-question-content">
-                <h3 className="question-title">{currentQuestion.title}</h3>
-                <p className="question-text">{currentQuestion.description}</p>
+                <h3 className="question-title">{currentQuestion.question_text || currentQuestion.title}</h3>
+                {currentQuestion.description && (
+                  <p className="question-text">{currentQuestion.description}</p>
+                )}
               </div>
 
               <div className="mcq-options">
-                {getOptions(currentQuestion).map((option) => (
-                  <button
-                    key={option.id}
-                    className={`mcq-option ${answers[currentQuestion.question_id] === option.id ? 'selected' : ''}`}
-                    onClick={() => selectAnswer(currentQuestion.question_id, option.id)}
-                  >
-                    <span className="option-letter">{option.id}</span>
-                    <span className="option-text">{option.text}</span>
-                    {answers[currentQuestion.question_id] === option.id ? (
-                      <CheckCircle size={20} className="option-check" />
-                    ) : (
-                      <Circle size={20} className="option-circle" />
-                    )}
-                  </button>
-                ))}
+                {getOptions(currentQuestion).length > 0 ? (
+                  getOptions(currentQuestion).map((option) => (
+                    <button
+                      key={option.id}
+                      className={`mcq-option ${answers[currentQuestion.question_id] === option.id ? 'selected' : ''}`}
+                      onClick={() => selectAnswer(currentQuestion.question_id, option.id)}
+                    >
+                      <span className="option-letter">{option.id}</span>
+                      <span className="option-text">{option.text}</span>
+                      {answers[currentQuestion.question_id] === option.id ? (
+                        <CheckCircle size={20} className="option-check" />
+                      ) : (
+                        <Circle size={20} className="option-circle" />
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="no-options">
+                    <AlertTriangle size={24} />
+                    <p>No options available for this question</p>
+                  </div>
+                )}
               </div>
 
               {/* Navigation */}
