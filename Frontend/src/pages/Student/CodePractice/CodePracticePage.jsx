@@ -591,7 +591,7 @@ export default function CodePracticePage() {
   // Show workspace selector
   if (showSelector || !workspaceMode) {
     return (
-      <div className="code-practice-page no-header">
+      <div className="code-practice-page no-header selector-mode">
         <WorkspaceSelector 
           onSelect={handleModeSelect}
           selectedMode={workspaceMode}

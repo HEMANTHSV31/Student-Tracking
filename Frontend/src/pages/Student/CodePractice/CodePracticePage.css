@@ -18,6 +18,13 @@
   padding: 0;
 }
 
+/* Selector mode - auto height for WorkspaceSelector */
+.code-practice-page.selector-mode {
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+}
+
 .code-practice-page.no-header .page-content {
   flex: 1;
   height: 100%;
