@@ -162,8 +162,8 @@ export default function CodePracticePage() {
             const taskData = response.data;
             setTask(taskData);
             
-            // Check if this is an MCQ task
-            const isMCQTask = taskData.question_type === 'mcq';
+            // Check if this is an MCQ task (API returns questionType in camelCase)
+            const isMCQTask = taskData.questionType === 'mcq';
             
             // Fetch question data for this task
             try {
@@ -686,7 +686,7 @@ export default function CodePracticePage() {
       <div className="page-content">
         {/* Workspace - Render MCQ or Web based on question type */}
         <div className="workspace-container">
-          {task?.question_type === 'mcq' ? (
+          {task?.questionType === 'mcq' ? (
             <MCQWorkspace
               questions={mcqQuestions}
               taskTitle={task?.title || 'MCQ Assessment'}

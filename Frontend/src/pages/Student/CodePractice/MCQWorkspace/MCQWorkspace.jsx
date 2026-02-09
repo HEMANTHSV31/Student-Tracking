@@ -38,6 +38,8 @@ export default function MCQWorkspace({
   
   const workspaceContainerRef = useRef(null);
   const timerRef = useRef(null);
+  const lastFullscreenExitRef = useRef(0);
+  const fullscreenEnforcementIntervalRef = useRef(null);
 
   // Format time as MM:SS
   const formatTime = (seconds) => {
@@ -160,10 +162,31 @@ export default function MCQWorkspace({
       if (e.key === 'Escape' && !isSubmittingRef.current) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         return false;
       }
     };
-    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keydown', handleKeyDown, { capture: true, passive: false });
+
+    // Aggressive fullscreen re-entry function with multiple retries
+    const forceReenterFullscreen = (retryCount = 0) => {
+      const maxRetries = 5;
+      const elem = workspaceContainerRef.current;
+      
+      if (!elem || isSubmittingRef.current || document.fullscreenElement !== null) {
+        return;
+      }
+      
+      elem.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch((err) => {
+        console.log(`MCQ Fullscreen re-entry attempt ${retryCount + 1} failed:`, err.message);
+        if (retryCount < maxRetries) {
+          // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+          setTimeout(() => forceReenterFullscreen(retryCount + 1), 50 * Math.pow(2, retryCount));
+        }
+      });
+    };
 
     // Listen for fullscreen changes
     const handleFullscreenChange = () => {
@@ -171,6 +194,14 @@ export default function MCQWorkspace({
       setIsFullscreen(isCurrentlyFullscreen);
       
       if (!isCurrentlyFullscreen && !isSubmittingRef.current) {
+        // Prevent double counting if exit happened within 500ms
+        const now = Date.now();
+        if (now - lastFullscreenExitRef.current < 500) {
+          forceReenterFullscreen();
+          return;
+        }
+        lastFullscreenExitRef.current = now;
+        
         setTabSwitchCount(prev => {
           const newCount = prev + 1;
           if (newCount >= 5 && onSubmit) {
@@ -181,22 +212,33 @@ export default function MCQWorkspace({
         setShowViolationWarning(true);
         setTimeout(() => setShowViolationWarning(false), 3000);
         
-        // Re-enter fullscreen
-        setTimeout(() => {
-          const elem = workspaceContainerRef.current;
-          if (elem && document.fullscreenElement === null && !isSubmittingRef.current) {
-            elem.requestFullscreen().catch(() => {});
-          }
-        }, 200);
+        // Re-enter fullscreen aggressively
+        forceReenterFullscreen();
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
+    // Continuous enforcement interval - checks every 200ms and forces fullscreen if not active
+    fullscreenEnforcementIntervalRef.current = setInterval(() => {
+      if (!isSubmittingRef.current && document.fullscreenElement === null) {
+        const elem = workspaceContainerRef.current;
+        if (elem) {
+          elem.requestFullscreen().catch(() => {
+            // Silent catch - we'll try again on next interval
+          });
+        }
+      }
+    }, 200);
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
       if (navigator.keyboard && navigator.keyboard.unlock) {
         navigator.keyboard.unlock();
+      }
+      // Clear enforcement interval
+      if (fullscreenEnforcementIntervalRef.current) {
+        clearInterval(fullscreenEnforcementIntervalRef.current);
       }
     };
   }, [onSubmit, triggerAutoSubmit]);

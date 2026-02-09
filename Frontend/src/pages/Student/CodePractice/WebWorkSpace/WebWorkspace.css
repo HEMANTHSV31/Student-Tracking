@@ -792,6 +792,7 @@
   transition: border-color 0.2s ease;
   color-scheme: dark;
   -webkit-appearance: none;
+  appearance: none;
   -webkit-text-fill-color: #E6EDF3 !important;
   caret-color: #58A6FF;
 }
@@ -1083,8 +1084,8 @@
 }
 
 .instructions-content {
-  color: #B0B8C4;
-  font-size: 13px;
+  color: #373839;
+  font-size: 15px;
   line-height: 1.6;
   white-space: pre-wrap;
 }

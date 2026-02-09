@@ -109,6 +109,10 @@ export default function WebWorkspace({
   const newFileInputRef = useRef(null);
   const workspaceContainerRef = useRef(null);
 
+  // Track last fullscreen exit time to prevent double counting
+  const lastFullscreenExitRef = useRef(0);
+  const fullscreenEnforcementIntervalRef = useRef(null);
+
   // Auto fullscreen on mount and prevent exit until submit
   useEffect(() => {
     const enterFullscreen = async () => {
@@ -154,6 +158,26 @@ export default function WebWorkspace({
     };
     document.addEventListener('keydown', handleKeyDown, { capture: true, passive: false });
 
+    // Aggressive fullscreen re-entry function with multiple retries
+    const forceReenterFullscreen = (retryCount = 0) => {
+      const maxRetries = 5;
+      const elem = workspaceContainerRef.current;
+      
+      if (!elem || isSubmittingRef.current || document.fullscreenElement !== null) {
+        return;
+      }
+      
+      elem.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch((err) => {
+        console.log(`Fullscreen re-entry attempt ${retryCount + 1} failed:`, err.message);
+        if (retryCount < maxRetries) {
+          // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+          setTimeout(() => forceReenterFullscreen(retryCount + 1), 50 * Math.pow(2, retryCount));
+        }
+      });
+    };
+
     // Listen for fullscreen changes - re-enter if exited without submitting
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
@@ -161,6 +185,15 @@ export default function WebWorkspace({
       
       // If exited fullscreen but not submitted, count as violation and re-enter IMMEDIATELY
       if (!isCurrentlyFullscreen && !isSubmittingRef.current) {
+        // Prevent double counting if exit happened within 500ms
+        const now = Date.now();
+        if (now - lastFullscreenExitRef.current < 500) {
+          // Just re-enter without counting again
+          forceReenterFullscreen();
+          return;
+        }
+        lastFullscreenExitRef.current = now;
+        
         setTabSwitchCount(prev => {
           const newCount = prev + 1;
           // Auto-submit after 5 violations
@@ -172,24 +205,23 @@ export default function WebWorkspace({
         setShowViolationWarning(true);
         setTimeout(() => setShowViolationWarning(false), 3000);
         
-        // Re-enter fullscreen immediately (reduced delay from 200ms to 100ms)
-        setTimeout(() => {
-          const elem = workspaceContainerRef.current;
-          if (elem && document.fullscreenElement === null && !isSubmittingRef.current) {
-            elem.requestFullscreen().catch((err) => {
-              console.log('Re-entering fullscreen, attempt 1 failed, retrying...');
-              // Retry after 200ms if first attempt fails
-              setTimeout(() => {
-                if (document.fullscreenElement === null && !isSubmittingRef.current) {
-                  elem.requestFullscreen().catch(() => console.log('Fullscreen re-entry failed'));
-                }
-              }, 200);
-            });
-          }
-        }, 100);
+        // Re-enter fullscreen immediately with aggressive retry
+        forceReenterFullscreen();
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    // Continuous enforcement interval - checks every 200ms and forces fullscreen if not active
+    fullscreenEnforcementIntervalRef.current = setInterval(() => {
+      if (!isSubmittingRef.current && document.fullscreenElement === null) {
+        const elem = workspaceContainerRef.current;
+        if (elem) {
+          elem.requestFullscreen().catch(() => {
+            // Silent catch - we'll try again on next interval
+          });
+        }
+      }
+    }, 200);
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -197,6 +229,10 @@ export default function WebWorkspace({
       // Unlock keyboard on cleanup
       if (navigator.keyboard && navigator.keyboard.unlock) {
         navigator.keyboard.unlock();
+      }
+      // Clear enforcement interval
+      if (fullscreenEnforcementIntervalRef.current) {
+        clearInterval(fullscreenEnforcementIntervalRef.current);
       }
     };
   }, [onSubmit]);

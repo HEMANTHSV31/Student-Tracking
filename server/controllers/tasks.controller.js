@@ -2777,8 +2777,8 @@ export const submitMCQTest = async (req, res) => {
       ? existingSubmissions[0].attempt_number + 1 
       : 1;
 
-    // Insert submission (using first question_id for single-question tests, or null for multi-question)
-    const questionId = questions.length === 1 ? questions[0].question_id : null;
+    // Insert submission (using first question_id, required by database schema)
+    const questionId = questions.length > 0 ? questions[0].question_id : null;
     
     const [submissionResult] = await connection.execute(
       `INSERT INTO student_submissions 
