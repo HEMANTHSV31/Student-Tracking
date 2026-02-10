@@ -1613,19 +1613,39 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
     // console.log(`Total rows in Excel: ${data.length}`);
     // console.log(`Overwrite mode: ${overwrite}`);
 
+    // Log the first row to see actual column names
+    // if (data.length > 0) {
+    //   console.log('\n=== EXCEL COLUMN NAMES ===');
+    //   console.log('Available columns:', Object.keys(data[0]));
+    //   console.log('Sample row:', data[0]);
+    // }
+
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       
       // Support multiple column name formats (flexible mapping)
-      const rollNumber = row.rollNumber || row['Reg No'] || row.reg_no || row.RegNo || row.ID || row['S. No.'];
+      let rollNumber = row.rollNumber || row['Reg No'] || row.reg_no || row.RegNo || row.ID || row['S. No.'] 
+                    || row['Roll Number'] || row['Roll No'] || row['Registration Number'] || row['Registration No']
+                    || row['Student ID'] || row['Student Id'] || row['Roll No.'] || row['Reg. No.'] || row['Reg No.']
+                    || row.roll_number || row.roll_no || row.registration_number || row.student_id;
+      
       const name = row.name || row['Student Name'] || row.studentName || row.Name;
       const email = row.email || row['Student Official Email ID'] || row.Email || row.student_email;
       const department = row.department || row.Department || row.dept;
       const year = row.year || row.Year;
       const semester = row.semester || row.Semester;
       
-      // console.log(`\n--- Processing Row ${i + 2} ---`);
-      // console.log(`Roll Number: ${rollNumber}, Name: ${name}, Email: ${email}`);
+      // If no roll number found but email exists, extract from email
+      if (!rollNumber && email && String(email).includes('@')) {
+        const emailPrefix = String(email).split('@')[0];
+        rollNumber = emailPrefix; // Use email prefix as roll number
+        // console.log(`\n--- Processing Row ${i + 2} ---`);
+        // console.log(`⚠️ No roll number column found, using email prefix as roll number`);
+        // console.log(`Roll Number (from email): ${rollNumber}, Name: ${name}, Email: ${email}`);
+      } else {
+        // console.log(`\n--- Processing Row ${i + 2} ---`);
+        // console.log(`Roll Number: ${rollNumber}, Name: ${name}, Email: ${email}`);
+      }
 
       // Only rollNumber is required
       if (!rollNumber || String(rollNumber).trim() === '') {
