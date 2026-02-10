@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
-  Code2, Palette, Braces, ArrowRight, Check,
-  FileCode, Eye, Smartphone
+  Palette, Braces, ArrowRight, Check,
+  ClipboardList, AlertCircle
 } from 'lucide-react';
 import './WorkspaceSelector.css';
 
@@ -12,8 +12,27 @@ import './WorkspaceSelector.css';
  */
 export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
   const [hoveredMode, setHoveredMode] = useState(null);
+  const [showMcqMessage, setShowMcqMessage] = useState(false);
 
   const workspaceTypes = [
+    {
+      id: 'mcq',
+      title: 'MCQ Practice',
+      badge: 'MCQ',
+      subtitle: 'Multiple Choice Questions',
+      description: 'Practice with multiple choice questions to test your web development knowledge and concepts.',
+      features: [
+        'Timed assessments',
+        'Instant feedback',
+        'Question navigation',
+        'Flag for review'
+      ],
+      icon: ClipboardList,
+      color: '#f59e0b',
+      bgColor: '#fffbeb',
+      badgeBorder: '#fde68a',
+      disabled: true
+    },
     {
       id: 'html-css',
       title: 'HTML + CSS',
@@ -28,7 +47,8 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
       ],
       icon: Palette,
       color: '#ec4899',
-      bgColor: '#fdf2f8'
+      bgColor: '#fdf2f8',
+      badgeBorder: '#fbcfe8'
     },
     {
       id: 'html-css-js',
@@ -44,18 +64,32 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
       ],
       icon: Braces,
       color: '#6366f1',
-      bgColor: '#eef2ff'
+      bgColor: '#eef2ff',
+      badgeBorder: '#c7d2fe'
     }
   ];
 
-  const handleSelect = (modeId) => {
+  const handleSelect = (workspace) => {
+    if (workspace.disabled) {
+      setShowMcqMessage(true);
+      setTimeout(() => setShowMcqMessage(false), 3000);
+      return;
+    }
     if (onSelect) {
-      onSelect(modeId);
+      onSelect(workspace.id);
     }
   };
 
   return (
     <div className="ws-selector">
+      {/* MCQ Message Toast */}
+      {showMcqMessage && (
+        <div className="ws-mcq-toast">
+          <AlertCircle size={18} />
+          <span>Please select a task from the roadmap to open MCQ workspace</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="ws-header">
         <h1>Select Workspace</h1>
@@ -71,19 +105,19 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
           return (
             <div
               key={workspace.id}
-              className={`ws-card ${isSelected ? 'selected' : ''}`}
-              onClick={() => handleSelect(workspace.id)}
+              className={`ws-card ${isSelected ? 'selected' : ''} ${workspace.disabled ? 'disabled' : ''}`}
+              onClick={() => handleSelect(workspace)}
               onMouseEnter={() => setHoveredMode(workspace.id)}
               onMouseLeave={() => setHoveredMode(null)}
-              style={{ '--card-color': workspace.color }}
+              style={{ '--card-color': workspace.color, '--card-bg': workspace.bgColor }}
             >
               {/* Badge */}
-              <span className="ws-badge" style={{ backgroundColor: workspace.bgColor, color: workspace.color }}>
+              <span className="ws-badge" style={{ backgroundColor: workspace.bgColor, color: workspace.color, borderColor: workspace.badgeBorder }}>
                 {workspace.badge}
               </span>
 
               {/* Icon */}
-              <div className="ws-icon" style={{ backgroundColor: workspace.bgColor }}>
+              <div className="ws-icon">
                 <IconComponent size={24} color={workspace.color} />
               </div>
 
@@ -103,8 +137,8 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
               </ul>
 
               {/* Button */}
-              <button className="ws-btn" style={{ backgroundColor: workspace.color }}>
-                Open Workspace
+              <button className="ws-btn" style={{ backgroundColor: workspace.disabled ? '#9ca3af' : workspace.color }}>
+                {workspace.disabled ? 'Select Task First' : 'Open Workspace'}
                 <ArrowRight size={16} />
               </button>
 
@@ -113,22 +147,6 @@ export default function WorkspaceSelector({ onSelect, selectedMode = null }) {
             </div>
           );
         })}
-      </div>
-
-      {/* Info bar */}
-      <div className="ws-info">
-        <div className="ws-info-item">
-          <FileCode size={16} />
-          <span>Monaco Editor</span>
-        </div>
-        <div className="ws-info-item">
-          <Eye size={16} />
-          <span>Live Preview</span>
-        </div>
-        <div className="ws-info-item">
-          <Smartphone size={16} />
-          <span>Device Testing</span>
-        </div>
       </div>
     </div>
   );

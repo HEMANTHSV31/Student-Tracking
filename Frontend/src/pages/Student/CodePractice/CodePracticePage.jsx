@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  ArrowLeft, Save, Send, Play, FileCode, Clock, 
-  CheckCircle, AlertCircle, Loader, Home, RefreshCw
-} from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import WebWorkspace from './WebWorkSpace/WebWorkspace';
+import MCQWorkspace from './MCQWorkspace/MCQWorkspace';
 import WorkspaceSelector from './WorkSpaceSelecter/WorkspaceSelector';
 import useAuthStore from '../../../store/useAuthStore';
 import { apiGet, apiPost } from '../../../utils/api';
@@ -19,9 +17,12 @@ export default function CodePracticePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const API_URL = import.meta.env.VITE_API_URL;
   
   // State
   const [task, setTask] = useState(null);
+  const [question, setQuestion] = useState(null); // Question data with instructions, checklist, sample image
+  const [mcqQuestions, setMcqQuestions] = useState([]); // Array of MCQ questions
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -30,6 +31,7 @@ export default function CodePracticePage() {
   const [showSelector, setShowSelector] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [modal, setModal] = useState({ show: false, title: '', message: '', type: 'info' });
+  const [openingWorkspace, setOpeningWorkspace] = useState(false); // For workspace opening animation
 
   // Demo tasks with workspace modes
   const demoTasks = {
@@ -116,9 +118,22 @@ export default function CodePracticePage() {
           const demoTask = demoTasks[taskId];
           setTask(demoTask);
           
+          // Set demo question data
+          setQuestion({
+            question_text: demoTask.title,
+            description: demoTask.description,
+            coding_test_cases: demoTask.requirements || [],
+            sample_image_url: null
+          });
+          
           // Set workspace mode from task or URL
           const mode = urlMode || demoTask.workspaceMode;
           setWorkspaceMode(mode);
+          setShowSelector(false);
+          
+          // Show opening animation
+          setOpeningWorkspace(true);
+          setTimeout(() => setOpeningWorkspace(false), 1500);
           
           // Load saved code from localStorage
           const savedCode = localStorage.getItem(`code-practice-${taskId}`);
@@ -139,23 +154,96 @@ export default function CodePracticePage() {
         else {
           const responseRaw = await apiGet(`/tasks/student/${taskId}`);
           const response = await responseRaw.json();
+          console.log('Task response:', response);
           if (response.success) {
             const taskData = response.data;
             setTask(taskData);
+            
+            // Check if this is an MCQ task (API returns questionType in camelCase)
+            const isMCQTask = taskData.questionType === 'mcq';
+            
+            // Fetch question data for this task
+            try {
+              console.log('Fetching questions for task:', taskId);
+              const questionsResponseRaw = await apiGet(`/tasks/${taskId}/questions`);
+              const questionsResponse = await questionsResponseRaw.json();
+              console.log('Questions response:', questionsResponse);
+              
+              if (questionsResponse.success && questionsResponse.data && questionsResponse.data.length > 0) {
+                if (isMCQTask) {
+                  // For MCQ tasks, set all questions
+                  setMcqQuestions(questionsResponse.data);
+                  console.log('MCQ questions loaded:', questionsResponse.data.length);
+                } else {
+                  // For coding tasks, use first question
+                  const questionData = questionsResponse.data[0];
+                  console.log('Question data to set:', questionData);
+                  setQuestion({
+                    question_id: questionData.question_id,
+                    question_text: questionData.question_text,
+                    description: questionData.description,
+                    coding_test_cases: questionData.coding_test_cases || [],
+                    sample_image_url: questionData.sample_image_url,
+                    coding_starter_code: questionData.coding_starter_code
+                  });
+                }
+              } else {
+                console.log('No questions found from API, using task data as fallback');
+                // Fallback: Use task data as question if available
+                if (taskData.description && !isMCQTask) {
+                  setQuestion({
+                    question_text: taskData.title,
+                    description: taskData.description,
+                    coding_test_cases: taskData.requirements || taskData.checklist || [],
+                    sample_image_url: taskData.sample_image || null,
+                    coding_starter_code: null
+                  });
+                }
+              }
+            } catch (qErr) {
+              console.error('Error fetching question data:', qErr);
+              // Fallback: Use task data as question if available
+              if (taskData.description && !isMCQTask) {
+                setQuestion({
+                  question_text: taskData.title,
+                  description: taskData.description,
+                  coding_test_cases: taskData.requirements || taskData.checklist || [],
+                  sample_image_url: taskData.sample_image || null,
+                  coding_starter_code: null
+                });
+              }
+            }
             
             // If URL has explicit mode, use it and skip selector
             if (urlMode) {
               setWorkspaceMode(urlMode);
               setShowSelector(false);
               
+              // Show opening animation
+              setOpeningWorkspace(true);
+              setTimeout(() => setOpeningWorkspace(false), 1500);
+              
               // Load saved code
               if (taskData.savedCode) {
                 setCode(taskData.savedCode);
               }
             } else {
-              // Show selector to let user choose workspace mode
-              setShowSelector(true);
-              setWorkspaceMode(null);
+              // No mode in URL - determine from task skill filter
+              const skillName = (taskData.skillFilter || taskData.title || '').toLowerCase();
+              let autoMode = 'html-css-js'; // default
+              
+              if (skillName.includes('html') || skillName.includes('css')) {
+                if (!skillName.includes('javascript') && !skillName.includes('js')) {
+                  autoMode = 'html-css';
+                }
+              }
+              
+              setWorkspaceMode(autoMode);
+              setShowSelector(false);
+              
+              // Show opening animation
+              setOpeningWorkspace(true);
+              setTimeout(() => setOpeningWorkspace(false), 1500);
             }
           }
         }
@@ -171,14 +259,10 @@ export default function CodePracticePage() {
 
   // Handle workspace mode selection
   const handleModeSelect = async (mode) => {
-    // If no taskId, check if student has any assigned coding task
+    // If no taskId, allow demo mode - just open the workspace without validation
     if (!taskId) {
-      setModal({
-        show: true,
-        title: 'No Task Assigned',
-        message: 'Please select a coding task from your assignments first.',
-        type: 'warning'
-      });
+      setWorkspaceMode(mode);
+      setShowSelector(false);
       return;
     }
     
@@ -269,67 +353,160 @@ export default function CodePracticePage() {
     }
   };
 
-  // Submit assignment
-  const handleSubmit = async () => {
-    setModal({
-      show: true,
-      title: 'Confirm Submission',
-      message: 'Are you sure you want to submit? You won\'t be able to edit after submission.',
-      type: 'confirm',
-      onConfirm: async () => {
-        setModal({ show: false });
-        setSubmitting(true);
-        try {
-          if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
-            // Combine HTML, CSS, and JS into a single file
-            const combinedCode = combineCodeFiles(code);
-            
-            // Submit combined code
-            const response = await apiPost(`/tasks/${taskId}/submit-code`, { 
-              code: combinedCode,
-              html: code.html,
-              css: code.css,
-              js: mode === 'html-css-js' ? code.js : ''
-            });
-            
-            if (response.success) {
-              setModal({
-                show: true,
-                title: 'Success',
-                message: 'Assignment submitted successfully!',
-                type: 'success',
-                onClose: () => navigate('/tasks')
-              });
-              return;
+  // Submit assignment - called from WebWorkspace submit button
+  const handleSubmit = async (submittedData = null) => {
+    // If called from WebWorkspace, we get the files data
+    const performSubmit = async () => {
+      setSubmitting(true);
+      try {
+        if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
+          // Use the new web code submission API with multiple files
+          const files = submittedData?.files || [
+            { name: 'index.html', content: code.html || '' },
+            { name: 'style.css', content: code.css || '' },
+            ...(workspaceMode === 'html-css-js' ? [{ name: 'script.js', content: code.js || '' }] : [])
+          ];
+          
+          const responseRaw = await apiPost(`/tasks/${taskId}/submit-web-code`, { 
+            files,
+            question_id: question?.question_id || null,
+            workspace_mode: workspaceMode,
+            time_taken_minutes: null, // Could track time in future
+            violations: submittedData?.violations || 0 // Tab switch/fullscreen exit count
+          });
+          
+          // Check if response is ok before parsing JSON
+          if (!responseRaw.ok) {
+            const errorText = await responseRaw.text();
+            console.error('Server error response:', errorText);
+
+            let message = `Server error (${responseRaw.status})`;
+            try {
+              const parsed = JSON.parse(errorText);
+              if (parsed?.message) message = parsed.message;
+              if (parsed?.error) message = `${message}: ${parsed.error}`;
+            } catch {
+              if (errorText?.trim()) message = `${message}: ${errorText.trim()}`;
             }
+
+            throw new Error(message);
           }
           
-          // Demo submission
-          localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
-          setModal({
-            show: true,
-            title: 'Demo Submission',
-            message: 'This is a demo task. In a real scenario, your code would be submitted to the instructor.',
-            type: 'info'
-          });
-        } catch (error) {
-          setModal({
-            show: true,
-            title: 'Submission Failed',
-            message: 'Failed to submit. Please try again.',
-            type: 'error'
-          });
-        } finally {
-          setSubmitting(false);
+          const response = await responseRaw.json();
+          
+          if (response.success) {
+            setModal({
+              show: true,
+              title: 'Success',
+              message: 'Your code has been submitted successfully! Faculty will review and grade your submission.',
+              type: 'success',
+              onClose: () => navigate('/pbl/tasks')
+            });
+            return;
+          } else {
+            throw new Error(response.message || 'Submission failed');
+          }
         }
+        
+        // Demo submission
+        localStorage.setItem(`code-practice-${taskId}`, JSON.stringify(code));
+        setModal({
+          show: true,
+          title: 'Demo Submission',
+          message: 'This is a demo task. In a real scenario, your code would be submitted to the instructor.',
+          type: 'info'
+        });
+      } catch (error) {
+        console.error('Submit error:', error);
+        setModal({
+          show: true,
+          title: 'Submission Failed',
+          message: error.message || 'Failed to submit. Please try again.',
+          type: 'error'
+        });
+      } finally {
+        setSubmitting(false);
       }
-    });
+    };
+
+    // If called directly from header button, show confirmation
+    // If called from WebWorkspace submit, data is already provided so submit directly
+    if (submittedData) {
+      await performSubmit();
+    } else {
+      setModal({
+        show: true,
+        title: 'Confirm Submission',
+        message: 'Are you sure you want to submit? You won\'t be able to edit after submission.',
+        type: 'confirm',
+        onConfirm: performSubmit
+      });
+    }
   };
 
-  // Go back to selector
-  const handleChangeWorkspace = () => {
-    setShowSelector(true);
-    setWorkspaceMode(null);
+  // Submit MCQ answers - called from MCQWorkspace submit button
+  const handleMCQSubmit = async (submittedData = null) => {
+    setSubmitting(true);
+    try {
+      if (taskId && !taskId.startsWith('demo-') && !taskId.startsWith('p')) {
+        const responseRaw = await apiPost(`/tasks/${taskId}/submit-mcq`, {
+          answers: submittedData?.answers || {},
+          violations: submittedData?.violations || 0,
+          time_taken_minutes: submittedData?.timeTaken || null
+        });
+        
+        // Check if response is ok before parsing JSON
+        if (!responseRaw.ok) {
+          const errorText = await responseRaw.text();
+          console.error('Server error response:', errorText);
+
+          let message = `Server error (${responseRaw.status})`;
+          try {
+            const parsed = JSON.parse(errorText);
+            if (parsed?.message) message = parsed.message;
+            if (parsed?.error) message = `${message}: ${parsed.error}`;
+          } catch {
+            if (errorText?.trim()) message = `${message}: ${errorText.trim()}`;
+          }
+
+          throw new Error(message);
+        }
+        
+        const response = await responseRaw.json();
+        
+        if (response.success) {
+          const data = response.data || {};
+          setModal({
+            show: true,
+            title: data.passed ? 'Test Passed!' : 'Test Completed',
+            message: `Score: ${data.score}/${data.total} (${data.percentage}%)${data.passed ? ' - Congratulations!' : ' - Try again to pass.'}`,
+            type: data.passed ? 'success' : 'warning',
+            onClose: () => navigate('/pbl/tasks')
+          });
+          return;
+        } else {
+          throw new Error(response.message || 'Submission failed');
+        }
+      }
+      
+      // Demo submission
+      setModal({
+        show: true,
+        title: 'Demo Submission',
+        message: 'This is a demo task. In a real scenario, your MCQ answers would be submitted.',
+        type: 'info'
+      });
+    } catch (error) {
+      console.error('MCQ Submit error:', error);
+      setModal({
+        show: true,
+        title: 'Submission Failed',
+        message: error.message || 'Failed to submit. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Combine HTML, CSS, and JS files into a single file
@@ -373,17 +550,48 @@ export default function CodePracticePage() {
     );
   }
 
+  // Opening workspace animation
+  if (openingWorkspace && workspaceMode) {
+    return (
+      <div className="code-practice-page opening-workspace">
+        <div className="opening-animation">
+          <div className="workspace-icon-container">
+            <div className={`workspace-icon ${workspaceMode}`}>
+              {workspaceMode === 'html-css' ? (
+                <>
+                  <span className="icon-badge html">H</span>
+                  <span className="icon-badge css">C</span>
+                </>
+              ) : (
+                <>
+                  <span className="icon-badge html">H</span>
+                  <span className="icon-badge css">C</span>
+                  <span className="icon-badge js">J</span>
+                </>
+              )}
+            </div>
+            <div className="pulse-ring"></div>
+            <div className="pulse-ring delay-1"></div>
+            <div className="pulse-ring delay-2"></div>
+          </div>
+          <h2 className="opening-title">
+            Opening {workspaceMode === 'html-css' ? 'HTML + CSS' : 'HTML + CSS + JS'} Workspace
+          </h2>
+          <p className="opening-subtitle">
+            {task?.title || 'P Skills Practice'}
+          </p>
+          <div className="opening-progress">
+            <div className="progress-bar"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show workspace selector
   if (showSelector || !workspaceMode) {
     return (
-      <div className="code-practice-page">
-        <div className="page-header selector-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
-            <span>Back</span>
-          </button>
-          <h1 className="page-title">P Skills Practice</h1>
-        </div>
+      <div className="code-practice-page no-header selector-mode">
         <WorkspaceSelector 
           onSelect={handleModeSelect}
           selectedMode={workspaceMode}
@@ -393,127 +601,41 @@ export default function CodePracticePage() {
   }
 
   const isSubmitted = task?.status === 'completed';
-  const isOverdue = task?.status === 'overdue';
+  
+  // Demo mode: No taskId or using demo task - no questions, no submit, just practice
+  const isDemoMode = !taskId || (taskId && demoTasks[taskId]) || !task;
 
   return (
-    <div className="code-practice-page">
-      {/* Header */}
-      <div className="page-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
-          </button>
-          
-          <div className="task-info">
-            <div className="task-title-row">
-              <FileCode size={20} className="task-icon" />
-              <h1 className="task-title">{task?.title || 'Practice Workspace'}</h1>
-              <span className={`mode-badge ${workspaceMode}`}>
-                {workspaceMode === 'html-css' ? 'P1' : 'P2'}
-              </span>
-            </div>
-            {task && (
-              <div className="task-meta">
-                <span className="meta-item">
-                  <Clock size={14} />
-                  Due: {task.dueDate}
-                </span>
-                {task.points && (
-                  <span className="meta-item points">
-                    {task.points} points
-                  </span>
-                )}
-                {lastSaved && (
-                  <span className="meta-item saved">
-                    Last saved: {lastSaved.toLocaleTimeString()}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="header-right">
-          {/* Status Badges */}
-          {isSubmitted && (
-            <div className="status-badge submitted">
-              <CheckCircle size={16} />
-              <span>Submitted</span>
-            </div>
-          )}
-          {isOverdue && !isSubmitted && (
-            <div className="status-badge overdue">
-              <AlertCircle size={16} />
-              <span>Overdue</span>
-            </div>
-          )}
-
-          {/* Change Workspace Button */}
-          <button 
-            className="action-btn secondary"
-            onClick={handleChangeWorkspace}
-          >
-            <RefreshCw size={16} />
-            <span>Change Workspace</span>
-          </button>
-
-          {/* Save Button */}
-          <button 
-            className="action-btn secondary"
-            onClick={handleSave}
-            disabled={saving || isSubmitted}
-          >
-            {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
-            <span>Save</span>
-          </button>
-
-          {/* Submit Button */}
-          {task && (
-            <button 
-              className="action-btn primary"
-              onClick={handleSubmit}
-              disabled={submitting || isSubmitted}
-            >
-              {submitting ? <Loader size={16} className="animate-spin" /> : <Send size={16} />}
-              <span>Submit</span>
-            </button>
-          )}
-        </div>
-      </div>
-
+    <div className="code-practice-page no-header">
       {/* Main Content */}
       <div className="page-content">
-        {/* Task Description Panel (collapsible) */}
-        {task && task.description && (
-          <div className="task-panel">
-            <div className="panel-header">
-              <h3>Task Description</h3>
-            </div>
-            <div className="panel-body">
-              <p className="task-description">{task.description}</p>
-              {task.requirements && (
-                <div className="requirements">
-                  <h4>Requirements:</h4>
-                  <ul>
-                    {task.requirements.map((req, idx) => (
-                      <li key={idx}>{req}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Workspace */}
+        {/* Workspace - Render MCQ or Web based on workspace mode or question type */}
         <div className="workspace-container">
-          <WebWorkspace
-            mode={workspaceMode}
-            initialCode={code}
-            onChange={handleCodeChange}
-            readOnly={isSubmitted}
-            taskTitle={task?.title || 'Practice'}
-          />
+          {workspaceMode === 'mcq' || task?.questionType === 'mcq' ? (
+            <MCQWorkspace
+              questions={isDemoMode ? [] : mcqQuestions}
+              taskTitle={isDemoMode ? 'MCQ Practice' : (task?.title || 'MCQ Assessment')}
+              onSubmit={isDemoMode ? null : handleMCQSubmit}
+              isSubmitting={submitting}
+              timeLimit={task?.time_limit || 30}
+              demoMode={isDemoMode}
+              onBack={isDemoMode ? () => { setShowSelector(true); setWorkspaceMode(null); } : null}
+            />
+          ) : (
+            <WebWorkspace
+              mode={workspaceMode}
+              initialCode={code}
+              onChange={handleCodeChange}
+              readOnly={isSubmitted}
+              taskTitle={isDemoMode ? 'Practice Workspace' : (task?.title || 'Practice')}
+              question={isDemoMode ? null : question}
+              apiUrl={API_URL}
+              onSubmit={isDemoMode ? null : handleSubmit}
+              isSubmitting={submitting}
+              demoMode={isDemoMode}
+              onBack={isDemoMode ? () => { setShowSelector(true); setWorkspaceMode(null); } : null}
+            />
+          )}
         </div>
       </div>
 

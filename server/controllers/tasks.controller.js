@@ -3,6 +3,27 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
+const _columnExistsCache = new Map();
+
+async function columnExists(connection, tableName, columnName) {
+  const cacheKey = `${tableName}.${columnName}`;
+  if (_columnExistsCache.has(cacheKey)) return _columnExistsCache.get(cacheKey);
+
+  const [rows] = await connection.execute(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+
+  const exists = rows.length > 0;
+  _columnExistsCache.set(cacheKey, exists);
+  return exists;
+}
+
 /**
  * Sanitize filename to prevent security vulnerabilities:
  * - Path traversal (../, ../../, ./, etc.)
@@ -2480,11 +2501,11 @@ export const getStudentTaskQuestions = async (req, res) => {
     const student_id = student[0].student_id;
     console.log('Found student_id:', student_id);
 
-    // Verify task exists and is code_practice
+    // Verify task exists and get related info
     const [tasks] = await connection.execute(
-      `SELECT task_id, task_type, question_type 
+      `SELECT task_id, task_type, question_type, skill_filter, course_type
        FROM tasks 
-       WHERE task_id = ? AND task_type = 'code_practice'`,
+       WHERE task_id = ?`,
       [task_id]
     );
 
@@ -2493,9 +2514,12 @@ export const getStudentTaskQuestions = async (req, res) => {
     if (tasks.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found or is not a code practice task'
+        message: 'Task not found'
       });
     }
+
+    const taskData = tasks[0];
+    console.log('Task data:', taskData);
 
     // Get assigned questions for this student
     console.log('Querying task_question_assignments with task_id:', task_id, 'student_id:', student_id);
@@ -2505,9 +2529,12 @@ export const getStudentTaskQuestions = async (req, res) => {
       'SELECT * FROM task_question_assignments WHERE task_id = ?',
       [task_id]
     );
-    console.log('All assignments for this task:', allTaskAssignments);
+    console.log('All assignments for this task:', allTaskAssignments.length);
     
-    const [questions] = await connection.execute(
+    let questions = [];
+    
+    // Try to get student-specific assigned questions first
+    const [assignedQuestions] = await connection.execute(
       `SELECT 
         tqa.assignment_id,
         tqa.question_id,
@@ -2517,7 +2544,10 @@ export const getStudentTaskQuestions = async (req, res) => {
         qb.question_type,
         qb.mcq_options as sample_answer,
         qb.mcq_correct_answer as correct_answer,
-        qb.sample_image
+        qb.sample_image,
+        qb.coding_test_cases,
+        qb.coding_expected_output,
+        qb.coding_starter_code
        FROM task_question_assignments tqa
        JOIN question_bank qb ON tqa.question_id = qb.question_id
        WHERE tqa.task_id = ? AND tqa.student_id = ?
@@ -2525,12 +2555,120 @@ export const getStudentTaskQuestions = async (req, res) => {
       [task_id, student_id]
     );
 
-    console.log('Questions found:', questions.length);
-    console.log('Questions data:', questions);
+    console.log('Student-specific questions found:', assignedQuestions.length);
+    
+    if (assignedQuestions.length > 0) {
+      questions = assignedQuestions;
+    } else {
+      // Fallback: Use task data already fetched to find questions by skill
+      console.log('No student-specific questions, trying fallback...');
+      console.log('Task skill_filter:', taskData.skill_filter, 'question_type:', taskData.question_type, 'course_type:', taskData.course_type);
+      
+      const questionType = taskData.question_type || 'coding';
+      let skillQuestions = [];
+      
+      // Try 1: Match by skill_filter via skill_courses
+      if (taskData.skill_filter) {
+        const skillFilter = taskData.skill_filter;
+        console.log('Fallback 1: Looking for questions with skill_filter:', skillFilter);
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           JOIN skill_courses sc ON qb.course_id = sc.course_id
+           WHERE sc.skill_category = ? AND qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [skillFilter, questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 1 questions found:', skillQuestions.length);
+      }
+      
+      // Try 2: Match by course_type directly from skill_courses
+      if (skillQuestions.length === 0 && taskData.course_type) {
+        console.log('Fallback 2: Looking for questions with course_type:', taskData.course_type);
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           JOIN skill_courses sc ON qb.course_id = sc.course_id
+           WHERE sc.course_name LIKE ? AND qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [`%${taskData.course_type}%`, questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 2 questions found:', skillQuestions.length);
+      }
+      
+      // Try 3: Just get any coding question
+      if (skillQuestions.length === 0) {
+        console.log('Fallback 3: Getting any active coding question');
+        
+        const [result] = await connection.execute(
+          `SELECT 
+            qb.question_id,
+            qb.title as question_text,
+            qb.description,
+            qb.question_type,
+            qb.mcq_options as sample_answer,
+            qb.mcq_correct_answer as correct_answer,
+            qb.sample_image,
+            qb.coding_test_cases,
+            qb.coding_expected_output,
+            qb.coding_starter_code
+           FROM question_bank qb
+           WHERE qb.question_type = ? AND qb.status = 'Active'
+           ORDER BY RAND()
+           LIMIT 1`,
+          [questionType]
+        );
+        skillQuestions = result;
+        console.log('Fallback 3 questions found:', skillQuestions.length);
+      }
+      
+      questions = skillQuestions;
+    }
+
+    console.log('Final questions count:', questions.length);
+
+    // Parse coding_test_cases JSON for each question
+    const processedQuestions = questions.map(q => ({
+      ...q,
+      coding_test_cases: q.coding_test_cases ? (() => {
+        try {
+          return JSON.parse(q.coding_test_cases);
+        } catch (e) {
+          return [];
+        }
+      })() : [],
+      sample_image_url: q.sample_image ? `/uploads/${q.sample_image.replace(/\\/g, '/').replace('uploads/', '')}` : null
+    }));
 
     res.json({
       success: true,
-      data: questions
+      data: processedQuestions
     });
 
   } catch (error) {
@@ -2552,11 +2690,13 @@ export const submitMCQTest = async (req, res) => {
     await connection.beginTransaction();
 
     const { task_id } = req.params;
-    const { answers } = req.body;
+    const { answers, violations = 0, time_taken_minutes = null } = req.body;
     const user_id = req.user.user_id;
 
     console.log('Submit MCQ - task_id:', task_id, 'user_id:', user_id);
     console.log('Answers received:', answers);
+    console.log('Violations:', violations);
+    console.log('Time taken:', time_taken_minutes);
 
     // Get student_id from user_id
     const [studentResult] = await connection.execute(
@@ -2637,8 +2777,8 @@ export const submitMCQTest = async (req, res) => {
       ? existingSubmissions[0].attempt_number + 1 
       : 1;
 
-    // Insert submission (using first question_id for single-question tests, or null for multi-question)
-    const questionId = questions.length === 1 ? questions[0].question_id : null;
+    // Insert submission (using first question_id, required by database schema)
+    const questionId = questions.length > 0 ? questions[0].question_id : null;
     
     const [submissionResult] = await connection.execute(
       `INSERT INTO student_submissions 
@@ -2774,13 +2914,32 @@ export const submitCodingTask = async (req, res) => {
       );
     }
 
-    // Update task submission status
-    await connection.execute(
-      `UPDATE task_submissions 
-       SET submission_status = 'submitted', submitted_at = NOW() 
-       WHERE task_id = ? AND student_id = ?`,
-      [task_id, student_id]
-    );
+    // Update task submission status (schema compatible)
+    const hasSubmissionStatusColumn = await columnExists(connection, 'task_submissions', 'submission_status');
+    const hasStatusColumn = await columnExists(connection, 'task_submissions', 'status');
+
+    if (hasSubmissionStatusColumn) {
+      await connection.execute(
+        `UPDATE task_submissions 
+         SET submission_status = 'submitted', submitted_at = NOW() 
+         WHERE task_id = ? AND student_id = ?`,
+        [task_id, student_id]
+      );
+    } else if (hasStatusColumn) {
+      await connection.execute(
+        `UPDATE task_submissions 
+         SET status = 'Pending Review', submitted_at = NOW() 
+         WHERE task_id = ? AND student_id = ?`,
+        [task_id, student_id]
+      );
+    } else {
+      await connection.execute(
+        `UPDATE task_submissions 
+         SET submitted_at = NOW() 
+         WHERE task_id = ? AND student_id = ?`,
+        [task_id, student_id]
+      );
+    }
 
     await connection.commit();
 
@@ -2798,6 +2957,686 @@ export const submitCodingTask = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while submitting code',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Submit web workspace code (HTML/CSS/JS) with multiple files - for P Skills
+export const submitWebCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { task_id } = req.params;
+    const contentType = req.headers['content-type'] || '';
+    const body = req.body || null;
+    if (!body) {
+      await connection.rollback();
+      console.error('Submit web code - missing body. Content-Type:', contentType);
+      return res.status(400).json({
+        success: false,
+        message: 'Request body is missing. Ensure Content-Type is application/json and JSON body parsing is enabled.',
+        error: 'req.body is undefined'
+      });
+    }
+
+    const { files, question_id, workspace_mode, time_taken_minutes, violations } = body;
+    const user_id = req.user.user_id;
+
+    console.log('Submit web code - task_id:', task_id, 'user_id:', user_id);
+    console.log('Files count:', files?.length);
+    console.log('Question ID:', question_id);
+    console.log('Workspace mode:', workspace_mode);
+    console.log('Violations:', violations || 0);
+
+    // Validate files array
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files to submit'
+      });
+    }
+
+    // Get student_id from user_id
+    const [studentResult] = await connection.execute(
+      'SELECT student_id FROM students WHERE user_id = ?',
+      [user_id]
+    );
+
+    if (studentResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student_id = studentResult[0].student_id;
+
+    // Verify task exists and get venue info
+    const [taskResult] = await connection.execute(
+      'SELECT task_id, venue_id, max_score FROM tasks WHERE task_id = ?',
+      [task_id]
+    );
+
+    if (taskResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const venue_id = taskResult[0].venue_id;
+    const max_score = taskResult[0].max_score || 100;
+
+    // Check for existing submissions to determine attempt number
+    const [existingSubmissions] = await connection.execute(
+      'SELECT MAX(attempt_number) as max_attempt FROM web_code_submissions WHERE task_id = ? AND student_id = ?',
+      [task_id, student_id]
+    );
+
+    const attemptNumber = (existingSubmissions[0]?.max_attempt || 0) + 1;
+
+    const safeViolations = Number.isFinite(Number(violations)) ? Number(violations) : 0;
+    const hasViolationsColumn = await columnExists(connection, 'web_code_submissions', 'violations');
+
+    // Create main submission record (schema-compatible: older DBs might not have `violations` yet)
+    const [submissionResult] = await connection.execute(
+      hasViolationsColumn
+        ? `INSERT INTO web_code_submissions 
+           (task_id, student_id, question_id, current_venue_id, workspace_mode, time_taken_minutes, attempt_number, max_score, violations, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Review')`
+        : `INSERT INTO web_code_submissions 
+           (task_id, student_id, question_id, current_venue_id, workspace_mode, time_taken_minutes, attempt_number, max_score, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Review')`,
+      hasViolationsColumn
+        ? [task_id, student_id, question_id || null, venue_id, workspace_mode || 'html-css', time_taken_minutes || null, attemptNumber, max_score, safeViolations]
+        : [task_id, student_id, question_id || null, venue_id, workspace_mode || 'html-css', time_taken_minutes || null, attemptNumber, max_score]
+    );
+
+    const submissionId = submissionResult.insertId;
+    console.log('Created submission ID:', submissionId);
+
+    // Insert each file
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isDefault = ['index.html', 'style.css', 'script.js'].includes(file.name);
+      
+      // Determine file type from extension
+      let fileType = 'html';
+      if (file.name.endsWith('.css')) fileType = 'css';
+      else if (file.name.endsWith('.js')) fileType = 'javascript';
+      
+      await connection.execute(
+        `INSERT INTO web_submission_files 
+         (submission_id, file_name, file_type, file_content, is_default_file, file_order) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [submissionId, file.name, fileType, file.content || '', isDefault ? 1 : 0, i]
+      );
+    }
+
+    console.log('Inserted', files.length, 'files');
+
+    // Update or create task_submissions record
+    const [existingTaskSubmission] = await connection.execute(
+      'SELECT 1 FROM task_submissions WHERE task_id = ? AND student_id = ? LIMIT 1',
+      [task_id, student_id]
+    );
+
+    const hasSubmissionStatusColumn = await columnExists(connection, 'task_submissions', 'submission_status');
+    const hasStatusColumn = await columnExists(connection, 'task_submissions', 'status');
+
+    if (existingTaskSubmission.length > 0) {
+      if (hasSubmissionStatusColumn) {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET submission_status = 'submitted', submitted_at = NOW() 
+           WHERE task_id = ? AND student_id = ?`,
+          [task_id, student_id]
+        );
+      } else if (hasStatusColumn) {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET status = 'Pending Review', submitted_at = NOW() 
+           WHERE task_id = ? AND student_id = ?`,
+          [task_id, student_id]
+        );
+      } else {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET submitted_at = NOW() 
+           WHERE task_id = ? AND student_id = ?`,
+          [task_id, student_id]
+        );
+      }
+    } else {
+      if (hasSubmissionStatusColumn) {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, submission_status, submitted_at) 
+           VALUES (?, ?, 'submitted', NOW())`,
+          [task_id, student_id]
+        );
+      } else if (hasStatusColumn) {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, status, submitted_at) 
+           VALUES (?, ?, 'Pending Review', NOW())`,
+          [task_id, student_id]
+        );
+      } else {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, submitted_at) 
+           VALUES (?, ?, NOW())`,
+          [task_id, student_id]
+        );
+      }
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Code submitted successfully! Your submission is pending faculty review.',
+      data: {
+        submission_id: submissionId,
+        attempt_number: attemptNumber,
+        files_count: files.length
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error submitting web code:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while submitting code',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Submit MCQ assessment answers - for P Skills MCQ tests
+export const submitMCQ = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { task_id } = req.params;
+    const { answers, question_ids, violations, time_taken_minutes } = req.body;
+    const user_id = req.user.user_id;
+
+    console.log('Submit MCQ - task_id:', task_id, 'user_id:', user_id);
+    console.log('Answers:', answers);
+    console.log('Question IDs:', question_ids);
+    console.log('Violations:', violations || 0);
+
+    // Validate question_ids array
+    if (!question_ids || !Array.isArray(question_ids) || question_ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No questions to submit'
+      });
+    }
+
+    // Get student_id from user_id
+    const [studentResult] = await connection.execute(
+      'SELECT student_id FROM students WHERE user_id = ?',
+      [user_id]
+    );
+
+    if (studentResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student_id = studentResult[0].student_id;
+
+    // Verify task exists and get venue info
+    const [taskResult] = await connection.execute(
+      'SELECT task_id, venue_id, max_score FROM tasks WHERE task_id = ?',
+      [task_id]
+    );
+
+    if (taskResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const venue_id = taskResult[0].venue_id;
+    const max_score = taskResult[0].max_score || 100;
+
+    // Get correct answers from question_bank
+    const placeholders = question_ids.map(() => '?').join(',');
+    const [questions] = await connection.execute(
+      `SELECT question_id, mcq_correct_answer FROM question_bank WHERE question_id IN (${placeholders})`,
+      question_ids
+    );
+
+    // Create a map of question_id -> correct_answer
+    const correctAnswersMap = {};
+    questions.forEach(q => {
+      correctAnswersMap[q.question_id] = q.mcq_correct_answer;
+    });
+
+    // Calculate score
+    let correct = 0;
+    let wrong = 0;
+    let unanswered = 0;
+
+    question_ids.forEach(qid => {
+      const studentAnswer = answers[qid] || null;
+      const correctAnswer = correctAnswersMap[qid];
+
+      if (!studentAnswer) {
+        unanswered++;
+      } else if (studentAnswer === correctAnswer) {
+        correct++;
+      } else {
+        wrong++;
+      }
+    });
+
+    const total = question_ids.length;
+    const scorePercent = total > 0 ? ((correct / total) * 100).toFixed(2) : 0;
+
+    // Check for existing submissions to determine attempt number
+    const [existingSubmissions] = await connection.execute(
+      'SELECT MAX(attempt_number) as max_attempt FROM mcq_submissions WHERE task_id = ? AND student_id = ?',
+      [task_id, student_id]
+    );
+
+    const attemptNumber = (existingSubmissions[0]?.max_attempt || 0) + 1;
+
+    const safeViolations = Number.isFinite(Number(violations)) ? Number(violations) : 0;
+
+    // Determine status based on violations
+    const status = safeViolations >= 5 ? 'Auto-Submitted' : 'Completed';
+
+    const hasViolationsColumn = await columnExists(connection, 'mcq_submissions', 'violations');
+
+    // Create main submission record
+    const [submissionResult] = await connection.execute(
+      hasViolationsColumn
+        ? `INSERT INTO mcq_submissions 
+           (task_id, student_id, current_venue_id, total_questions, correct_answers, wrong_answers, unanswered, score, max_score, time_taken_minutes, violations, attempt_number, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO mcq_submissions 
+           (task_id, student_id, current_venue_id, total_questions, correct_answers, wrong_answers, unanswered, score, max_score, time_taken_minutes, attempt_number, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      hasViolationsColumn
+        ? [task_id, student_id, venue_id, total, correct, wrong, unanswered, scorePercent, max_score, time_taken_minutes || null, safeViolations, attemptNumber, status]
+        : [task_id, student_id, venue_id, total, correct, wrong, unanswered, scorePercent, max_score, time_taken_minutes || null, attemptNumber, status]
+    );
+
+    const submissionId = submissionResult.insertId;
+    console.log('Created MCQ submission ID:', submissionId);
+
+    // Insert individual answers
+    for (let i = 0; i < question_ids.length; i++) {
+      const qid = question_ids[i];
+      const studentAnswer = answers[qid] || null;
+      const correctAnswer = correctAnswersMap[qid] || '';
+      const isCorrect = studentAnswer === correctAnswer ? 1 : 0;
+
+      await connection.execute(
+        `INSERT INTO mcq_submission_answers 
+         (submission_id, question_id, selected_option, correct_option, is_correct, question_order) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [submissionId, qid, studentAnswer, correctAnswer, isCorrect, i]
+      );
+    }
+
+    console.log('Inserted', question_ids.length, 'answers');
+
+    // Update or create task_submissions record
+    const [existingTaskSubmission] = await connection.execute(
+      'SELECT 1 FROM task_submissions WHERE task_id = ? AND student_id = ? LIMIT 1',
+      [task_id, student_id]
+    );
+
+    const hasSubmissionStatusColumn = await columnExists(connection, 'task_submissions', 'submission_status');
+    const hasStatusColumn = await columnExists(connection, 'task_submissions', 'status');
+    const hasScoreColumn = await columnExists(connection, 'task_submissions', 'score');
+    const hasGradeColumn = await columnExists(connection, 'task_submissions', 'grade');
+    const scoreValue = Number.isFinite(Number(scorePercent)) ? Number(scorePercent) : null;
+
+    if (existingTaskSubmission.length > 0) {
+      if (hasSubmissionStatusColumn) {
+        if (hasScoreColumn) {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET submission_status = 'submitted', submitted_at = NOW(), score = ? 
+             WHERE task_id = ? AND student_id = ?`,
+            [scoreValue, task_id, student_id]
+          );
+        } else if (hasGradeColumn) {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET submission_status = 'submitted', submitted_at = NOW(), grade = ? 
+             WHERE task_id = ? AND student_id = ?`,
+            [scoreValue === null ? null : Math.round(scoreValue), task_id, student_id]
+          );
+        } else {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET submission_status = 'submitted', submitted_at = NOW() 
+             WHERE task_id = ? AND student_id = ?`,
+            [task_id, student_id]
+          );
+        }
+      } else if (hasStatusColumn) {
+        if (hasScoreColumn) {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET status = 'Pending Review', submitted_at = NOW(), score = ? 
+             WHERE task_id = ? AND student_id = ?`,
+            [scoreValue, task_id, student_id]
+          );
+        } else if (hasGradeColumn) {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET status = 'Pending Review', submitted_at = NOW(), grade = ? 
+             WHERE task_id = ? AND student_id = ?`,
+            [scoreValue === null ? null : Math.round(scoreValue), task_id, student_id]
+          );
+        } else {
+          await connection.execute(
+            `UPDATE task_submissions 
+             SET status = 'Pending Review', submitted_at = NOW() 
+             WHERE task_id = ? AND student_id = ?`,
+            [task_id, student_id]
+          );
+        }
+      } else {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET submitted_at = NOW() 
+           WHERE task_id = ? AND student_id = ?`,
+          [task_id, student_id]
+        );
+      }
+    } else {
+      if (hasSubmissionStatusColumn) {
+        if (hasScoreColumn) {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, submission_status, submitted_at, score) 
+             VALUES (?, ?, 'submitted', NOW(), ?)`,
+            [task_id, student_id, scoreValue]
+          );
+        } else if (hasGradeColumn) {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, submission_status, submitted_at, grade) 
+             VALUES (?, ?, 'submitted', NOW(), ?)`,
+            [task_id, student_id, scoreValue === null ? null : Math.round(scoreValue)]
+          );
+        } else {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, submission_status, submitted_at) 
+             VALUES (?, ?, 'submitted', NOW())`,
+            [task_id, student_id]
+          );
+        }
+      } else if (hasStatusColumn) {
+        if (hasScoreColumn) {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, status, submitted_at, score) 
+             VALUES (?, ?, 'Pending Review', NOW(), ?)`,
+            [task_id, student_id, scoreValue]
+          );
+        } else if (hasGradeColumn) {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, status, submitted_at, grade) 
+             VALUES (?, ?, 'Pending Review', NOW(), ?)`,
+            [task_id, student_id, scoreValue === null ? null : Math.round(scoreValue)]
+          );
+        } else {
+          await connection.execute(
+            `INSERT INTO task_submissions (task_id, student_id, status, submitted_at) 
+             VALUES (?, ?, 'Pending Review', NOW())`,
+            [task_id, student_id]
+          );
+        }
+      } else {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, submitted_at) 
+           VALUES (?, ?, NOW())`,
+          [task_id, student_id]
+        );
+      }
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'MCQ assessment submitted successfully!',
+      score: correct,
+      total: total,
+      percentage: parseFloat(scorePercent),
+      data: {
+        submission_id: submissionId,
+        attempt_number: attemptNumber,
+        correct_answers: correct,
+        wrong_answers: wrong,
+        unanswered: unanswered
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error submitting MCQ:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while submitting MCQ assessment',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Get web code submissions for faculty review
+export const getWebCodeSubmissions = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { venue_id } = req.params;
+    const { status = 'all' } = req.query;
+
+    let query = `
+      SELECT 
+        wcs.submission_id,
+        wcs.task_id,
+        wcs.student_id,
+        wcs.question_id,
+        wcs.workspace_mode,
+        wcs.submitted_at,
+        wcs.time_taken_minutes,
+        wcs.attempt_number,
+        wcs.status,
+        wcs.grade,
+        wcs.max_score,
+        wcs.feedback,
+        wcs.graded_at,
+        t.title as task_title,
+        u.name as student_name,
+        u.email as student_email,
+        qb.title as question_title
+      FROM web_code_submissions wcs
+      JOIN tasks t ON wcs.task_id = t.task_id
+      JOIN students s ON wcs.student_id = s.student_id
+      JOIN users u ON s.user_id = u.user_id
+      LEFT JOIN question_bank qb ON wcs.question_id = qb.question_id
+      WHERE wcs.current_venue_id = ?
+    `;
+
+    const params = [venue_id];
+
+    if (status !== 'all') {
+      query += ' AND wcs.status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY wcs.submitted_at DESC';
+
+    const [submissions] = await connection.execute(query, params);
+
+    res.json({
+      success: true,
+      data: submissions
+    });
+
+  } catch (error) {
+    console.error('Error fetching web submissions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching submissions',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Get individual web code submission with all files for faculty review
+export const getWebCodeSubmissionDetail = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { submission_id } = req.params;
+
+    // Get submission details
+    const [submissions] = await connection.execute(`
+      SELECT 
+        wcs.*,
+        t.title as task_title,
+        t.description as task_description,
+        u.name as student_name,
+        u.email as student_email,
+        qb.title as question_title,
+        qb.description as question_description,
+        qb.coding_test_cases,
+        qb.sample_image as expected_output_image,
+        grader.name as graded_by_name
+      FROM web_code_submissions wcs
+      JOIN tasks t ON wcs.task_id = t.task_id
+      JOIN students s ON wcs.student_id = s.student_id
+      JOIN users u ON s.user_id = u.user_id
+      LEFT JOIN question_bank qb ON wcs.question_id = qb.question_id
+      LEFT JOIN faculties f ON wcs.graded_by = f.faculty_id
+      LEFT JOIN users grader ON f.user_id = grader.user_id
+      WHERE wcs.submission_id = ?
+    `, [submission_id]);
+
+    if (submissions.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    // Get all files for this submission
+    const [files] = await connection.execute(`
+      SELECT file_id, file_name, file_type, file_content, is_default_file, file_order
+      FROM web_submission_files
+      WHERE submission_id = ?
+      ORDER BY file_order
+    `, [submission_id]);
+
+    const submission = submissions[0];
+    
+    // Parse coding_test_cases if it's JSON
+    if (submission.coding_test_cases) {
+      try {
+        submission.coding_test_cases = JSON.parse(submission.coding_test_cases);
+      } catch (e) {
+        // Keep as is
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...submission,
+        files
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching submission detail:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching submission detail',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Grade web code submission
+export const gradeWebCodeSubmission = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { submission_id } = req.params;
+    const { grade, feedback, status } = req.body;
+    const user_id = req.user.user_id;
+
+    // Get faculty_id
+    const [facultyResult] = await connection.execute(
+      'SELECT faculty_id FROM faculties WHERE user_id = ?',
+      [user_id]
+    );
+
+    if (facultyResult.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty not found'
+      });
+    }
+
+    const faculty_id = facultyResult[0].faculty_id;
+
+    // Update submission
+    await connection.execute(`
+      UPDATE web_code_submissions 
+      SET grade = ?, feedback = ?, status = ?, graded_at = NOW(), graded_by = ?
+      WHERE submission_id = ?
+    `, [grade, feedback || null, status || 'Graded', faculty_id, submission_id]);
+
+    // Check if needs reassignment (score < 50%)
+    const [submission] = await connection.execute(
+      'SELECT max_score, task_id, student_id FROM web_code_submissions WHERE submission_id = ?',
+      [submission_id]
+    );
+
+    if (submission.length > 0) {
+      const maxScore = submission[0].max_score;
+      const percentage = (grade / maxScore) * 100;
+      
+      if (percentage < 50) {
+        await connection.execute(
+          'UPDATE web_code_submissions SET is_reassigned = 1 WHERE submission_id = ?',
+          [submission_id]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Submission graded successfully'
+    });
+
+  } catch (error) {
+    console.error('Error grading submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while grading submission',
       error: error.message
     });
   } finally {

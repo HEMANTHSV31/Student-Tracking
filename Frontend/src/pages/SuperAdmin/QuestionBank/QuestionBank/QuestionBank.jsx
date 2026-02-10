@@ -398,7 +398,7 @@ const QuestionBank = () => {
       const formData = new FormData();
       formData.append('course_id', parseInt(courseId));
       formData.append('title', codeFormData.title);
-      formData.append('description', codeFormData.description || codeFormData.title);
+      formData.append('description', codeFormData.taskInstructions || codeFormData.description || codeFormData.title);
       formData.append('question_type', 'coding');
       formData.append('difficulty_level', mapLevelToDifficulty(codeFormData.level));
       formData.append('mcq_options', 'null');
