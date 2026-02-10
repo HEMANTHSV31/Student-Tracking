@@ -2653,7 +2653,43 @@ export const getStudentTaskQuestions = async (req, res) => {
 
     console.log('Final questions count:', questions.length);
 
-    // Parse coding_test_cases JSON for each question
+    // Fetch resource images for all questions
+    const questionIds = questions.map(q => q.question_id);
+    let resourceImagesMap = {};
+    
+    if (questionIds.length > 0) {
+      try {
+        const [resourceImages] = await connection.execute(`
+          SELECT 
+            resource_id,
+            question_id,
+            file_name,
+            file_path,
+            asset_path,
+            description
+          FROM question_resource_images
+          WHERE question_id IN (${questionIds.map(() => '?').join(',')})
+          ORDER BY display_order
+        `, questionIds);
+        
+        // Group by question_id
+        resourceImages.forEach(img => {
+          if (!resourceImagesMap[img.question_id]) {
+            resourceImagesMap[img.question_id] = [];
+          }
+          resourceImagesMap[img.question_id].push({
+            asset_path: img.asset_path,
+            preview_url: `/uploads/${img.file_path.replace(/\\/g, '/').replace('uploads/', '')}`,
+            description: img.description
+          });
+        });
+      } catch (resourceErr) {
+        console.error('Error fetching resource images:', resourceErr);
+        // Continue without resource images
+      }
+    }
+
+    // Parse coding_test_cases JSON for each question and add resource images
     const processedQuestions = questions.map(q => ({
       ...q,
       coding_test_cases: q.coding_test_cases ? (() => {
@@ -2663,7 +2699,8 @@ export const getStudentTaskQuestions = async (req, res) => {
           return [];
         }
       })() : [],
-      sample_image_url: q.sample_image ? `/uploads/${q.sample_image.replace(/\\/g, '/').replace('uploads/', '')}` : null
+      sample_image_url: q.sample_image ? `/uploads/${q.sample_image.replace(/\\/g, '/').replace('uploads/', '')}` : null,
+      resource_images: resourceImagesMap[q.question_id] || []
     }));
 
     res.json({

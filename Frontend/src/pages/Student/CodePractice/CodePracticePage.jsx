@@ -184,7 +184,8 @@ export default function CodePracticePage() {
                     description: questionData.description,
                     coding_test_cases: questionData.coding_test_cases || [],
                     sample_image_url: questionData.sample_image_url,
-                    coding_starter_code: questionData.coding_starter_code
+                    coding_starter_code: questionData.coding_starter_code,
+                    resource_images: questionData.resource_images || []
                   });
                 }
               } else {
@@ -196,7 +197,8 @@ export default function CodePracticePage() {
                     description: taskData.description,
                     coding_test_cases: taskData.requirements || taskData.checklist || [],
                     sample_image_url: taskData.sample_image || null,
-                    coding_starter_code: null
+                    coding_starter_code: null,
+                    resource_images: []
                   });
                 }
               }
@@ -209,7 +211,8 @@ export default function CodePracticePage() {
                   description: taskData.description,
                   coding_test_cases: taskData.requirements || taskData.checklist || [],
                   sample_image_url: taskData.sample_image || null,
-                  coding_starter_code: null
+                  coding_starter_code: null,
+                  resource_images: []
                 });
               }
             }

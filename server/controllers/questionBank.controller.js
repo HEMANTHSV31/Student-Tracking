@@ -885,3 +885,244 @@ export const getStatistics = async (req, res) => {
     });
   }
 };
+
+// =====================================================
+// QUESTION RESOURCE IMAGES (For student code usage)
+// =====================================================
+
+/**
+ * Upload resource images for a question
+ * POST /api/question-bank/questions/:id/resources
+ * These are images students can use in their HTML/CSS code (e.g., travel page images)
+ */
+export const uploadResourceImages = async (req, res) => {
+  try {
+    const { id: questionId } = req.params;
+    const files = req.files; // Multiple files from multer
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files uploaded'
+      });
+    }
+
+    // Verify question exists
+    const [questions] = await db.execute(
+      'SELECT question_id, title FROM question_bank WHERE question_id = ?',
+      [questionId]
+    );
+
+    if (questions.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found'
+      });
+    }
+
+    // Get current max order
+    const [maxOrder] = await db.execute(
+      'SELECT MAX(display_order) as max_order FROM question_resource_images WHERE question_id = ?',
+      [questionId]
+    );
+    let order = (maxOrder[0].max_order || 0) + 1;
+
+    const uploadedResources = [];
+
+    for (const file of files) {
+      // Generate clean asset path for students to use
+      const cleanFileName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
+      const assetPath = `assets/images/${cleanFileName}`;
+      
+      // Get description from body if provided (for single file upload)
+      const description = req.body.description || file.originalname.split('.')[0].replace(/[-_]/g, ' ');
+
+      const [result] = await db.execute(`
+        INSERT INTO question_resource_images 
+        (question_id, file_name, file_path, asset_path, file_size, mime_type, description, display_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        questionId,
+        file.originalname,
+        file.path.replace(/\\/g, '/'),
+        assetPath,
+        file.size,
+        file.mimetype,
+        description,
+        order++
+      ]);
+
+      uploadedResources.push({
+        resource_id: result.insertId,
+        file_name: file.originalname,
+        asset_path: assetPath,
+        description: description
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `${uploadedResources.length} resource image(s) uploaded successfully`,
+      data: uploadedResources
+    });
+  } catch (error) {
+    console.error('Error uploading resource images:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload resource images',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get all resource images for a question
+ * GET /api/question-bank/questions/:id/resources
+ */
+export const getResourceImages = async (req, res) => {
+  try {
+    const { id: questionId } = req.params;
+
+    const [resources] = await db.execute(`
+      SELECT 
+        resource_id,
+        file_name,
+        file_path,
+        asset_path,
+        file_size,
+        mime_type,
+        description,
+        display_order,
+        created_at
+      FROM question_resource_images
+      WHERE question_id = ?
+      ORDER BY display_order
+    `, [questionId]);
+
+    // Add full URL for preview
+    const resourcesWithUrls = resources.map(r => ({
+      ...r,
+      preview_url: `/uploads/${r.file_path.replace(/\\/g, '/').replace('uploads/', '')}`
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: resources.length,
+      data: resourcesWithUrls
+    });
+  } catch (error) {
+    console.error('Error fetching resource images:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch resource images',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update a resource image (description, asset_path, order)
+ * PUT /api/question-bank/resources/:resourceId
+ */
+export const updateResourceImage = async (req, res) => {
+  try {
+    const { resourceId } = req.params;
+    const { description, asset_path, display_order } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params.push(description);
+    }
+    if (asset_path !== undefined) {
+      updates.push('asset_path = ?');
+      params.push(asset_path);
+    }
+    if (display_order !== undefined) {
+      updates.push('display_order = ?');
+      params.push(display_order);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update'
+      });
+    }
+
+    params.push(resourceId);
+
+    await db.execute(`
+      UPDATE question_resource_images
+      SET ${updates.join(', ')}
+      WHERE resource_id = ?
+    `, params);
+
+    res.status(200).json({
+      success: true,
+      message: 'Resource image updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating resource image:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update resource image',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Delete a resource image
+ * DELETE /api/question-bank/resources/:resourceId
+ */
+export const deleteResourceImage = async (req, res) => {
+  try {
+    const { resourceId } = req.params;
+    const fs = await import('fs');
+    const path = await import('path');
+
+    // Get file path before deleting
+    const [resources] = await db.execute(
+      'SELECT file_path FROM question_resource_images WHERE resource_id = ?',
+      [resourceId]
+    );
+
+    if (resources.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resource image not found'
+      });
+    }
+
+    // Delete from database
+    await db.execute(
+      'DELETE FROM question_resource_images WHERE resource_id = ?',
+      [resourceId]
+    );
+
+    // Try to delete the file (don't fail if file is missing)
+    try {
+      const filePath = resources[0].file_path;
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (fileErr) {
+      console.warn('Could not delete file:', fileErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Resource image deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting resource image:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete resource image',
+      error: error.message
+    });
+  }
+};

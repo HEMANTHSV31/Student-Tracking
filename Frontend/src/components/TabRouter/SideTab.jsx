@@ -176,7 +176,7 @@ const SideTab = () => {
         id: "code-practice",
         label: "P Skills Practice",
         icon: Braces,
-        section: "academic",
+        section: "assessment",
       },
       {
         id: "attendance",
@@ -184,7 +184,6 @@ const SideTab = () => {
         icon: CalendarCheck,
         section: "academic",
       },
-      // { id: 'performance', label: 'Performance', icon: BarChart3, section: 'system' },
     ],
   };
 
@@ -283,6 +282,15 @@ const SideTab = () => {
               <div style={styles.navSectionTitle}>ACADEMIC</div>
               {menuItems
                 .filter((i) => i.section === "academic")
+                .map(renderNavItem)}
+            </div>
+          )}
+
+          {menuItems.some((i) => i.section === "assessment") && (
+            <div style={styles.navSection}>
+              <div style={styles.navSectionTitle}>ASSESSMENT</div>
+              {menuItems
+                .filter((i) => i.section === "assessment")
                 .map(renderNavItem)}
             </div>
           )}

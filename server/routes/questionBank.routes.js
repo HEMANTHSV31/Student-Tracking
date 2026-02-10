@@ -8,7 +8,7 @@ import { authorizeRoles, adminOnly, facultyOrAdmin } from '../middleware/role.mi
 
 const router = express.Router();
 
-// Configure multer for question image uploads
+// Configure multer for question image uploads (sample output images)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = 'uploads/questions';
@@ -33,6 +33,36 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only image files (JPEG, PNG, GIF) are allowed'), false);
+    }
+  }
+});
+
+// Configure multer for resource images (images students use in their code)
+const resourceStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads/resources';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Keep original filename but make it safe
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
+    const uniqueSuffix = Date.now() + '-';
+    cb(null, uniqueSuffix + safeName);
+  }
+});
+
+const resourceUpload = multer({
+  storage: resourceStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for resource images
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP, SVG) are allowed'), false);
     }
   }
 });
@@ -191,6 +221,60 @@ router.get(
   authenticate,
   facultyOrAdmin,
   questionBankController.getStatistics
+);
+
+// =====================================================
+// RESOURCE IMAGES ROUTES (Images students use in code)
+// =====================================================
+
+/**
+ * @route   POST /api/question-bank/questions/:id/resources
+ * @desc    Upload resource images for a question (images students can use in their HTML/CSS)
+ * @access  Admin, Faculty
+ * @body    files[] - Multiple image files
+ * @example POST /api/question-bank/questions/5/resources with multipart form (images[])
+ */
+router.post(
+  '/questions/:id/resources',
+  authenticate,
+  facultyOrAdmin,
+  resourceUpload.array('images', 10), // Max 10 images per upload
+  questionBankController.uploadResourceImages
+);
+
+/**
+ * @route   GET /api/question-bank/questions/:id/resources
+ * @desc    Get all resource images for a question
+ * @access  Admin, Faculty, Students (for their assigned questions)
+ */
+router.get(
+  '/questions/:id/resources',
+  authenticate,
+  questionBankController.getResourceImages
+);
+
+/**
+ * @route   PUT /api/question-bank/resources/:resourceId
+ * @desc    Update a resource image (description, asset_path)
+ * @access  Admin, Faculty
+ */
+router.put(
+  '/resources/:resourceId',
+  authenticate,
+  facultyOrAdmin,
+  questionBankController.updateResourceImage
+);
+
+/**
+ * @route   DELETE /api/question-bank/resources/:resourceId
+ * @desc    Delete a resource image
+ * @access  Admin, Faculty
+ */
+router.delete(
+  '/resources/:resourceId',
+  authenticate,
+  facultyOrAdmin,
+  questionBankController.deleteResourceImage
 );
 
 export default router;

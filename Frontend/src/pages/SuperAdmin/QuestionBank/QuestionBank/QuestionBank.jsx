@@ -16,13 +16,17 @@ import {
   CloudUpload,
   Save,
   ContentCopy,
+  InsertPhoto,
 } from "@mui/icons-material";
 import useAuthStore from "../../../../store/useAuthStore";
 import { 
   getAllQuestions, 
   createQuestion, 
   updateQuestion, 
-  deleteQuestion 
+  deleteQuestion,
+  uploadResourceImages,
+  getResourceImages,
+  deleteResourceImage 
 } from "../../../../services/questionBankApi";
 
 // Question Type Tabs
@@ -88,6 +92,11 @@ const QuestionBank = () => {
     maxMarks: 10,
     mappedSkill: "",
   });
+
+  // Resource Images (images students can use in their code)
+  const [resourceImages, setResourceImages] = useState([]);
+  const [resourceImageFiles, setResourceImageFiles] = useState([]);
+  const [uploadingResources, setUploadingResources] = useState(false);
 
   const [newChecklistItem, setNewChecklistItem] = useState("");
 
@@ -223,6 +232,8 @@ const QuestionBank = () => {
   const openAddModal = () => {
     setEditingQuestion(null);
     setFormTab("basic");
+    setResourceImages([]);
+    setResourceImageFiles([]);
     if (activeTab === "mcq") {
       setMcqFormData({
         type: "mcq",
@@ -256,9 +267,12 @@ const QuestionBank = () => {
   };
 
   // Open Edit Modal
-  const openEditModal = (question) => {
+  const openEditModal = async (question) => {
     setEditingQuestion(question);
     setFormTab("basic");
+    setResourceImages([]);
+    setResourceImageFiles([]);
+    
     if (question.type === "mcq") {
       setMcqFormData({
         type: "mcq",
@@ -287,6 +301,17 @@ const QuestionBank = () => {
         maxMarks: question.maxMarks || 10,
         mappedSkill: question.mappedSkill || "",
       });
+      
+      // Fetch resource images for this question
+      try {
+        const questionId = question.id.replace('QS-', '');
+        const response = await getResourceImages(questionId);
+        if (response.success && response.data) {
+          setResourceImages(response.data);
+        }
+      } catch (err) {
+        console.error('Error fetching resource images:', err);
+      }
     }
     setShowFormModal(true);
   };
@@ -418,16 +443,51 @@ const QuestionBank = () => {
         formData.append('sampleImage', codeFormData.sampleImageFile);
       }
 
+      let questionId;
+      
       if (editingQuestion) {
-        const questionId = editingQuestion.id.replace('QS-', '');
+        questionId = editingQuestion.id.replace('QS-', '');
         const response = await updateQuestion(questionId, formData, true); // Pass true for FormData
         if (response.success) {
+          // Upload resource images if any pending
+          if (resourceImageFiles.length > 0) {
+            setUploadingResources(true);
+            try {
+              const files = resourceImageFiles.map(item => item.file);
+              await uploadResourceImages(questionId, files);
+              // Cleanup previews
+              resourceImageFiles.forEach(item => URL.revokeObjectURL(item.preview));
+              setResourceImageFiles([]);
+            } catch (uploadErr) {
+              console.error('Error uploading resource images:', uploadErr);
+              showResult("warning", "Question Saved", "Question updated but some resource images failed to upload.");
+            }
+            setUploadingResources(false);
+          }
           showResult("success", "Question Updated", "Question has been updated successfully.");
           fetchQuestions();
         }
       } else {
         const response = await createQuestion(formData, true); // Pass true for FormData
         if (response.success) {
+          questionId = response.data?.question_id;
+          
+          // Upload resource images if any pending
+          if (resourceImageFiles.length > 0 && questionId) {
+            setUploadingResources(true);
+            try {
+              const files = resourceImageFiles.map(item => item.file);
+              await uploadResourceImages(questionId, files);
+              // Cleanup previews
+              resourceImageFiles.forEach(item => URL.revokeObjectURL(item.preview));
+              setResourceImageFiles([]);
+            } catch (uploadErr) {
+              console.error('Error uploading resource images:', uploadErr);
+              showResult("warning", "Question Created", "Question created but some resource images failed to upload.");
+            }
+            setUploadingResources(false);
+          }
+          
           showResult("success", "Question Created", "Question has been created successfully.");
           fetchQuestions();
         }
@@ -439,6 +499,7 @@ const QuestionBank = () => {
       showResult("error", "Save Failed", error.message || "Could not save question");
     } finally {
       setSaving(false);
+      setUploadingResources(false);
     }
   };
 
@@ -1002,6 +1063,13 @@ const QuestionBank = () => {
                   >
                     Sample Output Image
                   </button>
+                  <button
+                    style={{ ...s.formTabBtn, ...(formTab === "resources" ? s.formTabBtnActive : {}) }}
+                    onClick={() => setFormTab("resources")}
+                  >
+                    <InsertPhoto sx={{ fontSize: 16, marginRight: "4px" }} />
+                    Resource Images
+                  </button>
                 </div>
 
                 {formTab === "basic" && (
@@ -1192,11 +1260,164 @@ const QuestionBank = () => {
                   </div>
                 )}
 
+                {formTab === "resources" && (
+                  <div style={s.formTabContent}>
+                    <div style={s.resourceContainer}>
+                      {/* Header */}
+                      <div style={s.resourceHeader}>
+                        <div style={s.resourceHeaderIcon}>
+                          <InsertPhoto sx={{ fontSize: 22 }} />
+                        </div>
+                        <div style={s.resourceHeaderText}>
+                          <h3 style={s.resourceTitle}>Resource Images for Students</h3>
+                          <p style={s.resourceSubtitle}>
+                            Upload images students can use in their HTML/CSS code with paths like <code style={s.codePath}>assets/images/goa.png</code>
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Upload Area */}
+                      <div 
+                        style={s.resourceUploadArea}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.backgroundColor = '#f0f0ff'; }}
+                        onDragLeave={(e) => { e.currentTarget.style.borderColor = '#c7d2fe'; e.currentTarget.style.backgroundColor = '#fafaff'; }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.style.borderColor = '#c7d2fe';
+                          e.currentTarget.style.backgroundColor = '#fafaff';
+                          const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                          const newFiles = files.map(file => ({
+                            file,
+                            preview: URL.createObjectURL(file),
+                            asset_path: `assets/images/${file.name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase()}`,
+                            description: file.name.split('.')[0].replace(/[-_]/g, ' ')
+                          }));
+                          setResourceImageFiles(prev => [...prev, ...newFiles]);
+                        }}
+                      >
+                        <label style={{ ...s.uploadLabel, cursor: 'pointer' }}>
+                          <div style={s.uploadIconWrapper}>
+                            <CloudUpload sx={{ fontSize: 32, color: "#6366f1" }} />
+                          </div>
+                          <span style={{ ...s.uploadText, fontSize: '15px', fontWeight: '600', color: '#334155' }}>Drop images here or click to browse</span>
+                          <span style={{ ...s.uploadHint, marginTop: '8px', color: '#94a3b8' }}>PNG, JPG, GIF, WebP • Max 10MB each • Up to 10 images</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files);
+                              const newFiles = files.map(file => ({
+                                file,
+                                preview: URL.createObjectURL(file),
+                                asset_path: `assets/images/${file.name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase()}`,
+                                description: file.name.split('.')[0].replace(/[-_]/g, ' ')
+                              }));
+                              setResourceImageFiles(prev => [...prev, ...newFiles]);
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      {/* Pending Uploads */}
+                      {resourceImageFiles.length > 0 && (
+                        <div style={s.resourceSection}>
+                          <div style={s.resourceSectionHeader}>
+                            <h4 style={s.resourceSectionTitle}>
+                              <CloudUpload sx={{ fontSize: 18, color: '#f59e0b' }} />
+                              Pending Uploads
+                              <span style={{ ...s.resourceBadge, backgroundColor: '#f59e0b' }}>{resourceImageFiles.length}</span>
+                            </h4>
+                            <p style={s.resourceSectionHint}>Will upload when you save</p>
+                          </div>
+                          <div style={s.resourceGrid}>
+                            {resourceImageFiles.map((item, idx) => (
+                              <div key={idx} style={s.resourceCard}>
+                                <img src={item.preview} alt={item.description} style={s.resourceThumb} />
+                                <div style={s.resourceInfo}>
+                                  <span style={s.resourceDesc}>{item.description}</span>
+                                  <code style={s.resourcePath}>{item.asset_path}</code>
+                                </div>
+                                <button
+                                  style={s.resourceDeleteBtn}
+                                  onClick={() => {
+                                    URL.revokeObjectURL(item.preview);
+                                    setResourceImageFiles(prev => prev.filter((_, i) => i !== idx));
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#94a3b8'; }}
+                                >
+                                  <Close sx={{ fontSize: 16 }} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Existing Resources (when editing) */}
+                      {resourceImages.length > 0 && (
+                        <div style={s.resourceSection}>
+                          <div style={s.resourceSectionHeader}>
+                            <h4 style={s.resourceSectionTitle}>
+                              <InsertPhoto sx={{ fontSize: 18, color: '#10b981' }} />
+                              Uploaded Resources
+                              <span style={{ ...s.resourceBadge, backgroundColor: '#10b981' }}>{resourceImages.length}</span>
+                            </h4>
+                            <p style={s.resourceSectionHint}>Students use these paths</p>
+                          </div>
+                          <div style={s.resourceGrid}>
+                            {resourceImages.map((resource) => (
+                              <div key={resource.resource_id} style={s.resourceCard}>
+                                <img 
+                                  src={`${import.meta.env.VITE_API_URL}${resource.preview_url}`} 
+                                  alt={resource.description} 
+                                  style={s.resourceThumb} 
+                                />
+                                <div style={s.resourceInfo}>
+                                  <span style={s.resourceDesc}>{resource.description}</span>
+                                  <code style={s.resourcePath}>{resource.asset_path}</code>
+                                </div>
+                                <button
+                                  style={s.resourceDeleteBtn}
+                                  onClick={async () => {
+                                    try {
+                                      await deleteResourceImage(resource.resource_id);
+                                      setResourceImages(prev => prev.filter(r => r.resource_id !== resource.resource_id));
+                                    } catch (err) {
+                                      console.error('Error deleting resource:', err);
+                                    }
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#94a3b8'; }}
+                                >
+                                  <Delete sx={{ fontSize: 16 }} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {resourceImages.length === 0 && resourceImageFiles.length === 0 && (
+                        <div style={s.emptyResourceState}>
+                          <div style={s.emptyResourceIcon}>
+                            <InsertPhoto sx={{ fontSize: 36, color: "#94a3b8" }} />
+                          </div>
+                          <p style={s.emptyResourceTitle}>No resource images yet</p>
+                          <p style={s.emptyResourceHint}>Upload images that students will reference in their HTML/CSS code</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div style={s.formModalFooter}>
                   <button style={s.cancelBtn} onClick={() => setShowFormModal(false)}>Cancel</button>
-                  <button style={s.saveBtn} onClick={handleCodeSubmit} disabled={saving}>
+                  <button style={s.saveBtn} onClick={handleCodeSubmit} disabled={saving || uploadingResources}>
                     <Save sx={{ fontSize: 18 }} />
-                    {saving ? "Saving..." : editingQuestion ? "Update Question" : "Save Question"}
+                    {saving || uploadingResources ? "Saving..." : editingQuestion ? "Update Question" : "Save Question"}
                   </button>
                 </div>
               </div>
@@ -2313,6 +2534,223 @@ const s = {
     fontSize: "14px",
     fontWeight: "600",
     cursor: "pointer",
+  },
+  // Resource Images Styles
+  resourceContainer: {
+    backgroundColor: "#ffffff",
+    borderRadius: "16px",
+    padding: "24px",
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+  },
+  resourceHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "8px",
+  },
+  resourceHeaderIcon: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "10px",
+    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#ffffff",
+  },
+  resourceHeaderText: {
+    flex: 1,
+  },
+  resourceTitle: {
+    fontSize: "16px",
+    fontWeight: "600",
+    color: "#1e293b",
+    margin: 0,
+  },
+  resourceSubtitle: {
+    fontSize: "13px",
+    color: "#64748b",
+    margin: "4px 0 0 0",
+  },
+  resourceUploadArea: {
+    border: "2px dashed #c7d2fe",
+    borderRadius: "16px",
+    padding: "40px 24px",
+    backgroundColor: "#fafaff",
+    marginTop: "20px",
+    marginBottom: "24px",
+    transition: "all 0.2s ease",
+    cursor: "pointer",
+  },
+  resourceUploadAreaHover: {
+    borderColor: "#6366f1",
+    backgroundColor: "#f0f0ff",
+  },
+  uploadIconWrapper: {
+    width: "64px",
+    height: "64px",
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 16px auto",
+  },
+  resourceSection: {
+    marginTop: "24px",
+    padding: "20px",
+    backgroundColor: "#f8fafc",
+    borderRadius: "14px",
+    border: "1px solid #e2e8f0",
+  },
+  resourceSectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "16px",
+  },
+  resourceSectionTitle: {
+    fontSize: "14px",
+    fontWeight: "600",
+    color: "#334155",
+    margin: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  resourceBadge: {
+    backgroundColor: "#6366f1",
+    color: "#ffffff",
+    fontSize: "11px",
+    fontWeight: "600",
+    padding: "2px 8px",
+    borderRadius: "10px",
+  },
+  resourceSectionHint: {
+    fontSize: "12px",
+    color: "#94a3b8",
+    margin: 0,
+  },
+  resourceGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+    gap: "16px",
+  },
+  resourceCard: {
+    display: "flex",
+    alignItems: "stretch",
+    gap: "14px",
+    padding: "14px",
+    backgroundColor: "#ffffff",
+    borderRadius: "12px",
+    border: "1px solid #e2e8f0",
+    position: "relative",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+    transition: "all 0.2s ease",
+  },
+  resourceThumb: {
+    width: "72px",
+    height: "72px",
+    borderRadius: "10px",
+    objectFit: "cover",
+    flexShrink: 0,
+    border: "1px solid #e2e8f0",
+  },
+  resourceInfo: {
+    flex: 1,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: "8px",
+  },
+  resourcePathLabel: {
+    fontSize: "10px",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    color: "#94a3b8",
+    margin: 0,
+  },
+  resourcePath: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "12px",
+    fontFamily: "'Fira Code', 'Consolas', monospace",
+    color: "#6366f1",
+    backgroundColor: "#f5f3ff",
+    padding: "8px 10px",
+    borderRadius: "8px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    border: "1px solid #ede9fe",
+  },
+  resourceDesc: {
+    fontSize: "13px",
+    color: "#475569",
+    fontWeight: "500",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  resourceDeleteBtn: {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    width: "28px",
+    height: "28px",
+    border: "none",
+    borderRadius: "8px",
+    backgroundColor: "#ffffff",
+    color: "#94a3b8",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    transition: "all 0.2s ease",
+  },
+  emptyResourceState: {
+    textAlign: "center",
+    padding: "48px 24px",
+    color: "#94a3b8",
+    backgroundColor: "#f8fafc",
+    borderRadius: "14px",
+    border: "1px dashed #e2e8f0",
+    marginTop: "20px",
+  },
+  emptyResourceIcon: {
+    width: "80px",
+    height: "80px",
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 16px auto",
+  },
+  emptyResourceTitle: {
+    fontSize: "15px",
+    fontWeight: "600",
+    color: "#64748b",
+    margin: "0 0 8px 0",
+  },
+  emptyResourceHint: {
+    fontSize: "13px",
+    color: "#94a3b8",
+    margin: 0,
+  },
+  codePath: {
+    fontFamily: "'Fira Code', 'Consolas', monospace",
+    backgroundColor: "#ede9fe",
+    padding: "4px 10px",
+    borderRadius: "6px",
+    color: "#6366f1",
+    fontSize: "12px",
+    fontWeight: "500",
   },
 };
 

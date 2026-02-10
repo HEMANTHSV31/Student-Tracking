@@ -1071,6 +1071,46 @@ ${code.js}` : ''}`;
                   </div>
                 </div>
               )}
+              
+              {/* Resource Images (images students can use in their code) */}
+              {question.resource_images && question.resource_images.length > 0 && (
+                <div className="question-section resource-images-section">
+                  <h4 className="section-label">
+                    <Image size={16} />
+                    Available Images
+                  </h4>
+                  <p className="resource-hint">Use these paths in your HTML code:</p>
+                  <div className="resource-list">
+                    {question.resource_images.map((img, idx) => (
+                      <div key={idx} className="resource-item">
+                        <img 
+                          src={`${apiUrl}${img.preview_url}`}
+                          alt={img.description || 'Resource'}
+                          className="resource-thumb"
+                        />
+                        <div className="resource-details">
+                          <code className="resource-path">{img.asset_path}</code>
+                          {img.description && (
+                            <span className="resource-desc">{img.description}</span>
+                          )}
+                        </div>
+                        <button 
+                          className="copy-path-btn"
+                          onClick={() => {
+                            navigator.clipboard.writeText(img.asset_path);
+                          }}
+                          title="Copy path"
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="resource-usage-hint">
+                    Example: <code>&lt;img src="{question.resource_images[0]?.asset_path}" alt="..."&gt;</code>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

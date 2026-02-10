@@ -309,6 +309,59 @@ export const getAllQuestions = async (filters = {}) => {
   return apiFetch(`/question-bank/questions?${queryParams}`);
 };
 
+// ==================== RESOURCE IMAGES API ====================
+
+/**
+ * Upload resource images for a question (images students can use in their code)
+ * @param {number} questionId - Question ID
+ * @param {File[]} files - Array of image files
+ * @returns {Promise<Object>} Uploaded resources info
+ */
+export const uploadResourceImages = async (questionId, files) => {
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('images', file);
+  });
+  
+  return apiFetch(`/question-bank/questions/${questionId}/resources`, {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+/**
+ * Get resource images for a question
+ * @param {number} questionId - Question ID
+ * @returns {Promise<Object>} Resource images list with paths
+ */
+export const getResourceImages = async (questionId) => {
+  return apiFetch(`/question-bank/questions/${questionId}/resources`);
+};
+
+/**
+ * Update a resource image
+ * @param {number} resourceId - Resource ID
+ * @param {Object} data - { description, asset_path, display_order }
+ * @returns {Promise<Object>} Update confirmation
+ */
+export const updateResourceImage = async (resourceId, data) => {
+  return apiFetch(`/question-bank/resources/${resourceId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+};
+
+/**
+ * Delete a resource image
+ * @param {number} resourceId - Resource ID
+ * @returns {Promise<Object>} Deletion confirmation
+ */
+export const deleteResourceImage = async (resourceId) => {
+  return apiFetch(`/question-bank/resources/${resourceId}`, {
+    method: 'DELETE',
+  });
+};
+
 export default {
   // Student
   getMyAssignedTasks,
@@ -334,4 +387,9 @@ export default {
   deleteQuestion,
   getQuestionById,
   getAllQuestions,
+  // Resource Images
+  uploadResourceImages,
+  getResourceImages,
+  updateResourceImage,
+  deleteResourceImage,
 };
