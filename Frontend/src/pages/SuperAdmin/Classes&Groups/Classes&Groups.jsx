@@ -45,9 +45,9 @@ const GroupsClasses = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedVenue, setSelectedVenue] = useState(null);
   const [venueStudents, setVenueStudents] = useState([]);
-  const [overwriteMode, setOverwriteMode] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState("");
+  const [uploadResult, setUploadResult] = useState(null);
 
   // Faculty search and availability
   const [facultySearch, setFacultySearch] = useState("");
@@ -422,6 +422,67 @@ const GroupsClasses = () => {
     }
   };
 
+  const downloadBulkUploadTemplate = async () => {
+    try {
+      // Create a simple template with 3 columns
+      const templateData = [
+        {
+          'Registration Number': '2021-CS-001',
+          'Venue Name': 'Lab A',
+          'Faculty Email': 'faculty@example.com'
+        },
+        {
+          'Registration Number': '2021-CS-002',
+          'Venue Name': 'Lab A',
+          'Faculty Email': 'faculty@example.com'
+        },
+        {
+          'Registration Number': '2021-CS-003',
+          'Venue Name': 'Lab B',
+          'Faculty Email': 'faculty2@example.com'
+        }
+      ];
+
+      // Convert to worksheet
+      const ws = window.XLSX?.utils.json_to_sheet(templateData);
+      const wb = window.XLSX?.utils.book_new();
+      window.XLSX?.utils.book_append_sheet(wb, ws, 'Students');
+      
+      // Download
+      window.XLSX?.writeFile(wb, 'bulk_student_upload_template.xlsx');
+    } catch (err) {
+      console.error('Download error:', err);
+      
+      // Fallback: download from server
+      try {
+        const response = await fetch(
+          `${API_URL}/venue-bulk-upload/template`,
+          {
+            method: 'GET',
+            credentials: 'include'
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to download template');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'bulk_student_upload_template.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } catch (serverErr) {
+        console.error('Server download error:', serverErr);
+        showResult("error", "Download Failed", "Failed to download template");
+      }
+    }
+  };
+
   const handleBulkUpload = async () => {
     if (!selectedFile) {
       showResult(
@@ -432,27 +493,36 @@ const GroupsClasses = () => {
       return;
     }
 
-    if (!selectedVenue) {
-      showResult("error", "No Venue Selected", "Please select a venue first.");
-      return;
-    }
-
     setLoading(true);
     const formData = new FormData();
     formData.append("file", selectedFile);
+    
     try {
-      const url = `/groups/venues/${selectedVenue.venue_id}/bulk-upload${overwriteMode ? '?overwrite=true' : ''}`;
-      const response = await apiPost(url, formData);
+      const response = await apiPost('/venue-bulk-upload/upload', formData);
       const data = await response.json();
+      
       if (data.success) {
-        setShowBulkUploadModal(false);
+        setUploadResult(data.data);
         setSelectedFile(null);
-        setSelectedVenue(null);
-        setOverwriteMode(false);
         await fetchVenues();
-        showResult("success", "Upload Successful", data.message);
+        
+        // Build success message for multiple venues
+        let message = `Successfully processed ${data.data.venuesProcessed} venue(s) with ${data.data.totalStudents} students`;
+        if (data.data.totalMissing > 0) {
+          message += ` (${data.data.totalMissing} students not found)`;
+        }
+        if (data.data.errors && data.data.errors.length > 0) {
+          message += `\n\nWarnings:\n${data.data.errors.join('\n')}`;
+        }
+        
+        showResult("success", "Upload Successful", message);
+        setShowBulkUploadModal(false);
       } else {
-        showResult("error", "Upload Failed", data.message);
+        let errorMsg = data.message || "Failed to upload students.";
+        if (data.errors && data.errors.length > 0) {
+          errorMsg += `\n\nErrors:\n${data.errors.join('\n')}`;
+        }
+        showResult("error", "Upload Failed", errorMsg);
       }
     } catch (err) {
       console.error("Error uploading file:", err);
@@ -843,6 +913,13 @@ const GroupsClasses = () => {
             <Add sx={{ fontSize: 20 }} />
             <span>Create Venue</span>
           </button>
+          <button 
+            style={{...s.addBtn, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}} 
+            onClick={() => setShowBulkUploadModal(true)}
+          >
+            <Upload sx={{ fontSize: 20 }} />
+            <span>Bulk Upload Students</span>
+          </button>
         </div>
       </div>
 
@@ -1027,23 +1104,6 @@ const GroupsClasses = () => {
               >
                 <Person sx={{ fontSize: 16, color: "#3b82f6" }} />
                 <span style={{ color: "#3b82f6" }}>Assign Faculty</span>
-              </button>
-              <button
-                style={s.menuItem}
-                onClick={() => {
-                  setSelectedVenue(menuVenue);
-                  setShowBulkUploadModal(true);
-                  closeMenu();
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#f0fdf4")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = "transparent")
-                }
-              >
-                <Upload sx={{ fontSize: 16, color: "#10b981" }} />
-                <span style={{ color: "#10b981" }}>Upload Students</span>
               </button>
               <button
                 style={s.menuItem}
@@ -1699,16 +1759,16 @@ const GroupsClasses = () => {
       {showBulkUploadModal && (
         <div
           style={s.modalOverlay}
-          onClick={() => { setShowBulkUploadModal(false); setOverwriteMode(false); }}
+          onClick={() => { setShowBulkUploadModal(false); }}
         >
           <div style={s.modal} onClick={(e) => e.stopPropagation()}>
             <div style={s.modalHeader}>
               <h2 style={s.modalTitle}>
-                Bulk Upload Students to {selectedVenue?.venue_name}
+                Bulk Upload Students to Venues
               </h2>
               <button
                 style={s.closeBtn}
-                onClick={() => { setShowBulkUploadModal(false); setOverwriteMode(false); }}
+                onClick={() => { setShowBulkUploadModal(false); }}
               >
                 <Close sx={{ fontSize: 24, color: "#64748b" }} />
               </button>
@@ -1717,21 +1777,41 @@ const GroupsClasses = () => {
               <div style={s.uploadInstructions}>
                 <p style={s.instructionTitle}>Excel Format Required:</p>
                 <p style={s.instructionText}>
-                  Columns: name, email, rollNumber, department, year, semester
+                  <strong>Three columns:</strong> Registration Number, Venue Name, Faculty Email
                 </p>
                 <p style={s.instructionNote}>
-                  * Available capacity:{" "}
-                  {selectedVenue?.capacity - selectedVenue?.current_students}{" "}
-                  students
-                  <br />* Only . xlsx and .xls files are accepted
+                  * Upload students to multiple venues at once
+                  <br />* Replaces ALL existing students in each venue
+                  <br />* Moves students from other venues automatically
+                  <br />* Assigns faculty to venue and students
+                  <br />* Venue names and faculty emails must match system exactly
+                  <br />* Only .xlsx and .xls files are accepted
                 </p>
-                {/* <button 
-                  style={s. downloadTemplateBtn}
-                  onClick={downloadExcelTemplate}
+                <button 
+                  type="button"
+                  style={{ 
+                    ...s.downloadTemplateBtn,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '12px',
+                    padding: '8px 16px',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
+                  }}
+                  onClick={downloadBulkUploadTemplate}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
                 >
                   <GetApp sx={{ fontSize: 16 }} />
                   Download Template
-                </button> */}
+                </button>
               </div>
               <div style={s.formGroup}>
                 <label style={s.label}>Select Excel File *</label>
@@ -1745,29 +1825,14 @@ const GroupsClasses = () => {
                   <div style={s.fileName}>{selectedFile.name}</div>
                 )}
               </div>
-              <div style={s.formGroup}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={overwriteMode}
-                    onChange={(e) => setOverwriteMode(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', color: '#374151' }}>
-                    Overwrite existing students (removes all current students and adds new ones)
-                  </span>
-                </label>
-                {overwriteMode && (
-                  <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '8px' }}>
-                    ⚠️ Warning: This will drop all existing students from this venue before adding new ones.
-                  </p>
-                )}
-              </div>
               <div style={s.modalFooter}>
                 <button
                   type="button"
                   style={s.cancelBtn}
-                  onClick={() => { setShowBulkUploadModal(false); setOverwriteMode(false); }}
+                  onClick={() => { 
+                    setShowBulkUploadModal(false); 
+                    setSelectedFile(null);
+                  }}
                 >
                   Cancel
                 </button>
@@ -1777,7 +1842,7 @@ const GroupsClasses = () => {
                   onClick={handleBulkUpload}
                   disabled={loading || !selectedFile}
                 >
-                  {loading ? "Uploading.. ." : "Upload Students"}
+                  {loading ? "Uploading..." : "Upload Students"}
                 </button>
               </div>
             </div>

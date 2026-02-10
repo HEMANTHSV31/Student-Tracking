@@ -24,6 +24,8 @@ import questionBankRoutes from "./routes/questionBank.routes.js";
 import studentQuestionBankRoutes from "./routes/studentQuestionBank.routes.js";
 import facultyQuestionBankRoutes from "./routes/facultyQuestionBank.routes.js";
 import leaderboardRoutes from "./routes/leaderboard.routes.js";
+import venueAllocationRoutes from "./routes/venueAllocation.routes.js";
+import venueBulkUploadRoutes from "./routes/venueBulkUpload.routes.js";
 // import facultyDashboardRoutes from './routes/facultyDashboardRoutes.js';
 dotenv.config();
 
@@ -118,6 +120,8 @@ app.use(`${API_PREFIX}/api/question-bank`, questionBankRoutes);
 app.use(`${API_PREFIX}/api/student/question-bank`, studentQuestionBankRoutes);
 app.use(`${API_PREFIX}/api/faculty/question-bank`, facultyQuestionBankRoutes);
 app.use(`${API_PREFIX}/api/leaderboard`, leaderboardRoutes);
+app.use(`${API_PREFIX}/api/venue-allocation`, venueAllocationRoutes);
+app.use(`${API_PREFIX}/api/venue-bulk-upload`, venueBulkUploadRoutes);
 // app.use('/api/faculty/dashboard', facultyDashboardRoutes); 
 // Cron job to update schedule daily at 8 PM
 cron.schedule('0 20 * * *', () => {

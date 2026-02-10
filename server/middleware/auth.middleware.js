@@ -18,10 +18,21 @@ export const authenticate = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     
     // IP binding check - prevent token sharing across devices
-    const clientIP = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    // Normalize IPv4/IPv6 localhost variations
+    const normalizeIP = (ip) => {
+      if (!ip) return null;
+      // Convert IPv6 localhost to IPv4
+      if (ip === '::1') return '127.0.0.1';
+      // Convert IPv4-mapped IPv6 to IPv4
+      if (ip.startsWith('::ffff:')) return ip.substring(7);
+      return ip;
+    };
     
-    if (decoded.ip && decoded.ip !== clientIP) {
-      console.error(`[SECURITY] IP mismatch - Token IP: ${decoded.ip}, Request IP: ${clientIP}`);
+    const clientIP = normalizeIP(req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress);
+    const tokenIP = normalizeIP(decoded.ip);
+    
+    if (tokenIP && tokenIP !== clientIP) {
+      console.error(`[SECURITY] IP mismatch - Token IP: ${tokenIP}, Request IP: ${clientIP}`);
       return res.status(403).json({ message: 'Token cannot be used from a different device' });
     }
     
