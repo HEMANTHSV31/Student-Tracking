@@ -243,14 +243,6 @@ export const getStudentsForVenue = async (req, res) => {
   }
 };
 
-// Session timing configurations
-const SESSION_TIMINGS = {
-  'S1': { start: '08:45:00', end: '10:25:00', grace: '10:30:00' },
-  'S2': { start: '10:45:00', end: '12:25:00', grace: '12:30:00' },
-  'S3': { start: '13:30:00', end: '15:10:00', grace: '15:15:00' },
-  'S4': { start: '15:25:00', end: '16:30:00', grace: '16:35:00' }
-};
-
 // Get or create attendance session
 export const getOrCreateSession = async (req, res) => {
   const connection = await db.getConnection();
@@ -279,12 +271,9 @@ export const getOrCreateSession = async (req, res) => {
     // This ensures faculty and admin see the same session for the same venue/date/time
     const fullSessionName = `${sessionNum}_Venue${venueId}_${date}`;
 
-    // Get session timings for this session
-    const timings = SESSION_TIMINGS[sessionNum] || SESSION_TIMINGS['S1'];
-
     // Check if session already exists
     const [existingSession] = await connection.query(
-      'SELECT session_id, start_time, end_time, grace_period_end FROM attendance_session WHERE session_name = ?',
+      'SELECT session_id FROM attendance_session WHERE session_name = ?',
       [fullSessionName]
     );
 
@@ -294,19 +283,15 @@ export const getOrCreateSession = async (req, res) => {
         data: { 
           session_id: existingSession[0].session_id, 
           existing: true,
-          session_name: fullSessionName,
-          start_time: existingSession[0].start_time,
-          end_time: existingSession[0].end_time,
-          grace_period_end: existingSession[0].grace_period_end
+          session_name: fullSessionName
         }
       });
     }
 
-    // Create new session with timings
+    // Create new session
     const [result] = await connection.query(
-      `INSERT INTO attendance_session (session_name, start_time, end_time, grace_period_end, created_at) 
-       VALUES (?, ?, ?, ?, NOW())`,
-      [fullSessionName, timings.start, timings.end, timings.grace]
+      'INSERT INTO attendance_session (session_name, created_at) VALUES (?, NOW())',
+      [fullSessionName]
     );
 
     res.status(201).json({ 
@@ -314,10 +299,7 @@ export const getOrCreateSession = async (req, res) => {
       data: { 
         session_id: result.insertId, 
         existing: false,
-        session_name: fullSessionName,
-        start_time: timings.start,
-        end_time: timings.end,
-        grace_period_end: timings.grace
+        session_name: fullSessionName
       }
     });
 
@@ -417,9 +399,9 @@ export const saveAttendance = async (req, res) => {
     // Ensure user has faculty_id (create for admin if needed)
     const actualFacultyId = await ensureFacultyId(userId);
 
-    // Verify session exists and get timings
+    // Verify session exists
     const [sessionCheck] = await connection.query(
-      'SELECT session_id, session_name, start_time, end_time, grace_period_end FROM attendance_session WHERE session_id = ?',
+      'SELECT session_id FROM attendance_session WHERE session_id = ?',
       [sessionId]
     );
 
@@ -428,31 +410,6 @@ export const saveAttendance = async (req, res) => {
         success: false,
         message: 'Session not found'
       });
-    }
-
-    const session = sessionCheck[0];
-
-    // TIME VALIDATION: Check if faculty can mark attendance (admin can always mark)
-    if (req.user.role !== 'admin' && session.grace_period_end) {
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 8); // HH:MM:SS format
-      const currentDate = now.toISOString().slice(0, 10); // YYYY-MM-DD format
-      
-      // Only validate if marking attendance for today
-      if (date === currentDate) {
-        if (currentTime < session.start_time || currentTime > session.grace_period_end) {
-          return res.status(403).json({
-            success: false,
-            message: `Attendance can only be marked between ${session.start_time} and ${session.grace_period_end}`,
-            session_timings: {
-              start_time: session.start_time,
-              end_time: session.end_time,
-              grace_period_end: session.grace_period_end,
-              current_time: currentTime
-            }
-          });
-        }
-      }
     }
 
     // Verify venue exists
@@ -648,20 +605,8 @@ export const getStudentAttendanceHistory = async (req, res) => {
         a.remarks,
         a.created_at,
         ats.session_name,
-        ats.start_time,
-        ats.end_time,
         v.venue_name,
-        u.name as faculty_name,
-        -- Extract session number (S1, S2, S3, S4) from session_name
-        CASE 
-          WHEN ats.session_name LIKE 'S1_%' THEN 1
-          WHEN ats.session_name LIKE 'S2_%' THEN 2
-          WHEN ats.session_name LIKE 'S3_%' THEN 3
-          WHEN ats.session_name LIKE 'S4_%' THEN 4
-          ELSE 1
-        END as session_number,
-        -- Extract date from session_name (format: S1_Venue123_2025-02-14)
-        SUBSTRING_INDEX(ats.session_name, '_', -1) as session_date
+        u.name as faculty_name
       FROM attendance a
       INNER JOIN students s ON a.student_id = s.student_id
       INNER JOIN attendance_session ats ON a.session_id = ats.session_id
@@ -681,8 +626,8 @@ export const getStudentAttendanceHistory = async (req, res) => {
               AND a.attendance_id = latest.max_attendance_id
       WHERE s.user_id = ?
         AND gs.status = 'Active'
-      ORDER BY session_date DESC, session_number ASC
-      LIMIT 200
+      ORDER BY a.created_at DESC
+      LIMIT 50
     `, [userId, userId]);
 
     res.status(200).json({ 
@@ -710,10 +655,10 @@ export const getStudentAttendanceDashboard = async (req, res) => {
     const currentYear = year || new Date().getFullYear();
 
     // Get overall attendance stats - Calculate by hours per day (4 hours = 100%)
-    // Session name format: S1_Venue123_2025-02-14
+    // Count distinct session dates (from session name), not created_at dates
     const [overallStats] = await db.query(`
       SELECT 
-        COUNT(DISTINCT SUBSTRING_INDEX(ats.session_name, '_', -1)) as total_days,
+        COUNT(DISTINCT SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10)) as total_days,
         SUM(CASE WHEN a.is_present = 1 THEN 1 ELSE 0 END) as total_hours_present,
         COUNT(*) as total_hours,
         ROUND((SUM(CASE WHEN a.is_present = 1 THEN 1 ELSE 0 END) / COUNT(*)) * 100, 0) as attendance_percentage
@@ -730,10 +675,10 @@ export const getStudentAttendanceDashboard = async (req, res) => {
     `, [userId, currentYear, SEMESTER_START_DATE]);
 
     // Get daily breakdown to calculate present/late/absent days
-    // Extract date from session_name (format: S1_Venue123_2025-02-14)
+    // Extract date from session name (format: Venue_YYYYMMDD_YYYY-MM-DD_Time)
     const [dailyBreakdown] = await db.query(`
       SELECT 
-        SUBSTRING_INDEX(ats.session_name, '_', -1) as attendance_date,
+        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as attendance_date,
         COUNT(*) as total_hours,
         SUM(CASE WHEN a.is_present = 1 AND a.is_late = 0 THEN 1 ELSE 0 END) as present_hours,
         SUM(CASE WHEN a.is_late = 1 THEN 1 ELSE 0 END) as late_hours,
@@ -749,36 +694,25 @@ export const getStudentAttendanceDashboard = async (req, res) => {
         AND gs.status = 'Active'
         AND YEAR(a.created_at) = ?
         AND DATE(a.created_at) >= ?
-      GROUP BY SUBSTRING_INDEX(ats.session_name, '_', -1)
+      GROUP BY SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10)
     `, [userId, currentYear, SEMESTER_START_DATE]);
 
-    // Count days by status
-    // A day is counted as "Present" if student attended at least 1 session
-    // Count late hours separately
+    // Count days by status: only days with 4/4 hours present count as Present, everything else is Absent
     let presentDays = 0, lateDays = 0, absentDays = 0;
     dailyBreakdown.forEach(day => {
       const totalHours = parseInt(day.total_hours);
       const presentHours = parseInt(day.present_hours);
-      const lateHours = parseInt(day.late_hours);
-      const absentHours = parseInt(day.absent_hours);
       
-      // If student attended at least one hour (present or late), count as attended day
-      if (presentHours > 0 || lateHours > 0) {
-        presentDays++;
+      if (totalHours === 4 && presentHours === 4) {
+        presentDays++; // All 4 hours present = Present Day
       } else {
-        absentDays++; // Completely absent for all hours
-      }
-      
-      // Track late sessions separately for display
-      if (lateHours > 0) {
-        lateDays++;
+        absentDays++; // Less than 4 hours = Absent Day
       }
     });
 
-    // Calculate overall stats based on hours (more accurate than day-based)
+    // Calculate overall stats
     const totalDays = dailyBreakdown.length;
-    const stats = overallStats[0];
-    const overallPercentage = stats?.attendance_percentage || 0;
+    const overallPercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
 
     // Get venue-wise (subject) attendance - Calculate by hours
     const [subjectStats] = await db.query(`
@@ -852,6 +786,8 @@ export const getStudentAttendanceDashboard = async (req, res) => {
       ORDER BY MONTH(a.created_at)
     `, [userId, currentYear]);
 
+    const stats = overallStats[0];
+
     const dashboardData = {
       overallStats: [
         {
@@ -863,7 +799,7 @@ export const getStudentAttendanceDashboard = async (req, res) => {
         {
           title: "SKILL ATTENDANCE",
           value: `${overallPercentage}%`,
-          sub: `Days Attended: ${presentDays}/${totalDays}`,
+          sub: `Days Attended: ${presentDays + lateDays}/${totalDays}`,
           color: "#1e293b"
         }
       ],
@@ -1187,101 +1123,6 @@ export const getAttendanceByDateAndSession = async (req, res) => {
   }
 };
 
-// Get available sessions based on current time and user role
-export const getAvailableSessions = async (req, res) => {
-  try {
-    const userRole = req.user.role;
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 8); // HH:MM:SS
-
-    // Admin sees all sessions
-    if (userRole === 'admin') {
-      const [sessions] = await db.query(`
-        SELECT 
-          'S1' as session_key,
-          'Session 1' as session_name,
-          '08:45 AM - 10:25 AM' as display_name,
-          '08:45:00' as start_time,
-          '10:25:00' as end_time,
-          '10:30:00' as grace_period_end,
-          'active' as status
-        UNION ALL
-        SELECT 
-          'S2', 'Session 2', '10:45 AM - 12:25 AM',
-          '10:45:00', '12:25:00', '12:30:00', 'active'
-        UNION ALL
-        SELECT 
-          'S3', 'Session 3', '01:30 PM - 03:10 PM',
-          '13:30:00', '15:10:00', '15:15:00', 'active'
-        UNION ALL
-        SELECT 
-          'S4', 'Session 4', '03:25 PM - 04:30 PM',
-          '15:25:00', '16:30:00', '16:35:00', 'active'
-      `);
-      
-      return res.json({
-        success: true,
-        data: sessions,
-        is_admin: true
-      });
-    }
-
-    // Faculty sees sessions based on time
-    const [sessions] = await db.query(`
-      SELECT 
-        session_key,
-        session_name,
-        display_name,
-        start_time,
-        end_time,
-        grace_period_end,
-        CASE 
-          WHEN ? BETWEEN start_time AND grace_period_end THEN 'active'
-          WHEN ? < start_time THEN 'upcoming'
-          ELSE 'expired'
-        END as status
-      FROM (
-        SELECT 
-          'S1' as session_key,
-          'Session 1' as session_name,
-          '08:45 AM - 10:25 AM' as display_name,
-          '08:45:00' as start_time,
-          '10:25:00' as end_time,
-          '10:30:00' as grace_period_end
-        UNION ALL
-        SELECT 
-          'S2', 'Session 2', '10:45 AM - 12:25 AM',
-          '10:45:00', '12:25:00', '12:30:00'
-        UNION ALL
-        SELECT 
-          'S3', 'Session 3', '01:30 PM - 03:10 PM',
-          '13:30:00', '15:10:00', '15:15:00'
-        UNION ALL
-        SELECT 
-          'S4', 'Session 4', '03:25 PM - 04:30 PM',
-          '15:25:00', '16:30:00', '16:35:00'
-      ) as all_sessions
-      WHERE ? <= grace_period_end
-      ORDER BY start_time
-    `, [currentTime, currentTime, currentTime]);
-
-    res.json({
-      success: true,
-      data: sessions,
-      is_admin: false,
-      current_time: currentTime
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching available sessions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch available sessions',
-      error: error.message
-    });
-  }
-};
-
 // Update attendance by date and session
 export const updateAttendanceByDateAndSession = async (req, res) => {
   const connection = await db.getConnection();
@@ -1378,6 +1219,85 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
     connection.release();
   }
 }; 
+
+// Export attendance data with filters
+export const exportAttendanceData = async (req, res) => {
+  try {
+    const { venueId, startDate, endDate, timeSlot, year } = req.query;
+    const userId = req.user.user_id;
+
+    // Validate required parameters
+    if (!venueId || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Venue ID, start date, and end date are required'
+      });
+    }
+
+    // Validate date range
+    if (new Date(startDate) > new Date(endDate)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Start date cannot be after end date'
+      });
+    }
+
+    // Build the query with filters
+    let query = `
+      SELECT 
+        a.date,
+        a.time_slot,
+        s.ID as student_id,
+        s.RollNumber as roll_number,
+        s.Name as student_name,
+        s.Email as email,
+        a.status,
+        a.remarks,
+        v.venue_name,
+        u.name as faculty_name
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.ID
+      INNER JOIN venue_allocations v ON a.venue_id = v.venue_id
+      LEFT JOIN faculties f ON v.faculty_id = f.faculty_id
+      LEFT JOIN users u ON f.user_id = u.user_id
+      WHERE a.venue_id = ?
+        AND a.date BETWEEN ? AND ?
+    `;
+
+    const queryParams = [venueId, startDate, endDate];
+
+    // Add time slot filter if specified
+    if (timeSlot && timeSlot !== 'all') {
+      query += ` AND a.time_slot = ?`;
+      queryParams.push(timeSlot);
+    }
+
+    // Add year filter if specified
+    if (year) {
+      query += ` AND s.year = ?`;
+      queryParams.push(parseInt(year));
+    }
+
+    // Order by date and time slot
+    query += ` ORDER BY a.date DESC, a.time_slot, s.RollNumber`;
+
+    const [attendanceRecords] = await db.query(query, queryParams);
+
+    res.status(200).json({
+      success: true,
+      message: `Retrieved ${attendanceRecords.length} attendance records`,
+      data: attendanceRecords
+    });
+
+  } catch (error) {
+    console.error('Error exporting attendance data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export attendance data',
+      error: error.message
+    });
+  }
+};
 
 // Test endpoint
 export const testAttendance = async (req, res) => {

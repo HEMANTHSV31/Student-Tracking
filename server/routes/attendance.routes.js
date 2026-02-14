@@ -13,7 +13,7 @@ import {
   getVenueAttendanceDetails,
   getAttendanceByDateAndSession,
   updateAttendanceByDateAndSession,
-  getAvailableSessions
+  exportAttendanceData
 } from '../controllers/attendance.controller.js';
 import { getStudentSubjectWiseAttendance } from '../controllers/studentDashboard.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -30,9 +30,6 @@ router.get('/test', testAttendance);
 router.get('/venues', getVenueAllocations);  // Uses JWT to get user
 router.get('/students/:venueId', getStudentsForVenue);
 router.get('/venue/:venueId/details', getVenueAttendanceDetails);  // For GroupInsights AttendanceView
-
-// Session management with time validation
-router.get('/sessions/available', getAvailableSessions);  // Get available sessions based on time and role
 router.post('/session', getOrCreateSession);
 router.get('/session/:sessionId/:venueId', getSessionAttendance);
 router.post('/save', saveAttendance);
@@ -47,5 +44,8 @@ router.get('/subject-wise', getStudentSubjectWiseAttendance);
 // New routes for attendance editing by date and session
 router.get('/by-date-session', getAttendanceByDateAndSession);  // GET with query params: venueId, date, sessionId
 router.put('/update-by-date-session', updateAttendanceByDateAndSession);  // PUT to update attendance for specific date/session
+
+// Export attendance data with filters
+router.get('/export', exportAttendanceData);  // GET with query params: venueId, startDate, endDate, timeSlot (optional), year (optional)
 
 export default router;

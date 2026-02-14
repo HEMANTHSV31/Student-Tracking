@@ -23,6 +23,7 @@ import {
   Code,
   Braces,
   MapPin,
+  Briefcase,
 } from "lucide-react";
 
 const SideTab = () => {
@@ -30,7 +31,7 @@ const SideTab = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
-  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice", "venue-allocation"].some((seg) =>
+  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice", "venue-allocation", "admin-tools"].some((seg) =>
     location.pathname.includes(seg),
   );
 
@@ -104,10 +105,10 @@ const SideTab = () => {
         section: "academic",
       },
       {
-        id: "skill-reports",
-        label: "Progress Import",
-        icon: FileSpreadsheet,
-        section: "data",
+        id: "admin-tools",
+        label: "Admin Tools",
+        icon: Briefcase,
+        section: "tools",
       },
       // { id: 'settings', label: 'Settings', icon: Settings, section: 'system' },
     ],
@@ -194,6 +195,8 @@ const SideTab = () => {
     dashboard: { title: "Dashboard" },
     faculty: { title: "Faculty & Accounts" },
     classes: { title: "My Classes / Groups" },
+    "admin-tools": { title: "Admin Tools" },
+
     students: { title: "Students" },
     attendance: { title: "Attendance" },
     tasks: { title: "Task & Assignment" },
@@ -299,6 +302,15 @@ const SideTab = () => {
               <div style={styles.navSectionTitle}>DATA</div>
               {menuItems
                 .filter((i) => i.section === "data")
+                .map(renderNavItem)}
+            </div>
+          )}
+
+          {menuItems.some((i) => i.section === "tools") && (
+            <div style={styles.navSection}>
+              <div style={styles.navSectionTitle}>TOOLS</div>
+              {menuItems
+                .filter((i) => i.section === "tools")
                 .map(renderNavItem)}
             </div>
           )}

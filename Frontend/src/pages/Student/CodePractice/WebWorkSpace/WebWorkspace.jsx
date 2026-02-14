@@ -837,7 +837,7 @@ ${code.js}` : ''}`;
             {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
           
-          {/* Download */}
+          {/* Download */}h
           <button 
             className="ws-action-btn"
             onClick={downloadCode}
