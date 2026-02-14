@@ -558,6 +558,10 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .preview-frame {
@@ -1371,21 +1375,36 @@
   border: 1px solid #21262d;
 }
 
-.copy-path-btn {
+.resource-actions {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.copy-path-btn,
+.download-resource-btn {
   background: transparent;
   border: none;
-  padding: 4px;
+  padding: 8px;
   cursor: pointer;
   color: #8b949e;
   display: flex;
   align-items: center;
-  border-radius: 4px;
+  justify-content: center;
+  border-radius: 6px;
   transition: all 0.2s ease;
+  text-decoration: none;
 }
 
 .copy-path-btn:hover {
   color: #58A6FF;
   background: rgba(88, 166, 255, 0.1);
+}
+
+.download-resource-btn:hover {
+  color: #7ee787;
+  background: rgba(126, 231, 135, 0.1);
 }
 
 .resource-desc {

@@ -1223,14 +1223,14 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
 // Export attendance data with filters
 export const exportAttendanceData = async (req, res) => {
   try {
-    const { venueId, startDate, endDate, timeSlot, year } = req.query;
+    const { venueIds, startDate, endDate, timeSlots, year, facultyId } = req.query;
     const userId = req.user.user_id;
 
     // Validate required parameters
-    if (!venueId || !startDate || !endDate) {
+    if (!venueIds || !startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        message: 'Venue ID, start date, and end date are required'
+        message: 'Venue IDs, start date, and end date are required'
       });
     }
 
@@ -1242,34 +1242,52 @@ export const exportAttendanceData = async (req, res) => {
       });
     }
 
-    // Build the query with filters
+    // Parse venue IDs
+    const venueIdArray = venueIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    
+    if (venueIdArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one valid venue ID is required'
+      });
+    }
+
+    // Build the query with filters  
     let query = `
       SELECT 
-        a.date,
-        a.time_slot,
-        s.ID as student_id,
-        s.RollNumber as roll_number,
-        s.Name as student_name,
-        s.Email as email,
-        a.status,
+        DATE(asess.created_at) as date,
+        SUBSTRING_INDEX(asess.session_name, '_', 1) as time_slot,
+        u.ID as roll_number,
+        u.name as student_name,
+        u.email as email,
+        CASE 
+          WHEN a.is_late = 1 THEN 'Late'
+          WHEN a.is_present = 1 THEN 'Present'
+          ELSE 'Absent'
+        END as status,
         a.remarks,
         v.venue_name,
-        u.name as faculty_name
+        fu.name as faculty_name
       FROM attendance a
-      INNER JOIN students s ON a.student_id = s.ID
-      INNER JOIN venue_allocations v ON a.venue_id = v.venue_id
-      LEFT JOIN faculties f ON v.faculty_id = f.faculty_id
-      LEFT JOIN users u ON f.user_id = u.user_id
-      WHERE a.venue_id = ?
-        AND a.date BETWEEN ? AND ?
+      INNER JOIN attendance_session asess ON a.session_id = asess.session_id
+      INNER JOIN students s ON a.student_id = s.student_id
+      INNER JOIN users u ON s.user_id = u.user_id
+      INNER JOIN venue v ON a.venue_id = v.venue_id
+      LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
+      LEFT JOIN users fu ON f.user_id = fu.user_id
+      WHERE a.venue_id IN (${venueIdArray.map(() => '?').join(',')})
+        AND DATE(asess.created_at) BETWEEN ? AND ?
     `;
 
-    const queryParams = [venueId, startDate, endDate];
+    const queryParams = [...venueIdArray, startDate, endDate];
 
-    // Add time slot filter if specified
-    if (timeSlot && timeSlot !== 'all') {
-      query += ` AND a.time_slot = ?`;
-      queryParams.push(timeSlot);
+    // Add time slots filter if specified (multiple time slots)
+    if (timeSlots) {
+      const timeSlotArray = timeSlots.split(',').map(slot => slot.trim().toUpperCase()).filter(slot => slot);
+      if (timeSlotArray.length > 0) {
+        query += ` AND SUBSTRING_INDEX(asess.session_name, '_', 1) IN (${timeSlotArray.map(() => '?').join(',')})`;
+        queryParams.push(...timeSlotArray);
+      }
     }
 
     // Add year filter if specified
@@ -1278,14 +1296,20 @@ export const exportAttendanceData = async (req, res) => {
       queryParams.push(parseInt(year));
     }
 
+    // Add faculty filter if specified
+    if (facultyId) {
+      query += ` AND f.faculty_id = ?`;
+      queryParams.push(parseInt(facultyId));
+    }
+
     // Order by date and time slot
-    query += ` ORDER BY a.date DESC, a.time_slot, s.RollNumber`;
+    query += ` ORDER BY DATE(asess.created_at) DESC, time_slot, u.ID`;
 
     const [attendanceRecords] = await db.query(query, queryParams);
 
     res.status(200).json({
       success: true,
-      message: `Retrieved ${attendanceRecords.length} attendance records`,
+      message: `Retrieved ${attendanceRecords.length} attendance records from ${venueIdArray.length} venue(s)`,
       data: attendanceRecords
     });
 
