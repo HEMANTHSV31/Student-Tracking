@@ -24,8 +24,6 @@ import StudentHeader from "../pages/SuperAdmin/studentsPage/studentHeader/Studen
 import StudentPage from "../pages/SuperAdmin/studentsPage/AllStudents/studentsPage";
 //Super Admin -> Task & Assignments
 import TaskHeader from "../pages/SuperAdmin/Task&Assignments/TaskHeader/TaskHeader";
-//Super Admin -> Skill Reports
-import AdminSkillReport from "../pages/SuperAdmin/SkillReports/AdminSkillReport";
 //Super Admin -> Group Insights
 import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights";
 //Super Admin -> Question Bank (Practice Courses)
@@ -33,6 +31,11 @@ import CourseList from "../pages/SuperAdmin/QuestionBank/CourseList/CourseList";
 import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/QuestionBank";
 //Super Admin -> Venue Allocation
 import VenueAllocation from "../pages/SuperAdmin/VenueAllocation/VenueAllocation";
+//Super Admin -> Skill Reports
+import AdminSkillReport from "../pages/SuperAdmin/AdminTools/SkillReports/AdminSkillReport";
+//Super Admin -> Admin Tools
+import AdminTools from "../pages/SuperAdmin/AdminTools/AdminTools";
+import AttendanceExport from "../pages/SuperAdmin/AdminTools/AttendanceExport";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
@@ -105,7 +108,7 @@ const AppNavigator = () => {
             </Route>
             <Route path="attendance" element={<Attendance />} />
             <Route path="tasks" element={<TaskHeader />} />
-            <Route path="skill-reports" element={<AdminSkillReport />} />
+            <Route path="skill-reports" element={<Navigate to="/admin-tools/progress-import" replace />} />
             <Route path="group-insights" element={<AdminGroupInsights />} />
             <Route path="reports" element={<ReportsAnalytics />} />
             {/* Question Bank / Practice Courses */}
@@ -113,6 +116,10 @@ const AppNavigator = () => {
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
             {/* Venue Allocation */}
             <Route path="venue-allocation" element={<VenueAllocation />} />
+            {/* Admin Tools */}
+            <Route path="admin-tools" element={<AdminTools />} />
+            <Route path="admin-tools/attendance-export" element={<AttendanceExport />} />
+            <Route path="admin-tools/progress-import" element={<AdminSkillReport />} />
           </Route>
         )}
 

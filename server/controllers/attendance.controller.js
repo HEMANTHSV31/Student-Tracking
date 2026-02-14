@@ -1220,6 +1220,85 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
   }
 }; 
 
+// Export attendance data with filters
+export const exportAttendanceData = async (req, res) => {
+  try {
+    const { venueId, startDate, endDate, timeSlot, year } = req.query;
+    const userId = req.user.user_id;
+
+    // Validate required parameters
+    if (!venueId || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Venue ID, start date, and end date are required'
+      });
+    }
+
+    // Validate date range
+    if (new Date(startDate) > new Date(endDate)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Start date cannot be after end date'
+      });
+    }
+
+    // Build the query with filters
+    let query = `
+      SELECT 
+        a.date,
+        a.time_slot,
+        s.ID as student_id,
+        s.RollNumber as roll_number,
+        s.Name as student_name,
+        s.Email as email,
+        a.status,
+        a.remarks,
+        v.venue_name,
+        u.name as faculty_name
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.ID
+      INNER JOIN venue_allocations v ON a.venue_id = v.venue_id
+      LEFT JOIN faculties f ON v.faculty_id = f.faculty_id
+      LEFT JOIN users u ON f.user_id = u.user_id
+      WHERE a.venue_id = ?
+        AND a.date BETWEEN ? AND ?
+    `;
+
+    const queryParams = [venueId, startDate, endDate];
+
+    // Add time slot filter if specified
+    if (timeSlot && timeSlot !== 'all') {
+      query += ` AND a.time_slot = ?`;
+      queryParams.push(timeSlot);
+    }
+
+    // Add year filter if specified
+    if (year) {
+      query += ` AND s.year = ?`;
+      queryParams.push(parseInt(year));
+    }
+
+    // Order by date and time slot
+    query += ` ORDER BY a.date DESC, a.time_slot, s.RollNumber`;
+
+    const [attendanceRecords] = await db.query(query, queryParams);
+
+    res.status(200).json({
+      success: true,
+      message: `Retrieved ${attendanceRecords.length} attendance records`,
+      data: attendanceRecords
+    });
+
+  } catch (error) {
+    console.error('Error exporting attendance data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export attendance data',
+      error: error.message
+    });
+  }
+};
+
 // Test endpoint
 export const testAttendance = async (req, res) => {
   res.status(200).json({

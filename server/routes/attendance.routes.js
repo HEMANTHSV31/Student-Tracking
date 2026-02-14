@@ -12,7 +12,8 @@ import {
   getSessionAttendance,
   getVenueAttendanceDetails,
   getAttendanceByDateAndSession,
-  updateAttendanceByDateAndSession
+  updateAttendanceByDateAndSession,
+  exportAttendanceData
 } from '../controllers/attendance.controller.js';
 import { getStudentSubjectWiseAttendance } from '../controllers/studentDashboard.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -43,5 +44,8 @@ router.get('/subject-wise', getStudentSubjectWiseAttendance);
 // New routes for attendance editing by date and session
 router.get('/by-date-session', getAttendanceByDateAndSession);  // GET with query params: venueId, date, sessionId
 router.put('/update-by-date-session', updateAttendanceByDateAndSession);  // PUT to update attendance for specific date/session
+
+// Export attendance data with filters
+router.get('/export', exportAttendanceData);  // GET with query params: venueId, startDate, endDate, timeSlot (optional), year (optional)
 
 export default router;
