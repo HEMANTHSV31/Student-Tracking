@@ -12,7 +12,8 @@ import {
   getSessionAttendance,
   getVenueAttendanceDetails,
   getAttendanceByDateAndSession,
-  updateAttendanceByDateAndSession
+  updateAttendanceByDateAndSession,
+  getAvailableSessions
 } from '../controllers/attendance.controller.js';
 import { getStudentSubjectWiseAttendance } from '../controllers/studentDashboard.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -29,6 +30,9 @@ router.get('/test', testAttendance);
 router.get('/venues', getVenueAllocations);  // Uses JWT to get user
 router.get('/students/:venueId', getStudentsForVenue);
 router.get('/venue/:venueId/details', getVenueAttendanceDetails);  // For GroupInsights AttendanceView
+
+// Session management with time validation
+router.get('/sessions/available', getAvailableSessions);  // Get available sessions based on time and role
 router.post('/session', getOrCreateSession);
 router.get('/session/:sessionId/:venueId', getSessionAttendance);
 router.post('/save', saveAttendance);
