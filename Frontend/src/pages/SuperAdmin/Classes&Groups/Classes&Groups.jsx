@@ -42,12 +42,25 @@ const GroupsClasses = () => {
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignFacultyModal, setShowAssignFacultyModal] = useState(false);
+  const [showBulkAttendanceModal, setShowBulkAttendanceModal] = useState(false);
+  const [showSingleVenueBulkUploadModal, setShowSingleVenueBulkUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedVenue, setSelectedVenue] = useState(null);
   const [venueStudents, setVenueStudents] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState("");
   const [uploadResult, setUploadResult] = useState(null);
+  
+  // Single Venue Student Bulk Upload States
+  const [singleVenueStudentFile, setSingleVenueStudentFile] = useState(null);
+  const [singleVenueUploadMode, setSingleVenueUploadMode] = useState(false); // false = add, true = overwrite
+  const [uploadingSingleVenue, setUploadingSingleVenue] = useState(false);
+  
+  // Bulk Attendance Upload States
+  const [attendanceFile, setAttendanceFile] = useState(null);
+  const [attendanceUploadMode, setAttendanceUploadMode] = useState(false); // false = add, true = overwrite
+  const [uploadingAttendance, setUploadingAttendance] = useState(false);
+  const [attendanceUploadResult, setAttendanceUploadResult] = useState(null);
 
   // Faculty search and availability
   const [facultySearch, setFacultySearch] = useState("");
@@ -533,6 +546,165 @@ const GroupsClasses = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Single Venue Student Bulk Upload Handlers
+  const handleSingleVenueStudentFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+      if (!validTypes.includes(file.type)) {
+        showResult('error', 'Invalid File Type', 'Only Excel files (.xlsx, .xls) are allowed');
+        return;
+      }
+      setSingleVenueStudentFile(file);
+    }
+  };
+
+  const handleSingleVenueBulkUpload = async () => {
+    if (!singleVenueStudentFile) {
+      showResult('error', 'No File Selected', 'Please select an Excel file to upload.');
+      return;
+    }
+
+    if (!selectedVenue) {
+      showResult('error', 'No Venue Selected', 'Please select a venue first.');
+      return;
+    }
+
+    setUploadingSingleVenue(true);
+    const formData = new FormData();
+    formData.append('file', singleVenueStudentFile);
+
+    try {
+      const response = await apiPost(
+        `/groups/venues/${selectedVenue.venue_id}/bulk-upload?overwrite=${singleVenueUploadMode}`,
+        formData
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setSingleVenueStudentFile(null);
+        await fetchVenues();
+        
+        let message = `Successfully processed students for ${selectedVenue.venue_name}\n`;
+        message += `Added: ${data.data.added}, Moved: ${data.data.moved}`;
+        
+        if (singleVenueUploadMode && data.data.dropped > 0) {
+          message += `, Dropped: ${data.data.dropped}`;
+        }
+        
+        if (data.data.errors && data.data.errors.length > 0) {
+          message += `\n\nErrors (${data.data.errors.length}):\n${data.data.errors.slice(0, 5).join('\n')}`;
+          if (data.data.errors.length > 5) {
+            message += `\n...and ${data.data.errors.length - 5} more errors`;
+          }
+        }
+        
+        showResult('success', 'Upload Successful', message);
+        setShowSingleVenueBulkUploadModal(false);
+      } else {
+        showResult('error', 'Upload Failed', data.message || 'Failed to upload students');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      showResult('error', 'Upload Failed', 'Failed to upload file. Please try again.');
+    } finally {
+      setUploadingSingleVenue(false);
+    }
+  };
+
+  // Bulk Attendance Upload Handlers
+  const handleBulkAttendanceFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+      if (!validTypes.includes(file.type)) {
+        showResult('error', 'Invalid File Type', 'Only Excel files (.xlsx, .xls) are allowed');
+        return;
+      }
+      setAttendanceFile(file);
+      setAttendanceUploadResult(null);
+    }
+  };
+
+  const handleDownloadAttendanceTemplate = async () => {
+    try {
+      const response = await fetch(
+        `${API_URL}/attendance/bulk-upload-template`,
+        {
+          method: 'GET',
+          credentials: 'include'
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to download template');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'bulk_attendance_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Download error:', err);
+      showResult('error', 'Download Failed', 'Failed to download template');
+    }
+  };
+
+  const handleBulkAttendanceUpload = async () => {
+    if (!attendanceFile) {
+      showResult('error', 'No File Selected', 'Please select an Excel file to upload.');
+      return;
+    }
+
+    if (!selectedVenue) {
+      showResult('error', 'No Venue Selected', 'Please select a venue first.');
+      return;
+    }
+
+    setUploadingAttendance(true);
+    const formData = new FormData();
+    formData.append('file', attendanceFile);
+    formData.append('venueId', selectedVenue.venue_id);
+
+    try {
+      const response = await apiPost(
+        `/attendance/bulk-upload?overwrite=${attendanceUploadMode}`,
+        formData
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setAttendanceUploadResult(data.data);
+        setAttendanceFile(null);
+        
+        let message = `Successfully processed ${data.data.totalRows} rows for ${data.data.venue.venue_name}\n`;
+        message += `Inserted: ${data.data.inserted}, Updated: ${data.data.updated}, Skipped: ${data.data.skipped}`;
+        
+        if (data.data.errors && data.data.errors.length > 0) {
+          message += `\n\nErrors (${data.data.errors.length}):\n${data.data.errors.slice(0, 5).join('\n')}`;
+          if (data.data.errors.length > 5) {
+            message += `\n...and ${data.data.errors.length - 5} more errors`;
+          }
+        }
+        
+        showResult('success', 'Upload Successful', message);
+        setShowBulkAttendanceModal(false);
+      } else {
+        showResult('error', 'Upload Failed', data.message || 'Failed to upload attendance');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      showResult('error', 'Upload Failed', 'Failed to upload file. Please try again.');
+    } finally {
+      setUploadingAttendance(false);
     }
   };
 
@@ -1121,6 +1293,23 @@ const GroupsClasses = () => {
               >
                 <Add sx={{ fontSize: 16, color: "#3b82f6" }} />
                 <span style={{ color: "#3b82f6" }}>Add Individual Student</span>
+              </button>
+              <button
+                style={s.menuItem}
+                onClick={() => {
+                  setSelectedVenue(menuVenue);
+                  setShowSingleVenueBulkUploadModal(true);
+                  closeMenu();
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.backgroundColor = "#f0fdf4")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.backgroundColor = "transparent")
+                }
+              >
+                <Upload sx={{ fontSize: 16, color: "#10b981" }} />
+                <span style={{ color: "#10b981" }}>Bulk Upload Students</span>
               </button>
               <button
                 style={s.menuItem}
@@ -1951,6 +2140,140 @@ const GroupsClasses = () => {
                   disabled={loading || !newStudent.reg_no}
                 >
                   {loading ? "Adding..." : "Add Student"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single Venue Bulk Student Upload Modal */}
+      {showSingleVenueBulkUploadModal && (
+        <div
+          style={s.modalOverlay}
+          onClick={() => {
+            setShowSingleVenueBulkUploadModal(false);
+            setSingleVenueStudentFile(null);
+          }}
+        >
+          <div style={{ ...s.modal, maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={s.modalHeader}>
+              <h2 style={s.modalTitle}>
+                Bulk Upload Students - {selectedVenue?.venue_name}
+              </h2>
+              <button
+                style={s.closeBtn}
+                onClick={() => {
+                  setShowSingleVenueBulkUploadModal(false);
+                  setSingleVenueStudentFile(null);
+                }}
+              >
+                <Close sx={{ fontSize: 24, color: "#64748b" }} />
+              </button>
+            </div>
+            <div style={s.form}>
+              {/* Instructions */}
+              <div style={{
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px'
+              }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#1e40af', margin: '0 0 8px 0' }}>
+                  Instructions
+                </h3>
+                <ul style={{ fontSize: '13px', color: '#1e40af', margin: 0, paddingLeft: '20px', lineHeight: '1.6' }}>
+                  <li>Upload Excel file with student roll numbers for this venue</li>
+                  <li>Required column: Registration Number (or Roll Number, ID, etc.)</li>
+                  <li>Students must already exist in the system</li>
+                  <li><strong>Default:</strong> Adds new students while keeping existing ones</li>
+                  <li><strong>Overwrite:</strong> Removes ALL existing students first, then adds new ones</li>
+                </ul>
+              </div>
+
+              {/* Upload Mode Selection - Checkbox */}
+              <div style={s.formGroup}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  border: `2px solid ${singleVenueUploadMode ? '#f59e0b' : '#e2e8f0'}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: singleVenueUploadMode ? '#fffbeb' : '#f8fafc',
+                  transition: 'all 0.2s'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={singleVenueUploadMode}
+                    onChange={(e) => setSingleVenueUploadMode(e.target.checked)}
+                    style={{ 
+                      width: '18px', 
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#f59e0b'
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: singleVenueUploadMode ? '#92400e' : '#1e293b' }}>
+                      Overwrite Existing Students
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* File Upload */}
+              <div style={s.formGroup}>
+                <label style={s.label}>Select Excel File</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleSingleVenueStudentFileSelect}
+                  style={{
+                    ...s.input,
+                    cursor: 'pointer',
+                    padding: '10px'
+                  }}
+                />
+                {singleVenueStudentFile && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #86efac',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    color: '#166534',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <CheckCircle sx={{ fontSize: 16 }} />
+                    {singleVenueStudentFile.name} ({(singleVenueStudentFile.size / 1024).toFixed(2)} KB)
+                  </div>
+                )}
+              </div>
+
+              <div style={s.modalFooter}>
+                <button
+                  type="button"
+                  style={s.cancelBtn}
+                  onClick={() => {
+                    setShowSingleVenueBulkUploadModal(false);
+                    setSingleVenueStudentFile(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  style={s.submitBtn}
+                  onClick={handleSingleVenueBulkUpload}
+                  disabled={uploadingSingleVenue || !singleVenueStudentFile}
+                >
+                  {uploadingSingleVenue ? "Uploading..." : "Upload Students"}
                 </button>
               </div>
             </div>

@@ -109,10 +109,17 @@ export const addIndividualStudentToVenue = async (req, res) => {
     const groupId = group.group_id;
     const venueCapacity = Number(group.capacity) || 0;
     const groupMaxStudents = Number(group.max_students) || 0;
-    const effectiveCapacity =
-      venueCapacity > 0 && groupMaxStudents > 0
-        ? Math.min(venueCapacity, groupMaxStudents)
-        : Math.max(venueCapacity, groupMaxStudents);
+    // Effective capacity: use the smaller non-zero value, or 0 if both are 0
+    let effectiveCapacity;
+    if (venueCapacity > 0 && groupMaxStudents > 0) {
+      effectiveCapacity = Math.min(venueCapacity, groupMaxStudents);
+    } else if (venueCapacity > 0) {
+      effectiveCapacity = venueCapacity;
+    } else if (groupMaxStudents > 0) {
+      effectiveCapacity = groupMaxStudents;
+    } else {
+      effectiveCapacity = 0; // No capacity limits
+    }
 
     // Upsert user by roll number (users.ID) or email.
     const [existingUsers] = await connection.query(
@@ -198,19 +205,22 @@ export const addIndividualStudentToVenue = async (req, res) => {
 
     // Debug logging
     console.log(`[ADD STUDENT] Checking allocation for student ${studentRollNumber} (ID: ${studentId})`);
-    console.log(`[ADD STUDENT] Target venue: ${venueId}, Found allocations:`, existingAllocation.length);
+    console.log(`[ADD STUDENT] Target venue: ${venueId} (type: ${typeof venueId}), Found allocations:`, existingAllocation.length);
     
     if (existingAllocation.length > 0) {
       const alloc = existingAllocation[0];
       console.log(`[ADD STUDENT] Existing allocation found:`, {
         allocation_id: alloc.allocation_id,
         venue_id: alloc.venue_id,
+        venue_id_type: typeof alloc.venue_id,
         venue_name: alloc.venue_name,
         group_id: alloc.group_id,
         allocation_status: alloc.allocation_status,
         group_status: alloc.group_status,
         venue_status: alloc.venue_status
       });
+
+      console.log(`[ADD STUDENT] Comparison: alloc.venue_id (${alloc.venue_id}) === venueId (${venueId}) ? ${Number(alloc.venue_id) === Number(venueId)}`);
 
       // If already in the target venue with Active status, return error
       if (Number(alloc.venue_id) === Number(venueId)) {
@@ -267,22 +277,24 @@ export const addIndividualStudentToVenue = async (req, res) => {
 
     // Check if student was previously in this group but was dropped
     const [previousAllocation] = await connection.query(
-      `SELECT gs.group_id, gs.status
+      `SELECT gs.id as allocation_id, gs.group_id, gs.status
        FROM group_students gs
        INNER JOIN \`groups\` g ON g.group_id = gs.group_id
-       WHERE gs.student_id = ? AND g.venue_id = ?
+       WHERE gs.student_id = ? AND g.venue_id = ? AND gs.status != 'Active'
        FOR UPDATE`,
       [studentId, venueId]
     );
 
+    console.log(`[ADD STUDENT] Checking previous allocations in venue ${venueId}:`, previousAllocation.length);
+
     if (previousAllocation.length > 0) {
-      // Student was previously in this venue - reactivate them
+      // Student was previously in this venue but dropped - reactivate them
+      console.log(`[ADD STUDENT] Reactivating previous allocation ${previousAllocation[0].allocation_id}`);
       await connection.query(
-        `UPDATE group_students gs
-         INNER JOIN \`groups\` g ON gs.group_id = g.group_id
-         SET gs.status = 'Active'
-         WHERE gs.student_id = ? AND g.venue_id = ?`,
-        [studentId, venueId]
+        `UPDATE group_students 
+         SET status = 'Active'
+         WHERE id = ?`,
+        [previousAllocation[0].allocation_id]
       );
     } else {
       // Create new allocation
@@ -728,11 +740,22 @@ export const updateVenue = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // Update venue details
     await connection.query(`
       UPDATE venue 
       SET venue_name = ?, capacity = ?, location = ?, assigned_faculty_id = ?, status = ?, year = ?, group_specification = ?  
       WHERE venue_id = ?
     `, [venue_name, capacity, location, assigned_faculty_id, status, yearValue, group_specification || null, venueId]);
+
+    // Update max_students for all groups in this venue to match the new capacity
+    // This ensures capacity checks work correctly
+    if (capacity && capacity > 0) {
+      await connection.query(`
+        UPDATE \`groups\`
+        SET max_students = ?
+        WHERE venue_id = ?
+      `, [capacity, venueId]);
+    }
 
     await connection.commit();
 
@@ -1157,99 +1180,50 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       
-      // Support multiple column name formats (flexible mapping)
+      // Support multiple column name formats (flexible mapping) - ONLY ROLL NUMBER REQUIRED
       let rollNumber = row.rollNumber || row['Reg No'] || row.reg_no || row.RegNo || row.ID || row['S. No.'] 
                     || row['Roll Number'] || row['Roll No'] || row['Registration Number'] || row['Registration No']
                     || row['Student ID'] || row['Student Id'] || row['Roll No.'] || row['Reg. No.'] || row['Reg No.']
                     || row.roll_number || row.roll_no || row.registration_number || row.student_id;
-      
-      const name = row.name || row['Student Name'] || row.studentName || row.Name;
-      const email = row.email || row['Student Official Email ID'] || row.Email || row.student_email;
-      const department = row.department || row.Department || row.dept;
-      const year = row.year || row.Year;
-      const semester = row.semester || row.Semester;
-      
-      // If no roll number found but email exists, extract from email
-      if (!rollNumber && email && String(email).includes('@')) {
-        const emailPrefix = String(email).split('@')[0];
-        rollNumber = emailPrefix; // Use email prefix as roll number
-        // console.log(`\n--- Processing Row ${i + 2} ---`);
-        // console.log(`⚠️ No roll number column found, using email prefix as roll number`);
-        // console.log(`Roll Number (from email): ${rollNumber}, Name: ${name}, Email: ${email}`);
-      } else {
-        // console.log(`\n--- Processing Row ${i + 2} ---`);
-        // console.log(`Roll Number: ${rollNumber}, Name: ${name}, Email: ${email}`);
-      }
 
       // Only rollNumber is required
       if (!rollNumber || String(rollNumber).trim() === '') {
-        // console.log(`Row ${i + 2}: SKIPPED - Missing roll number`);
-        errors.push(`Row ${i + 1}: Missing roll number/registration number`);
+        errors.push(`Row ${i + 2}: Missing roll number/registration number`);
         studentsSkipped++;
         continue;
       }
 
       const rollNumberStr = String(rollNumber).trim();
-      // Auto-fill name and email if not provided
-      const studentName = (name && String(name).trim()) || rollNumberStr;
-      const studentEmail = (email && String(email).trim()) || `${rollNumberStr}@student.local`;
 
       try {
-        // Check if user already exists
+        // Look up existing student by ID in users table
         const [existingUser] = await connection.query(
-          'SELECT user_id FROM users WHERE email = ? OR ID = ?',
-          [studentEmail.toLowerCase(), rollNumberStr]
+          'SELECT user_id, name, email FROM users WHERE ID = ?',
+          [rollNumberStr]
         );
-        
-        // console.log(`User lookup result: ${existingUser.length > 0 ? `Found user_id ${existingUser[0].user_id}` : 'No existing user'}`);
-
-        let userId;
-        let studentId;
 
         if (existingUser.length === 0) {
-         
-          // Insert new user
-          const [userResult] = await connection.query(
-            `INSERT INTO users (role_id, name, email, ID, department, created_at, is_active) 
-             VALUES (3, ?, ?, ?, ?, NOW(), 1)`,
-            [studentName, studentEmail.toLowerCase(), rollNumberStr, (department || 'General').trim()]
-          );
-
-          userId = userResult.insertId;
-          // console.log(`Created new user with user_id: ${userId}`);
-
-          // Insert student record
-          const [studentResult] = await connection.query(
-            'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, ?)',
-            [userId, year || 1, semester || 1, venue.assigned_faculty_id || 0]
-          );
-
-          studentId = studentResult.insertId;
-          // console.log(`Created new student with student_id: ${studentId}`);
-          
-        } else {
-          userId = existingUser[0].user_id;
-          // console.log(`Using existing user_id: ${userId}`);
-
-          // Check if student record exists
-          const [student] = await connection.query(
-            'SELECT student_id FROM students WHERE user_id = ?',
-            [userId]
-          );
-
-          if (student.length === 0) {
-            // console.log(`Student record not found, creating new student record`);
-            const [studentResult] = await connection.query(
-              'INSERT INTO students (user_id, year, semester, assigned_faculty_id) VALUES (?, ?, ?, ?)',
-              [userId, year || 1, semester || 1, venue.assigned_faculty_id || 0]
-            );
-            studentId = studentResult.insertId;
-            // console.log(`Created new student with student_id: ${studentId}`);
-          } else {
-            studentId = student[0].student_id;
-            // console.log(`Using existing student_id: ${studentId}`);
-          }
+          errors.push(`Row ${i + 2}: Student ${rollNumberStr} not found in system`);
+          studentsSkipped++;
+          continue;
         }
+
+        const userId = existingUser[0].user_id;
+        const studentName = existingUser[0].name;
+
+        // Get student_id from students table
+        const [student] = await connection.query(
+          'SELECT student_id FROM students WHERE user_id = ?',
+          [userId]
+        );
+
+        if (student.length === 0) {
+          errors.push(`Row ${i + 2}: Student record not found for ${rollNumberStr}`);
+          studentsSkipped++;
+          continue;
+        }
+
+        const studentId = student[0].student_id;
 
         // Check if already allocated to this venue
         const [existingAllocation] = await connection.query(`
@@ -1258,13 +1232,10 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           INNER JOIN \`groups\` g ON gs.group_id = g.group_id
           WHERE gs.student_id = ? AND g.venue_id = ? AND gs.status = 'Active'
         `, [studentId, venueId]);
-        
-        // console.log(`Existing allocation check: ${existingAllocation.length > 0 ? 'ALREADY ALLOCATED TO THIS VENUE' : 'Not in this venue'}`);
 
         if (existingAllocation.length > 0) {
           studentsSkipped++;
-          // console.log(`Row ${i + 2}: SKIPPED - Already in this venue`);
-          errors.push(`${studentName} (${rollNumberStr}) already allocated to this venue`);
+          errors.push(`Row ${i + 2}: ${studentName} (${rollNumberStr}) already allocated to this venue`);
           continue;
         }
 
@@ -1276,16 +1247,12 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           INNER JOIN venue v ON g.venue_id = v.venue_id
           WHERE gs.student_id = ? AND gs.status = 'Active'
         `, [studentId]);
-        
-        // console.log(`Other venue check: ${otherVenueAllocation.length > 0 ? `Found in ${otherVenueAllocation[0].venue_name}` : 'Not in any other venue'}`);
 
         if (otherVenueAllocation.length > 0) {
           // Drop student from old venue (preserves history)
           await connection.query(`
             UPDATE group_students SET status = 'Dropped' WHERE id = ?
           `, [otherVenueAllocation[0].id]);
-          // console.log(`Moved student from ${otherVenueAllocation[0].venue_name} to this venue`);
-          errors.push(`${studentName} (${rollNumberStr}) moved from ${otherVenueAllocation[0].venue_name}`);
         }
 
         // Check if student was previously in this venue (reactivate instead of insert)
@@ -1295,8 +1262,6 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           INNER JOIN \`groups\` g ON gs.group_id = g.group_id
           WHERE gs.student_id = ? AND g.venue_id = ? AND gs.status != 'Active'
         `, [studentId, venueId]);
-        
-        // console.log(`Previous allocation check: ${previousAllocation.length > 0 ? 'Found inactive record - will reactivate' : 'No previous allocation'}`);
 
         let groupStudentsId = null;
         if (previousAllocation.length > 0) {
@@ -1306,7 +1271,6 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
             [previousAllocation[0].id]
           );
           groupStudentsId = previousAllocation[0].id;
-          // console.log(`Reactivated previous allocation with id: ${groupStudentsId}`);
         } else {
           // Insert into group_students
           const [insertResult] = await connection.query(
@@ -1314,7 +1278,6 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
             [groupId, studentId]
           );
           groupStudentsId = insertResult.insertId;
-          // console.log(`Created new allocation with id: ${groupStudentsId}`);
         }
         
         studentsAdded++;
