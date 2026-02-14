@@ -3314,24 +3314,39 @@ const StudyRoadmap = ({
             }
           }
         } else {
-          // Single venue creation
-          const newModule = {
-            ...newDay,
-            roadmap_id:
-              data.data.roadmap_id || data.data.roadmaps[0].roadmap_id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            resources: [],
-          };
+          // Single venue creation - refresh the roadmap list
+          const response = await apiGet(`/roadmap/venue/${selectedVenueId}`);
+          const refreshData = await response.json();
+          
+          if (refreshData.success) {
+            // Update the roadmap state with fresh data from server
+            setRoadmap(refreshData.data);
+            setMessageModal({
+              show: true,
+              title: "Success",
+              message: "Roadmap module created successfully!",
+              type: "success",
+            });
+          } else {
+            // Fallback to adding manually if refresh fails
+            const newModule = {
+              ...newDay,
+              roadmap_id:
+                data.data.roadmap_id || data.data.roadmaps[0].roadmap_id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              resources: [],
+            };
 
-          const updatedRoadmap = [...roadmap, newModule];
-          setRoadmap(updatedRoadmap);
-          setMessageModal({
-            show: true,
-            title: "Success",
-            message: "Roadmap module created successfully!",
-            type: "success",
-          });
+            const updatedRoadmap = [...roadmap, newModule];
+            setRoadmap(updatedRoadmap);
+            setMessageModal({
+              show: true,
+              title: "Success",
+              message: "Roadmap module created successfully!",
+              type: "success",
+            });
+          }
         }
       } else {
         setMessageModal({

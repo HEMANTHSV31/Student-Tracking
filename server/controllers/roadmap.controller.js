@@ -186,8 +186,70 @@ export const getRoadmapByVenue = async (req, res) => {
     const [modules] = await db.query(query, params);
     // console.log('Found modules:', modules.length);
 
-    // Get resources for each module
+    // Get venue information for skill order filtering
+    const [venueInfo] = await db.query(`
+      SELECT year FROM venue WHERE venue_id = ?
+    `, [venue_id]);
+
+    const venueYear = venueInfo.length > 0 ? venueInfo[0].year : null;
+
+    // Filter modules based on skill order venue/year restrictions
+    const filteredModules = [];
+    
     for (let module of modules) {
+      // Check if this module's course_type has skill order restrictions
+      const [skillOrders] = await db.query(`
+        SELECT so.id, so.apply_to_all_venues
+        FROM skill_order so
+        WHERE so.course_type = ? AND so.day = ?
+      `, [module.course_type, module.day]);
+
+      if (skillOrders.length > 0) {
+        const skillOrder = skillOrders[0];
+        
+        // If apply_to_all_venues is true, show this module
+        if (skillOrder.apply_to_all_venues === 1) {
+          filteredModules.push(module);
+          continue;
+        }
+        
+        // Check if this venue is in the allowed venues for this skill order
+        const [venueRestrictions] = await db.query(`
+          SELECT venue_id FROM skill_order_venues WHERE skill_order_id = ?
+        `, [skillOrder.id]);
+        
+        const allowedVenueIds = venueRestrictions.map(v => v.venue_id);
+        
+        // If venue is in the allowed list, include this module
+        if (allowedVenueIds.includes(parseInt(venue_id))) {
+          // Also check year restriction if venue has a year
+          if (venueYear) {
+            const [yearRestrictions] = await db.query(`
+              SELECT year FROM skill_order_years WHERE skill_order_id = ?
+            `, [skillOrder.id]);
+            
+            if (yearRestrictions.length > 0) {
+              const allowedYears = yearRestrictions.map(y => y.year);
+              if (allowedYears.includes(venueYear)) {
+                filteredModules.push(module);
+              }
+            } else {
+              // No year restrictions, show module
+              filteredModules.push(module);
+            }
+          } else {
+            // Venue has no year, show module
+            filteredModules.push(module);
+          }
+        }
+      } else {
+        // No skill order exists for this module, show it (backward compatibility)
+        filteredModules.push(module);
+      }
+    }
+
+    // Get resources for each filtered module
+    for (let module of filteredModules) {
       const [resources] = await db.query(`
         SELECT 
           resource_id,
@@ -207,7 +269,7 @@ export const getRoadmapByVenue = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: modules
+      data: filteredModules
     });
   } catch (error) {
     console.error('Error fetching roadmap:', error);

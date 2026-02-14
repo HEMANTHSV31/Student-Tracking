@@ -29,7 +29,9 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
   const [showAssociationsModal, setShowAssociationsModal] = useState(false);
   const [newCourseType, setNewCourseType] = useState('');
   const [newCourseTypeVenues, setNewCourseTypeVenues] = useState([]);
+  const [newCourseTypeYears, setNewCourseTypeYears] = useState([]);
   const [applyToAllVenuesForCourseType, setApplyToAllVenuesForCourseType] = useState(true);
+  const [applyToAllYearsForCourseType, setApplyToAllYearsForCourseType] = useState(true);
   const [editingSkill, setEditingSkill] = useState(null);
   const [currentSkillForAssociations, setCurrentSkillForAssociations] = useState(null);
   const [newSkill, setNewSkill] = useState({
@@ -126,6 +128,11 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
       return;
     }
 
+    if (!applyToAllYearsForCourseType && newCourseTypeYears.length === 0) {
+      showMessage('error', 'Please select at least one year or enable "Apply to All Years"');
+      return;
+    }
+
     setSaving(true);
     try {
       const courseTypeSlug = newCourseType.trim().toLowerCase().replace(/\s+/g, '-');
@@ -138,8 +145,8 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
         description: 'First skill in ' + newCourseType.trim(),
         apply_to_all_venues: applyToAllVenuesForCourseType,
         venue_ids: applyToAllVenuesForCourseType ? [] : newCourseTypeVenues,
-        apply_to_all_years: true,
-        years: []
+        apply_to_all_years: applyToAllYearsForCourseType,
+        years: applyToAllYearsForCourseType ? [] : newCourseTypeYears
       });
 
       const data = await response.json();
@@ -148,7 +155,9 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
         setShowCourseTypeModal(false);
         setNewCourseType('');
         setNewCourseTypeVenues([]);
+        setNewCourseTypeYears([]);
         setApplyToAllVenuesForCourseType(true);
+        setApplyToAllYearsForCourseType(true);
         // Refresh the page or notify parent to refresh course types
         window.location.reload();
       } else {
@@ -609,7 +618,7 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
       {/* Add Skill Modal */}
       {showAddModal && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modal}>
+          <div style={{ ...styles.modal, maxWidth: '550px' }}>
             <div style={styles.modalHeader}>
               <h3 style={styles.modalTitle}>Add Skill to Order</h3>
               <button
@@ -1155,16 +1164,18 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
       {/* Create Course Type Modal */}
       {showCourseTypeModal && (
         <div style={styles.modalOverlay}>
-          <div style={{ ...styles.modal, maxWidth: '420px' }}>
+          <div style={{ ...styles.modal, maxWidth: '550px' }}>
             <div style={styles.modalHeader}>
-              <h3 style={styles.modalTitle}>Create Course Type</h3>
+              <h3 style={styles.modalTitle}>Create New Course Type</h3>
               <button
                 onClick={() => {
                   setShowCourseTypeModal(false);
                   setCourseTypeVenueSearch('');
                   setNewCourseType('');
                   setNewCourseTypeVenues([]);
+                  setNewCourseTypeYears([]);
                   setApplyToAllVenuesForCourseType(true);
+                  setApplyToAllYearsForCourseType(true);
                 }}
                 style={styles.modalCloseButton}
               >
@@ -1174,92 +1185,183 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
 
             <div style={styles.modalBody}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Name *</label>
+                <label style={styles.label}>Course Type Name *</label>
                 <input
                   type="text"
                   value={newCourseType}
                   onChange={(e) => setNewCourseType(e.target.value)}
                   style={styles.input}
-                  placeholder="e.g., Frontend, Backend"
+                  placeholder="e.g., Frontend Development, Backend, DevOps"
                   autoFocus
                   onKeyPress={(e) => e.key === 'Enter' && handleCreateCourseType()}
                 />
-                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                  Saved as: {newCourseType ? newCourseType.toLowerCase().replace(/\s+/g, '-') : 'course-name'}
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', margin: 0 }}>
+                  Will be saved as: <strong>{newCourseType ? newCourseType.toLowerCase().replace(/\s+/g, '-') : 'course-name'}</strong>
                 </p>
               </div>
 
-              <div style={{ marginTop: '16px' }}>
-                <label style={styles.label}>Venues</label>
-                <select
-                  value={applyToAllVenuesForCourseType ? 'all' : 'specific'}
-                  onChange={(e) => {
-                    if (e.target.value === 'all') {
-                      setApplyToAllVenuesForCourseType(true);
-                      setNewCourseTypeVenues([]);
-                    } else {
-                      setApplyToAllVenuesForCourseType(false);
-                    }
-                  }}
-                  style={styles.input}
-                >
-                  <option value="all">All Venues</option>
-                  <option value="specific">Select Specific Venues</option>
-                </select>
+              <div style={{ padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <div style={{ fontWeight: '600', marginBottom: '8px', color: '#374151', fontSize: '14px' }}>
+                  🎯 Apply this course type to:
+                </div>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
+                  These settings will apply to ALL skills created under this course type
+                </div>
 
-                {!applyToAllVenuesForCourseType && venues && venues.length > 0 && (
-                  <div style={{ marginTop: '12px' }}>
-                    <input
-                      type="text"
-                      placeholder="Search venues..."
-                      value={courseTypeVenueSearch}
-                      onChange={(e) => setCourseTypeVenueSearch(e.target.value)}
-                      style={styles.input}
-                    />
-                    <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', backgroundColor: '#f9fafb', borderRadius: '6px', padding: '4px' }}>
-                      {(() => {
-                        const filteredVenues = venues
-                          .filter(v => v.venue_id !== 'all')
-                          .filter(v => v.venue_name?.toLowerCase().includes((courseTypeVenueSearch || '').toLowerCase()))
-                          .sort((a, b) => (a.venue_name || '').localeCompare(b.venue_name || ''));
-                        
-                        if (filteredVenues.length === 0) {
-                          return <div style={{ padding: '12px', color: '#6b7280', fontSize: '13px', textAlign: 'center' }}>No venues found</div>;
-                        }
-                        
-                        return filteredVenues.map(venue => (
-                          <label key={venue.venue_id} style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            padding: '8px 10px', 
-                            cursor: 'pointer',
-                            borderRadius: '4px',
-                            backgroundColor: newCourseTypeVenues.includes(venue.venue_id) ? '#e0f2fe' : 'transparent',
-                            marginBottom: '2px'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={newCourseTypeVenues.includes(venue.venue_id)}
-                              onChange={(e) => {
-                                const updatedVenues = e.target.checked
-                                  ? [...newCourseTypeVenues, venue.venue_id]
-                                  : newCourseTypeVenues.filter(id => id !== venue.venue_id);
-                                setNewCourseTypeVenues(updatedVenues);
-                              }}
-                              style={{ marginRight: '10px', accentColor: '#3b82f6' }}
-                            />
-                            <span style={{ fontSize: '14px', color: '#374151' }}>{venue.venue_name}</span>
-                          </label>
-                        ));
-                      })()}
-                    </div>
-                    {newCourseTypeVenues.length > 0 && (
-                      <div style={{ marginTop: '8px', fontSize: '12px', color: '#3b82f6', fontWeight: '500' }}>
-                        {newCourseTypeVenues.length} venue(s) selected
+                {/* VENUES SECTION */}
+                <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
+                  <label style={{ ...styles.label, marginBottom: '8px', display: 'block' }}>📍 Venues</label>
+                  <select
+                    value={applyToAllVenuesForCourseType ? 'all' : 'specific'}
+                    onChange={(e) => {
+                      if (e.target.value === 'all') {
+                        setApplyToAllVenuesForCourseType(true);
+                        setNewCourseTypeVenues([]);
+                      } else {
+                        setApplyToAllVenuesForCourseType(false);
+                      }
+                    }}
+                    style={styles.input}
+                  >
+                    <option value="all">All Venues</option>
+                    <option value="specific">Select Specific Venues</option>
+                  </select>
+
+                  {!applyToAllVenuesForCourseType && venues && venues.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <input
+                        type="text"
+                        placeholder="🔍 Search venues..."
+                        value={courseTypeVenueSearch}
+                        onChange={(e) => setCourseTypeVenueSearch(e.target.value)}
+                        style={styles.input}
+                      />
+                      <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '4px' }}>
+                        {(() => {
+                          const filteredVenues = venues
+                            .filter(v => v.venue_id !== 'all')
+                            .filter(v => v.venue_name?.toLowerCase().includes((courseTypeVenueSearch || '').toLowerCase()))
+                            .sort((a, b) => (a.venue_name || '').localeCompare(b.venue_name || ''));
+                          
+                          if (filteredVenues.length === 0) {
+                            return <div style={{ padding: '12px', color: '#6b7280', fontSize: '13px', textAlign: 'center' }}>No venues found</div>;
+                          }
+                          
+                          return filteredVenues.map(venue => (
+                            <label key={venue.venue_id} style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              padding: '8px 10px', 
+                              cursor: 'pointer',
+                              borderRadius: '4px',
+                              backgroundColor: newCourseTypeVenues.includes(venue.venue_id) ? '#e0f2fe' : 'transparent',
+                              marginBottom: '2px'
+                            }}
+                            onMouseEnter={(e) => !newCourseTypeVenues.includes(venue.venue_id) && (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                            onMouseLeave={(e) => !newCourseTypeVenues.includes(venue.venue_id) && (e.currentTarget.style.backgroundColor = 'transparent')}>
+                              <input
+                                type="checkbox"
+                                checked={newCourseTypeVenues.includes(venue.venue_id)}
+                                onChange={(e) => {
+                                  const updatedVenues = e.target.checked
+                                    ? [...newCourseTypeVenues, venue.venue_id]
+                                    : newCourseTypeVenues.filter(id => id !== venue.venue_id);
+                                  setNewCourseTypeVenues(updatedVenues);
+                                }}
+                                style={{ marginRight: '10px', accentColor: '#3b82f6' }}
+                              />
+                              <span style={{ fontSize: '14px', color: '#374151' }}>{venue.venue_name}</span>
+                            </label>
+                          ));
+                        })()}
                       </div>
-                    )}
-                  </div>
-                )}
+                      {newCourseTypeVenues.length > 0 && (
+                        <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#dbeafe', borderRadius: '4px', fontSize: '12px', color: '#1e40af', fontWeight: '500' }}>
+                          ✓ {newCourseTypeVenues.length} venue(s) selected
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* YEARS SECTION */}
+                <div>
+                  <label style={{ ...styles.label, marginBottom: '8px', display: 'block' }}>📅 Year Levels</label>
+                  <select
+                    value={applyToAllYearsForCourseType ? 'all' : 'specific'}
+                    onChange={(e) => {
+                      if (e.target.value === 'all') {
+                        setApplyToAllYearsForCourseType(true);
+                        setNewCourseTypeYears([]);
+                      } else {
+                        setApplyToAllYearsForCourseType(false);
+                      }
+                    }}
+                    style={styles.input}
+                  >
+                    <option value="all">All Years (1, 2, 3, 4)</option>
+                    <option value="specific">Select Specific Years</option>
+                  </select>
+
+                  {!applyToAllYearsForCourseType && (
+                    <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      {[1, 2, 3, 4].map(year => (
+                        <label key={year} style={{ 
+                          flex: '0 0 calc(50% - 6px)',
+                          display: 'flex', 
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '10px 16px',
+                          backgroundColor: newCourseTypeYears.includes(year) ? '#dbeafe' : '#ffffff',
+                          border: newCourseTypeYears.includes(year) ? '2px solid #3b82f6' : '1px solid #e5e7eb',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '500',
+                          fontSize: '14px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!newCourseTypeYears.includes(year)) {
+                            e.currentTarget.style.backgroundColor = '#f3f4f6';
+                            e.currentTarget.style.borderColor = '#d1d5db';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!newCourseTypeYears.includes(year)) {
+                            e.currentTarget.style.backgroundColor = '#ffffff';
+                            e.currentTarget.style.borderColor = '#e5e7eb';
+                          }
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={newCourseTypeYears.includes(year)}
+                            onChange={(e) => {
+                              const updatedYears = e.target.checked
+                                ? [...newCourseTypeYears, year]
+                                : newCourseTypeYears.filter(y => y !== year);
+                              setNewCourseTypeYears(updatedYears);
+                            }}
+                            style={{ marginRight: '8px', accentColor: '#3b82f6' }}
+                          />
+                          <span style={{ color: newCourseTypeYears.includes(year) ? '#1e40af' : '#374151' }}>
+                            Year {year}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {!applyToAllYearsForCourseType && newCourseTypeYears.length > 0 && (
+                    <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#dbeafe', borderRadius: '4px', fontSize: '12px', color: '#1e40af', fontWeight: '500' }}>
+                      ✓ {newCourseTypeYears.length} year(s) selected
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ padding: '12px', backgroundColor: '#fffbeb', borderRadius: '6px', border: '1px solid #fef3c7' }}>
+                <p style={{ fontSize: '13px', color: '#92400e', margin: 0 }}>
+                  💡 <strong>Note:</strong> All skills created under this course type will inherit these venue and year settings by default.
+                </p>
               </div>
             </div>
 
@@ -1270,7 +1372,9 @@ const SkillOrderManager = ({ selectedCourseType = 'frontend', venues = [] }) => 
                   setCourseTypeVenueSearch('');
                   setNewCourseType('');
                   setNewCourseTypeVenues([]);
+                  setNewCourseTypeYears([]);
                   setApplyToAllVenuesForCourseType(true);
+                  setApplyToAllYearsForCourseType(true);
                 }}
                 style={styles.cancelButton}
               >
@@ -1693,7 +1797,11 @@ const styles = {
     boxShadow: '0 10px 40px rgba(0, 0, 0, 0.12)',
     width: '100%',
     maxWidth: '400px',
+    maxHeight: 'calc(100vh - 32px)',
     margin: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
   modalHeader: {
     display: 'flex',
@@ -1725,6 +1833,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '18px',
+    overflowY: 'auto',
+    flex: 1,
   },
   modalFooter: {
     display: 'flex',

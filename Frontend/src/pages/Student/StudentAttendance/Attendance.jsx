@@ -40,12 +40,12 @@ const StudentAttendance = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
 
-    // Define standard time slots for a day
+    // Define standard time slots for a day (matching actual session timings)
     const TIME_SLOTS = [
-        { hour: 1, name: 'Hour 1', time: '09:00 - 10:00' },
-        { hour: 2, name: 'Hour 2', time: '10:00 - 11:00' },
-        { hour: 3, name: 'Hour 3', time: '11:00 - 12:00' },
-        { hour: 4, name: 'Hour 4', time: '13:00 - 14:00' }
+        { hour: 1, name: 'Hour 1', time: '08:45 - 10:25' },
+        { hour: 2, name: 'Hour 2', time: '10:45 - 12:25' },
+        { hour: 3, name: 'Hour 3', time: '13:30 - 15:10' },
+        { hour: 4, name: 'Hour 4', time: '15:25 - 16:30' }
     ];
 
     // --- FETCH DATA FROM BACKEND ---
@@ -101,70 +101,33 @@ const StudentAttendance = () => {
 
                 if (historyData.success) {
                     const history = historyData.data.map((record, index) => {
-                        // Extract date from session_name (format: VenueName_YYYYMMDD_Date_Time)
-                        let sessionDate = new Date(record.created_at).toISOString().split('T')[0];
-                        const dateMatch = record.session_name?.match(/(\d{4})-(\d{2})-(\d{2})/);
-                        if (dateMatch) {
-                            sessionDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
-                        }
+                        // Backend now provides session_date and session_number directly
+                        const sessionDate = record.session_date || new Date(record.created_at).toISOString().split('T')[0];
+                        const hour = record.session_number || 1; // Session number 1-4
                         
-                        // Try to extract hour/session number from the record
-                        let hour = null;
-                        let timeDisplay = 'N/A';
+                        // Format time display based on session number
+                        const timeSlotMap = {
+                            1: 'Hour 1 (08:45 - 10:25)',
+                            2: 'Hour 2 (10:45 - 12:25)',
+                            3: 'Hour 3 (13:30 - 15:10)',
+                            4: 'Hour 4 (15:25 - 16:30)'
+                        };
                         
-                        // Method 1: Extract from session_name prefix (S1_, S2_, S3_, S4_)
-                        if (record.session_name) {
-                            const sessionMatch = record.session_name.match(/^S(\d+)_/i);
-                            if (sessionMatch) {
-                                hour = parseInt(sessionMatch[1]);
-                                timeDisplay = `Hour ${hour}`;
-                            }
-                        }
-                        
-                        // Method 2: Check if record has hour_number field
-                        if (!hour && record.hour_number) {
-                            hour = parseInt(record.hour_number);
-                            timeDisplay = `Hour ${hour}`;
-                        }
-                        // Method 3: Check if record has session_number field
-                        else if (!hour && record.session_number) {
-                            hour = parseInt(record.session_number);
-                            timeDisplay = `Hour ${hour}`;
-                        }
-                        // Method 4: Extract from session_name (other patterns)
-                        else if (!hour && record.session_name) {
-                            const hourMatch = record.session_name.match(/Hour[_\s]*(\d+)/i) || 
-                                             record.session_name.match(/_(\d+)[hH]/i);
-                            if (hourMatch) {
-                                hour = parseInt(hourMatch[1]);
-                                timeDisplay = `Hour ${hour}`;
-                            }
-                        }
-                        // Method 5: Use time field if available
-                        else if (!hour && record.time) {
-                            const timeMatch = record.time.match(/(\d+):/);
-                            if (timeMatch) {
-                                hour = Math.ceil(parseInt(timeMatch[1]) / 100 * 4);
-                                timeDisplay = `Hour ${hour}`;
-                            }
-                        }
+                        const timeDisplay = `Hour ${hour}`;
+                        const fullTimeDisplay = timeSlotMap[hour] || `Hour ${hour}`;
 
                         return {
                             id: record.attendance_id || index,
                             date: sessionDate,
                             subject: record.venue_name || record.subject_name || 'Unknown Subject',
                             time: timeDisplay,
+                            displayTime: fullTimeDisplay,
                             hour: hour,
                             status: record.is_present === 1 ? (record.is_late === 1 ? 'late' : 'present') : 'absent',
                             originalData: record // Keep original data for reference
                         };
-                    }).sort((a, b) => {
-                        // Sort by date (newest first) then by hour (1-4)
-                        if (a.date === b.date) {
-                            return (a.hour || 0) - (b.hour || 0);
-                        }
-                        return new Date(b.date) - new Date(a.date);
                     });
+                    // Data is already sorted by backend: ORDER BY session_date DESC, session_number ASC
                     
                     setAttendanceHistory(history);
                 }
@@ -210,13 +173,14 @@ const StudentAttendance = () => {
             const existingRecord = dateRecords[slot.hour];
             
             if (existingRecord) {
-                // Use the existing record with corrected hour info
+                // Use the existing record with corrected hour info and displayTime from backend
                 blocks.push({
                     ...existingRecord,
                     id: existingRecord.id || `record-${date}-${slot.hour}`,
                     time: slot.name,
                     actualTime: slot.time,
-                    displayTime: `${slot.name} (${slot.time})`
+                    // Keep displayTime from backend if available, otherwise use slot info
+                    displayTime: existingRecord.displayTime || `${slot.name} (${slot.time})`
                 });
             } else {
                 // Create absent record for this hour slot

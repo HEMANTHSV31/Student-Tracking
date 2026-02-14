@@ -486,11 +486,14 @@ export const getStudentSkillProgression = async (req, res) => {
     const { student_id } = req.params;
     const { course_type } = req.query;
 
-    // Get student's venue and year
+    // Get student's current venue and year
     const [student] = await db.query(`
-      SELECT venue_id, year 
-      FROM students 
-      WHERE student_id = ?
+      SELECT s.student_id, s.year, g.venue_id
+      FROM students s
+      LEFT JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
+      LEFT JOIN \`groups\` g ON gs.group_id = g.group_id
+      WHERE s.student_id = ?
+      LIMIT 1
     `, [student_id]);
 
     if (student.length === 0) {
@@ -501,6 +504,19 @@ export const getStudentSkillProgression = async (req, res) => {
     }
 
     const { venue_id, year } = student[0];
+
+    if (!venue_id) {
+      // Student not assigned to any venue yet
+      return res.status(200).json({
+        success: true,
+        message: 'Student not assigned to any venue yet',
+        data: {
+          student_id: parseInt(student_id),
+          course_type: course_type || 'all',
+          progression: []
+        }
+      });
+    }
 
     // Get skill order filtered by student's venue and year
     let orderQuery = `
