@@ -35,7 +35,7 @@ import VenueAllocation from "../pages/SuperAdmin/VenueAllocation/VenueAllocation
 import AdminSkillReport from "../pages/SuperAdmin/AdminTools/SkillReports/AdminSkillReport";
 //Super Admin -> Admin Tools
 import AdminTools from "../pages/SuperAdmin/AdminTools/AdminTools";
-import AttendanceExport from "../pages/SuperAdmin/AdminTools/AttendanceExport";
+import AttendanceExport from "../pages/SuperAdmin/AdminTools/AttendanceExport/AttendanceExport";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group

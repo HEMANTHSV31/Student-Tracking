@@ -562,25 +562,60 @@ export default function WebWorkspace({
     }
   };
 
-  // Update preview when code changes - INSTANT live preview
+  // Update preview when code changes - Debounced to prevent constant reloading while typing
   useEffect(() => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
-    // Instant update with minimal debounce for performance
+    // Debounce to prevent reloading on every keystroke
     refreshTimeoutRef.current = setTimeout(() => {
       updatePreview();
-    }, 100); // Reduced to 100ms for near-instant updates
+    }, 800); // 800ms delay - only updates after user stops typing
     
     // Notify parent of changes
     if (onChange) {
       onChange(code);
     }
-  }, [code]);
+    
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, onChange]);
 
   const updatePreview = useCallback(() => {
     // Build the complete HTML document
     let htmlContent = code.html || '';
+    
+    // Replace resource image paths with actual URLs
+    if (question?.resource_images && question.resource_images.length > 0 && apiUrl) {
+      question.resource_images.forEach(img => {
+        if (img.asset_path && (img.image_url || img.preview_url)) {
+          const actualUrl = `${apiUrl}${img.image_url || img.preview_url}`;
+          // Replace all occurrences of the asset path in src attributes
+          // Handle both single and double quotes, with or without leading ./
+          const patterns = [
+            new RegExp(`src=["']${img.asset_path}["']`, 'g'),
+            new RegExp(`src=["']\\./${img.asset_path}["']`, 'g'),
+            new RegExp(`src=["']/${img.asset_path}["']`, 'g'),
+            // Also handle CSS background-image
+            new RegExp(`url\\(["']${img.asset_path}["']\\)`, 'g'),
+            new RegExp(`url\\(["']\\./${img.asset_path}["']\\)`, 'g'),
+            new RegExp(`url\\(["']/${img.asset_path}["']\\)`, 'g'),
+          ];
+          
+          patterns.forEach(pattern => {
+            if (pattern.toString().includes('url\\(')) {
+              htmlContent = htmlContent.replace(pattern, `url("${actualUrl}")`);
+            } else {
+              htmlContent = htmlContent.replace(pattern, `src="${actualUrl}"`);
+            }
+          });
+        }
+      });
+    }
     
     // Collect all CSS from default and custom files
     let allCSS = code.css || '';
@@ -589,6 +624,27 @@ export default function WebWorkspace({
         allCSS += '\n\n/* ' + file.name + ' */\n' + code[file.id];
       }
     });
+    
+    // Replace resource image paths in CSS as well
+    if (question?.resource_images && question.resource_images.length > 0 && apiUrl) {
+      question.resource_images.forEach(img => {
+        if (img.asset_path && (img.image_url || img.preview_url)) {
+          const actualUrl = `${apiUrl}${img.image_url || img.preview_url}`;
+          const patterns = [
+            new RegExp(`url\\(["']${img.asset_path}["']\\)`, 'g'),
+            new RegExp(`url\\(["']\\./${img.asset_path}["']\\)`, 'g'),
+            new RegExp(`url\\(["']/${img.asset_path}["']\\)`, 'g'),
+            new RegExp(`url\\(${img.asset_path}\\)`, 'g'),
+            new RegExp(`url\\(\\./${img.asset_path}\\)`, 'g'),
+            new RegExp(`url\\(/${img.asset_path}\\)`, 'g'),
+          ];
+          
+          patterns.forEach(pattern => {
+            allCSS = allCSS.replace(pattern, `url("${actualUrl}")`);
+          });
+        }
+      });
+    }
     
     // Collect all JS from default and custom files
     let allJS = code.js || '';
@@ -636,7 +692,7 @@ export default function WebWorkspace({
     
     // Use state to set srcdoc (avoids cross-origin security issues)
     setPreviewContent(htmlContent);
-  }, [code, mode, customFiles]);
+  }, [code, mode, customFiles, question, apiUrl]);
 
   const handleEditorChange = (value) => {
     if (readOnly) return;
@@ -1077,14 +1133,14 @@ ${code.js}` : ''}`;
                 <div className="question-section resource-images-section">
                   <h4 className="section-label">
                     <Image size={16} />
-                    Available Images
+                    Available Images & Icons
                   </h4>
-                  <p className="resource-hint">Use these paths in your HTML code:</p>
+                  <p className="resource-hint">Copy the path or download images to use in your HTML code:</p>
                   <div className="resource-list">
                     {question.resource_images.map((img, idx) => (
                       <div key={idx} className="resource-item">
                         <img 
-                          src={`${apiUrl}${img.preview_url}`}
+                          src={`${apiUrl}${img.preview_url || img.image_url}`}
                           alt={img.description || 'Resource'}
                           className="resource-thumb"
                         />
@@ -1094,15 +1150,47 @@ ${code.js}` : ''}`;
                             <span className="resource-desc">{img.description}</span>
                           )}
                         </div>
-                        <button 
-                          className="copy-path-btn"
-                          onClick={() => {
-                            navigator.clipboard.writeText(img.asset_path);
-                          }}
-                          title="Copy path"
-                        >
-                          <Copy size={14} />
-                        </button>
+                        <div className="resource-actions">
+                          <button 
+                            className="copy-path-btn"
+                            onClick={() => {
+                              navigator.clipboard.writeText(img.asset_path);
+                            }}
+                            title="Copy path to clipboard"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <a 
+                            href={`${apiUrl}${img.image_url || img.preview_url}`}
+                            download={img.asset_path?.split('/').pop() || `resource-${idx}.png`}
+                            className="download-resource-btn"
+                            title="Download image/icon"
+                            onClick={(e) => {
+                              // Ensure download works even for same-origin
+                              e.preventDefault();
+                              const url = `${apiUrl}${img.image_url || img.preview_url}`;
+                              fetch(url)
+                                .then(res => res.blob())
+                                .then(blob => {
+                                  const blobUrl = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = blobUrl;
+                                  a.download = img.asset_path?.split('/').pop() || `resource-${idx}.png`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  window.URL.revokeObjectURL(blobUrl);
+                                })
+                                .catch(err => {
+                                  console.error('Download failed:', err);
+                                  // Fallback to direct link
+                                  window.open(url, '_blank');
+                                });
+                            }}
+                          >
+                            <Download size={14} />
+                          </a>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1269,6 +1357,15 @@ ${code.js}` : ''}`;
               <div 
                 className="preview-frame-wrapper"
                 style={{ maxWidth: getPreviewWidth() }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return false;
+                }}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               >
                 <iframe
                   ref={iframeRef}
@@ -1276,6 +1373,15 @@ ${code.js}` : ''}`;
                   title="Live Preview"
                   sandbox="allow-scripts allow-modals allow-forms allow-popups"
                   srcDoc={previewContent}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                 />
               </div>
             </div>
