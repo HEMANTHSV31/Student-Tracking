@@ -1,6 +1,39 @@
 import db from '../config/db.js';
 import xlsx from 'xlsx';
 
+// Helper function to update submission venues when student changes venue
+const updateSubmissionVenues = async (studentId, newVenueId) => {
+  const connection = await db.getConnection();
+  try {
+    console.log(`[UPDATE VENUES] Updating submission venues for student ${studentId} to venue ${newVenueId}`);
+    
+    // Update web code submissions that are NOT graded yet
+    await connection.execute(
+      `UPDATE web_code_submissions 
+       SET current_venue_id = ? 
+       WHERE student_id = ? 
+         AND status IN ('Pending Review', 'Under Review')`,
+      [newVenueId, studentId]
+    );
+    
+    // Update regular task submissions that are NOT graded yet  
+    await connection.execute(
+      `UPDATE task_submissions 
+       SET current_venue_id = ? 
+       WHERE student_id = ? 
+         AND status IN ('Pending Review', 'Under Review')`,
+      [newVenueId, studentId]
+    );
+    
+    console.log(`[UPDATE VENUES] Successfully updated submission venues for student ${studentId}`);
+  } catch (error) {
+    console.error('[UPDATE VENUES] Error updating submission venues:', error);
+    // Don't throw - this is a non-critical operation
+  } finally {
+    connection.release();
+  }
+};
+
 export const addIndividualStudentToVenue = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -316,6 +349,12 @@ export const addIndividualStudentToVenue = async (req, res) => {
     );
 
     await connection.commit();
+    
+    // Update submission venues for ungraded work (async - don't wait)
+    // This ensures faculty in the new venue see pending submissions
+    updateSubmissionVenues(studentId, venueId).catch(err => 
+      console.error('Failed to update submission venues:', err)
+    );
 
     return res.status(201).json({
       success: true,
@@ -1210,6 +1249,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
 
         const userId = existingUser[0].user_id;
         const studentName = existingUser[0].name;
+        const studentEmail = existingUser[0].email;
 
         // Get student_id from students table
         const [student] = await connection.query(
@@ -1286,7 +1326,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
           name: studentName,
           email: studentEmail,
           rollNumber: rollNumberStr,
-          department: department || 'General',
+          department: 'General',
           userId,
           studentId,
           groupStudentsId

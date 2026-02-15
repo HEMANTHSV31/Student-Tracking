@@ -4,10 +4,10 @@ import { ClipboardList, Clock, Users, CheckCircle, XCircle, AlertCircle, Calenda
 
 // Sessions - 4 per day with actual time boundaries
 const SESSIONS = [
-  { id: 1, name: 'Session 1', startTime: '09:00', endTime: '10:30', displayTime: '9:00 AM - 10:30 AM' },
-  { id: 2, name: 'Session 2', startTime: '10:45', endTime: '12:15', displayTime: '10:45 AM - 12:15 PM' },
-  { id: 3, name: 'Session 3', startTime: '13:30', endTime: '15:00', displayTime: '1:30 PM - 3:00 PM' },
-  { id: 4, name: 'Session 4', startTime: '15:15', endTime: '16:45', displayTime: '3:15 PM - 4:45 PM' },
+  { id: 1, name: 'Session 1', startTime: '08:45', endTime: '10:30', displayTime: '8:45 AM - 10:30 AM' },
+  { id: 2, name: 'Session 2', startTime: '10:40', endTime: '12:30', displayTime: '10:40 AM - 12:30 PM' },
+  { id: 3, name: 'Session 3', startTime: '13:30', endTime: '15:10', displayTime: '1:30 PM - 3:10 PM' },
+  { id: 4, name: 'Session 4', startTime: '15:25', endTime: '16:30', displayTime: '3:25 PM - 4:30 PM' },
 ];
 
 const AttendanceView = ({ selectedVenue, selectedVenueName, selectedDate, setSelectedDate, selectedSession, setSelectedSession, selectedYear }) => {

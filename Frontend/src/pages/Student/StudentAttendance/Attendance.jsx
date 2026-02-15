@@ -36,7 +36,7 @@ const StudentAttendance = () => {
     const [error, setError] = useState(null);
 
     const [filter, setFilter] = useState('all');
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(''); // Don't auto-select today - show all records
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
 
@@ -65,21 +65,40 @@ const StudentAttendance = () => {
                 if (dashboardData.success) {
                     const data = dashboardData.data;
                     
-                    // Set attendance summary
-                    const presentCount = data.sessionStatus.find(s => s.label === 'Present')?.count || 0;
-                    const lateCount = data.sessionStatus.find(s => s.label === 'Late')?.count || 0;
-                    const absentCount = data.sessionStatus.find(s => s.label === 'Absent')?.count || 0;
-                    const totalClasses = presentCount + lateCount + absentCount;
-                    const overallPercent = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0;
+                    console.log('📊 Dashboard data received:', data);
+                    
+                    // Extract session counts from overallStats sub text
+                    // Format: "Total days: X (present_hours/total_hours hours)"
+                    const overallStats = data.overallStats?.[0];
+                    let totalSessions = 0, presentSessions = 0, lateSessions = 0;
+                    
+                    if (overallStats?.sub) {
+                        const match = overallStats.sub.match(/(\d+)\/(\d+) hours/);
+                        if (match) {
+                            presentSessions = parseInt(match[1]) || 0;
+                            totalSessions = parseInt(match[2]) || 0;
+                        }
+                    }
+                    
+                    // Get late count from sessionStatus (backend doesn't calculate this correctly for days)
+                    // We need to count late sessions from the actual attendance history
+                    lateSessions = data.sessionStatus?.find(s => s.label === 'Late')?.count || 0;
+                    const absentSessions = totalSessions - presentSessions;
+                    
+                    // Use overall percentage from backend
+                    const overallPercent = overallStats?.value ? 
+                        parseInt(overallStats.value.replace('%', '')) : 0;
 
                     setAttendanceSummary({
                         overall: overallPercent,
-                        totalClasses: totalClasses,
-                        present: presentCount,
-                        absent: absentCount,
-                        late: lateCount,
+                        totalClasses: totalSessions,
+                        present: presentSessions - lateSessions, // Subtract late to get pure present
+                        absent: absentSessions,
+                        late: lateSessions,
                         standing: overallPercent >= 75 ? "Good Standing" : "Warning"
                     });
+                    
+                    console.log('✅ Summary set:', { overallPercent, totalSessions, presentSessions, lateSessions, absentSessions });
 
                     // Set subject attendance
                     const subjects = data.subjects.map((sub, index) => ({
@@ -99,22 +118,42 @@ const StudentAttendance = () => {
 
                 const historyData = await historyResponse.json();
 
+                console.log('📊 Attendance history response:', historyData);
+
                 if (historyData.success) {
                     const history = historyData.data.map((record, index) => {
+                        console.log('Processing record:', record);
+                        
                         // Backend now provides session_date and session_number directly
                         const sessionDate = record.session_date || new Date(record.created_at).toISOString().split('T')[0];
                         const hour = record.session_number || 1; // Session number 1-4
                         
                         // Format time display based on session number
                         const timeSlotMap = {
-                            1: 'Hour 1 (08:45 - 10:25)',
-                            2: 'Hour 2 (10:45 - 12:25)',
+                            1: 'Hour 1 (08:45 - 10:30)',
+                            2: 'Hour 2 (10:40 - 12:30)',
                             3: 'Hour 3 (13:30 - 15:10)',
                             4: 'Hour 4 (15:25 - 16:30)'
                         };
                         
                         const timeDisplay = `Hour ${hour}`;
                         const fullTimeDisplay = timeSlotMap[hour] || `Hour ${hour}`;
+
+                        // Determine status based on remarks or is_present flag
+                        let status = 'absent';
+                        if (record.remarks === 'PS') {
+                            status = 'ps';
+                        } else if (record.remarks === 'MM') {
+                            status = 'mm';
+                        } else if (record.remarks === 'AD') {
+                            status = 'ad';
+                        } else if (record.remarks === 'Other') {
+                            status = 'other';
+                        } else if (record.is_present === 1) {
+                            status = record.is_late === 1 ? 'late' : 'present';
+                        }
+
+                        console.log(`Record ${index}: date=${sessionDate}, hour=${hour}, status=${status}, venue=${record.venue_name}`);
 
                         return {
                             id: record.attendance_id || index,
@@ -123,12 +162,13 @@ const StudentAttendance = () => {
                             time: timeDisplay,
                             displayTime: fullTimeDisplay,
                             hour: hour,
-                            status: record.is_present === 1 ? (record.is_late === 1 ? 'late' : 'present') : 'absent',
+                            status: status,
                             originalData: record // Keep original data for reference
                         };
                     });
                     // Data is already sorted by backend: ORDER BY session_date DESC, session_number ASC
                     
+                    console.log('✅ Processed attendance history:', history);
                     setAttendanceHistory(history);
                 }
 
@@ -163,42 +203,9 @@ const StudentAttendance = () => {
     // Get unique dates from actual attendance records only
     const uniqueDates = [...new Set(attendanceHistory.map(record => record.date))].sort((a, b) => new Date(b) - new Date(a));
 
-    // Generate complete history with 4 time slots per day
-    const completeHistory = uniqueDates.flatMap(date => {
-        const dateRecords = attendanceByDateAndHour[date] || {};
-        const blocks = [];
-        
-        // Create all 4 time slots for this date
-        TIME_SLOTS.forEach(slot => {
-            const existingRecord = dateRecords[slot.hour];
-            
-            if (existingRecord) {
-                // Use the existing record with corrected hour info and displayTime from backend
-                blocks.push({
-                    ...existingRecord,
-                    id: existingRecord.id || `record-${date}-${slot.hour}`,
-                    time: slot.name,
-                    actualTime: slot.time,
-                    // Keep displayTime from backend if available, otherwise use slot info
-                    displayTime: existingRecord.displayTime || `${slot.name} (${slot.time})`
-                });
-            } else {
-                // Create absent record for this hour slot
-                blocks.push({
-                    id: `absent-${date}-${slot.hour}`,
-                    date: date,
-                    subject: 'No Session',
-                    time: slot.name,
-                    actualTime: slot.time,
-                    displayTime: `${slot.name} (${slot.time})`,
-                    hour: slot.hour,
-                    status: 'absent'
-                });
-            }
-        });
-        
-        return blocks;
-    });
+    // Just use the attendance history as-is without creating fake "No Session" entries
+    // This shows only actual attendance records that were marked by faculty
+    const completeHistory = attendanceHistory;
 
     // Filter history based on filter and selected date
     const filteredHistory = completeHistory.filter(record => {
@@ -227,10 +234,14 @@ const StudentAttendance = () => {
 
     const getStatusStyle = (status) => {
         switch (status) {
-            case 'present': return { color: '#10B981', bg: '#F0FDF4', icon: <CheckCircle2 size={16} /> };
-            case 'absent': return { color: '#EF4444', bg: '#FEF2F2', icon: <XCircle size={16} /> };
-            case 'late': return { color: '#F59E0B', bg: '#FFF7ED', icon: <Clock size={16} /> };
-            default: return { color: '#6B7280', bg: '#F3F4F6', icon: <Info size={16} /> };
+            case 'present': return { color: '#10B981', bg: '#F0FDF4', icon: <CheckCircle2 size={16} />, label: 'PRESENT' };
+            case 'absent': return { color: '#EF4444', bg: '#FEF2F2', icon: <XCircle size={16} />, label: 'ABSENT' };
+            case 'late': return { color: '#F59E0B', bg: '#FFF7ED', icon: <Clock size={16} />, label: 'LATE' };
+            case 'ps': return { color: '#8B5CF6', bg: '#F5F3FF', icon: <CheckCircle2 size={16} />, label: 'PS (PERMISSION)' };
+            case 'mm': return { color: '#06B6D4', bg: '#ECFEFF', icon: <CheckCircle2 size={16} />, label: 'MM (MEETING)' };
+            case 'ad': return { color: '#14B8A6', bg: '#F0FDFA', icon: <CheckCircle2 size={16} />, label: 'AD (ACADEMICS)' };
+            case 'other': return { color: '#6366F1', bg: '#EEF2FF', icon: <Info size={16} />, label: 'OTHER' };
+            default: return { color: '#6B7280', bg: '#F3F4F6', icon: <Info size={16} />, label: status?.toUpperCase() || 'UNKNOWN' };
         }
     };
 
@@ -514,7 +525,7 @@ const StudentAttendance = () => {
                             <div style={styles.card}>
                                 <div style={styles.cardHeader}>
                                     <h2 style={styles.sectionTitle} className="section-title">
-                                        {selectedDate ? `Attendance for ${new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : 'Attendance History'}
+                                        {selectedDate ? `Attendance for ${new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : 'All Attendance Records'}
                                     </h2>
                                     <div style={styles.filterGroup} className="filter-group">
                                         <select
@@ -524,8 +535,12 @@ const StudentAttendance = () => {
                                         >
                                             <option value="all">All Status</option>
                                             <option value="present">Present</option>
-                                            <option value="absent">Absent</option>
                                             <option value="late">Late</option>
+                                            <option value="ps">PS (Permission)</option>
+                                            <option value="mm">MM (Meeting)</option>
+                                            <option value="ad">AD (Academics)</option>
+                                            <option value="other">Other</option>
+                                            <option value="absent">Absent</option>
                                         </select>
                                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                                             <Calendar size={14} style={{ position: 'absolute', left: '10px', color: '#9CA3AF', zIndex: 1 }} />
@@ -541,7 +556,7 @@ const StudentAttendance = () => {
                                                 onChange={(e) => handleDateChange(e.target.value)}
                                                 max={uniqueDates.length > 0 ? uniqueDates[0] : new Date().toISOString().split('T')[0]}
                                                 min={uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : ''}
-                                                placeholder="Select date"
+                                                placeholder="All dates"
                                             />
                                         </div>
                                     </div>
@@ -649,9 +664,9 @@ const StudentAttendance = () => {
                                             }}>
                                                 {displayHistory.length === 0 && attendanceHistory.length > 0
                                                     ? selectedDate 
-                                                        ? `No attendance records found for ${new Date(selectedDate).toLocaleDateString()}. Try selecting a different date.`
+                                                        ? `No attendance records found for ${new Date(selectedDate + 'T00:00:00').toLocaleDateString()}. Try selecting a different date or clear the date filter.`
                                                         : 'Try adjusting your search or filter criteria'
-                                                    : 'Your attendance records will appear here once faculty marks your attendance'}
+                                                    : 'Your attendance records will appear here once faculty marks your attendance. Check the browser console for debugging info.'}
                                             </p>
                                         </div>
                                     ) : (
@@ -675,7 +690,7 @@ const StudentAttendance = () => {
                                                         </div>
                                                     </div>
                                                     <div style={{ ...styles.historyStatusText, color: status.color }} className="history-status-text">
-                                                        {record.status.toUpperCase()}
+                                                        {status.label || record.status.toUpperCase()}
                                                     </div>
                                                 </div>
                                             );

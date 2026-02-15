@@ -35,9 +35,9 @@ const AttendanceExport = () => {
     const [attendanceData, setAttendanceData] = useState([]);
 
     const TIME_SLOTS = [
-        { value: 'S1', label: 'S1 (08:45 AM - 10:25 AM)' },
-        { value: 'S2', label: 'S2 (10:45 AM - 12:25 PM)' },
-        { value: 'S3', label: 'S3 (01:30 PM - 03:00 PM)' },
+        { value: 'S1', label: 'S1 (08:45 AM - 10:30 AM)' },
+        { value: 'S2', label: 'S2 (10:40 AM - 12:30 PM)' },
+        { value: 'S3', label: 'S3 (01:30 PM - 03:10 PM)' },
         { value: 'S4', label: 'S4 (03:25 PM - 04:30 PM)' }
     ];
 

@@ -101,8 +101,14 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
             dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
             status: task.status,
             skillFilter: task.skill_filter || '',
+            taskType: task.task_type || 'manual',
+            questionType: task.question_type || null,
+            totalQuestions: task.total_questions || 0,
             totalSubmissions: task.total_submissions || 0,
-            pendingSubmissions: task.pending_submissions || 0
+            completedSubmissions: task.completed_submissions || 0,
+            pendingSubmissions: task.pending_submissions || 0,
+            revisionSubmissions: task.revision_submissions || 0,
+            avgGrade: task.avg_grade ? Math.round(task.avg_grade) : null
           }));
           setAssignments(transformed);
         } 
@@ -253,8 +259,14 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
               dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
               status: task.status,
               skillFilter: task.skill_filter || '',
+              taskType: task.task_type || 'manual',
+              questionType: task.question_type || null,
+              totalQuestions: task.total_questions || 0,
               totalSubmissions: task.total_submissions || 0,
-              pendingSubmissions: task.pending_submissions || 0
+              completedSubmissions: task.completed_submissions || 0,
+              pendingSubmissions: task.pending_submissions || 0,
+              revisionSubmissions: task.revision_submissions || 0,
+              avgGrade: task.avg_grade ? Math.round(task.avg_grade) : null
             }));
             setAssignments(transformed);
           }
@@ -649,12 +661,47 @@ const AssignmentDashboard = ({ selectedVenueId, venueName, venues, selectedCours
                   onClick={() => handleRowClick(row)}
                 >
                   <div style={{ flex: 2.5 }}>
-                    <div style={styles.boldText}>{row.title}</div>
+                    <div style={styles.boldText}>
+                      {row.title}
+                      {row.taskType === 'code_practice' && (
+                        <span
+                          style={{
+                            marginLeft: '8px',
+                            fontSize: '10px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: row.questionType === 'mcq' ? '#dbeafe' : '#fef3c7',
+                            color: row.questionType === 'mcq' ? '#1e40af' : '#92400e',
+                            fontWeight: '600',
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          {row.questionType === 'mcq' ? 'MCQ' : 'CODING'}
+                        </span>
+                      )}
+                    </div>
                     <div style={styles.subtitleText}>
                       Day {row.day} | Max Score: {row.score}
                       {row.totalSubmissions > 0 && (
-                        <span style={{ marginLeft: '10px', color: '#3b82f6' }}>
-                          • {row.totalSubmissions} submissions
+                        <span style={{ marginLeft: '10px' }}>
+                          <span style={{ color: '#10b981', fontWeight: '600' }}>
+                            {row.completedSubmissions} Completed
+                          </span>
+                          {row.pendingSubmissions > 0 && (
+                            <span style={{ color: '#f59e0b', marginLeft: '8px', fontWeight: '600' }}>
+                              | {row.pendingSubmissions} Pending
+                            </span>
+                          )}
+                          {row.revisionSubmissions > 0 && (
+                            <span style={{ color: '#ef4444', marginLeft: '8px', fontWeight: '600' }}>
+                              | {row.revisionSubmissions} Revision
+                            </span>
+                          )}
+                          {row.taskType === 'code_practice' && row.questionType === 'mcq' && row.avgGrade !== null && (
+                            <span style={{ color: '#8b5cf6', marginLeft: '8px', fontWeight: '600' }}>
+                              | Avg: {row.avgGrade}%
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>

@@ -156,6 +156,25 @@ const ReportsAnalytics = () => {
                   sub.file_path.startsWith("https://")));
             const hasSubmitted = sub.submitted_at !== null;
 
+            // Determine the grade to display
+            // For MCQ tasks: use mcq_percentage or auto_graded_score or student_grade
+            // For manual/coding tasks: use grade from task_submissions
+            let displayGrade = "";
+            if (sub.submission_type === 'mcq') {
+              // Priority: student_grade > mcq_percentage > auto_graded_score > grade
+              if (sub.student_grade !== null && sub.student_grade !== undefined) {
+                displayGrade = sub.student_grade.toString();
+              } else if (sub.mcq_percentage !== null && sub.mcq_percentage !== undefined) {
+                displayGrade = sub.mcq_percentage.toString();
+              } else if (sub.auto_graded_score !== null && sub.auto_graded_score !== undefined) {
+                displayGrade = sub.auto_graded_score.toString();
+              } else if (sub.grade !== null) {
+                displayGrade = sub.grade.toString();
+              }
+            } else if (sub.grade !== null) {
+              displayGrade = sub.grade.toString();
+            }
+
             return {
               id: sub.student_roll,
               submission_id: sub.submission_id,
@@ -168,11 +187,15 @@ const ReportsAnalytics = () => {
               link:
                 sub.link_url || (hasLink && !hasFile ? sub.file_path : null),
               status: sub.status,
-              grade: sub.grade !== null ? sub.grade.toString() : "",
-              action: sub.status === "Graded" ? "Edit" : "Save",
+              grade: displayGrade,
+              action: sub.status === "Graded" || sub.status === "Submitted" || sub.status === "Auto-Graded" ? "Edit" : "Save",
               type: getFileType(sub.file_name),
               isLate: sub.is_late,
               hasSubmitted: hasSubmitted,
+              submissionType: sub.submission_type, // Store submission type for reference
+              mcqPercentage: sub.mcq_percentage, // Store original MCQ percentage
+              autoGradedScore: sub.auto_graded_score, // Store original auto-graded score
+              codingContent: sub.coding_content, // Store coding content if available
             };
           });
 

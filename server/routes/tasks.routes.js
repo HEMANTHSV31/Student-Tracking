@@ -24,6 +24,8 @@ import {
   getWebCodeSubmissions,
   getWebCodeSubmissionDetail,
   gradeWebCodeSubmission,
+  getCodingSubmissionDetail,
+  gradeCodingSubmission,
   upload,
   studentUpload
 } from '../controllers/tasks.controller.js';
@@ -91,6 +93,13 @@ router.get('/web-submissions/:submission_id', authenticate, facultyOrAdmin, getW
 
 // Grade a web code submission
 router.put('/web-submissions/:submission_id/grade', authenticate, facultyOrAdmin, gradeWebCodeSubmission);
+
+// ============ CODE PRACTICE SUBMISSIONS (MCQ/CODING) ============
+// Get single code practice submission (coding task or MCQ)
+router.get('/code-submission/:submission_id', authenticate, facultyOrAdmin, getCodingSubmissionDetail);
+
+// Grade a code practice submission (coding task)
+router.put('/code-submission/:submission_id/grade', authenticate, facultyOrAdmin, gradeCodingSubmission);
 
 // Error handling middleware for multer errors
 router.use((err, req, res, next) => {

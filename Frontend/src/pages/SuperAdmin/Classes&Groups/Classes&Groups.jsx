@@ -17,6 +17,7 @@ import {
   Error as ErrorIcon,
   ToggleOn,
   ToggleOff,
+  Delete,
 } from "@mui/icons-material";
 import useAuthStore from "../../../store/useAuthStore";
 import { encodeIdSimple } from "../../../utils/idEncoder";
@@ -589,10 +590,10 @@ const GroupsClasses = () => {
         await fetchVenues();
         
         let message = `Successfully processed students for ${selectedVenue.venue_name}\n`;
-        message += `Added: ${data.data.added}, Moved: ${data.data.moved}`;
+        message += `Added: ${data.data.studentsAdded}, Skipped: ${data.data.studentsSkipped}`;
         
-        if (singleVenueUploadMode && data.data.dropped > 0) {
-          message += `, Dropped: ${data.data.dropped}`;
+        if (singleVenueUploadMode && data.data.droppedCount > 0) {
+          message += `, Dropped: ${data.data.droppedCount}`;
         }
         
         if (data.data.errors && data.data.errors.length > 0) {
@@ -1359,7 +1360,7 @@ const GroupsClasses = () => {
 
       {/* Confirmation Modal */}
       {showConfirmModal && (
-        <div style={s.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+        <div style={{...s.modalOverlay, zIndex: 2000}} onClick={() => setShowConfirmModal(false)}>
           <div style={{...s.resultModal, maxWidth: '450px'}} onClick={(e) => e.stopPropagation()}>
             <div style={{...s.resultIconContainer, backgroundColor: '#fff3cd'}}>
               <ErrorIcon sx={{ fontSize: 64, color: "#f59e0b" }} />
