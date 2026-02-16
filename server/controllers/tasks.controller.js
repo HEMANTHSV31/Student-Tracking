@@ -606,6 +606,7 @@ export const getTasksByVenue = async (req, res) => {
       INNER JOIN users u ON f.user_id = u.user_id
       LEFT JOIN task_submissions ts ON t.task_id = ts.task_id
       WHERE t.venue_id = ? 
+        AND (t.deleted_at IS NULL OR t.deleted_at > NOW())
     `;
 
     const params = [venue_id];
@@ -860,9 +861,9 @@ export const getTaskSubmissions = async (req, res) => {
       return matchingKeywords.length >= Math.ceil(taskKeywords.length * 0.5) && matchingKeywords.length > 0;
     };
 
-    // First, get the venue_id, skill_filter, and title for this task
+    // First, get the venue_id, skill_filter, title, task_type, and question_type for this task
     const [taskInfo] = await db.query(`
-      SELECT venue_id, skill_filter, title FROM tasks WHERE task_id = ?
+      SELECT venue_id, skill_filter, title, task_type, question_type FROM tasks WHERE task_id = ?
     `, [task_id]);
 
     if (taskInfo.length === 0) {
@@ -875,6 +876,8 @@ export const getTaskSubmissions = async (req, res) => {
     const venue_id = taskInfo[0].venue_id;
     const skill_filter = taskInfo[0].skill_filter;
     const task_title = taskInfo[0].title;
+    const task_type = taskInfo[0].task_type;
+    const question_type = taskInfo[0].question_type;
 
     // Get students who have CLEARED the skill (if skill_filter exists)
     let clearedStudentIds = new Set();
@@ -968,7 +971,11 @@ export const getTaskSubmissions = async (req, res) => {
         ss.programming_language,
         ss.passed_test_cases,
         ss.total_test_cases,
-        ss.grade as student_grade
+        ss.grade as student_grade,
+        wcs.submission_id as web_submission_id,
+        wcs.grade as web_grade,
+        wcs.workspace_mode,
+        wcs.status as web_status
       FROM students s
       INNER JOIN users u ON s.user_id = u.user_id
       INNER JOIN group_students gs ON s.student_id = gs.student_id AND gs.status = 'Active'
@@ -982,6 +989,8 @@ export const getTaskSubmissions = async (req, res) => {
           FROM student_submissions 
           WHERE task_id = ? AND student_id = s.student_id
         )
+      LEFT JOIN web_code_submissions wcs ON ts.submission_id = wcs.submission_id
+        AND s.student_id = wcs.student_id
       WHERE g.venue_id = ? ${clearedCondition} ${statusCondition} ${searchCondition}
       ORDER BY ts.submitted_at IS NULL, ts.submitted_at DESC, u.name ASC
       LIMIT ? OFFSET ?
@@ -1594,9 +1603,18 @@ export const getStudentTasks = async (req, res) => {
     const [tasks] = await db.query(tasksQuery, tasksParams);
 
     // Filter tasks based on skill_filter, skill_order, and completion status
-    // LOGIC: Show tasks for skills student has NOT completed yet
-    // HIDE tasks for skills student has already CLEARED
+    // LOGIC: 
+    // 1. Show tasks ONLY if student hasn't completed the required skill yet
+    // 2. Check skill_order prerequisites - student must complete prerequisite skills first
+    // 3. Hide tasks for skills student has already CLEARED
+    // 4. Venue-specific tasks should only show for students in that specific venue
     const filteredTasks = tasks.filter(task => {
+      // VENUE CHECK: Only show tasks for the student's current venue
+      // Don't automatically assign tasks from other venues
+      if (task.task_venue_id !== currentVenueId) {
+        return false;
+      }
+
       // Debug logging for this specific task
       if (task.task_id === 18) {
         console.log('Task 18 filtering check:', {
@@ -1604,7 +1622,9 @@ export const getStudentTasks = async (req, res) => {
           task_type: task.task_type,
           question_type: task.question_type,
           submission_status: task.submission_status,
-          grade: task.grade
+          grade: task.grade,
+          task_venue_id: task.task_venue_id,
+          current_venue_id: currentVenueId
         });
       }
 
@@ -1613,41 +1633,35 @@ export const getStudentTasks = async (req, res) => {
         return true;
       }
       
-      // HIDE ALL submitted and completed tasks (except Needs Revision)
-      // Completed statuses: 'Submitted', 'Auto-Graded', 'Graded', 'Pending Review'
-      const completedStatuses = ['Submitted', 'Auto-Graded', 'Graded', 'Pending Review'];
+      // SHOW ALL graded tasks so students can see their scores and feedback
+      // This includes tasks graded by faculty or auto-graded
+      if (task.submission_status === 'Graded' || task.submission_status === 'Auto-Graded') {
+        return true; // Always show graded tasks regardless of score
+      }
       
-      // For MCQ tasks: Hide if auto-graded (Submitted or Graded)
+      // SHOW tasks pending review so students know faculty is reviewing
+      if (task.submission_status === 'Pending Review') {
+        return true;
+      }
+      
+      // SHOW submitted tasks
+      if (task.submission_status === 'Submitted') {
+        return true;
+      }
+      
+      // For MCQ tasks: Show all (students should see their scores)
       if (task.task_type === 'code_practice' && task.question_type === 'mcq') {
-        if (task.submission_status === 'Submitted' || task.submission_status === 'Graded' || task.submission_status === 'Auto-Graded') {
-          if (task.task_id === 18) {
-            console.log('Task 18 HIDDEN - MCQ completed');
-          }
-          return false; // Hide completed MCQ tests
-        }
+        return true; // Changed: Show all MCQ tasks including completed ones
       }
       
-      // For Coding tasks: Hide if successfully graded (grade >= 50% and status = 'Graded')
+      // For Coding tasks: Show all (students should see their code and grades)
       if (task.task_type === 'code_practice' && task.question_type === 'coding') {
-        if (task.submission_status === 'Graded' && task.grade >= 50) {
-          return false; // Hide successfully graded coding tasks
-        }
+        return true; // Changed: Show all coding tasks including graded ones
       }
       
-      // For Manual tasks (file/link upload): Hide if submitted (Pending Review, Submitted, or Graded with grade >= 50)
+      // For Manual tasks: Show all
       if (task.task_type === 'manual') {
-        // Hide if pending review (student submitted, waiting for faculty)
-        if (task.submission_status === 'Pending Review') {
-          return false;
-        }
-        // Hide if graded with passing grade
-        if (task.submission_status === 'Graded' && task.grade >= 50) {
-          return false;
-        }
-        // Hide if submitted (auto-approved without grading)
-        if (task.submission_status === 'Submitted') {
-          return false;
-        }
+        return true; // Changed: Show all manual tasks including graded ones
       }
       
       // Get the effective skill filter from skill_filter field
@@ -1681,17 +1695,36 @@ export const getStudentTasks = async (req, res) => {
         return true;
       }
       
-      // Check if this skill exists in the skill_order table
-      const skillExistsInOrder = orderedSkills.some(s => 
-        normalizeSkillName(s.skill_name) === normalizedSkillFilter
+      // Find this skill in the skill_order to check prerequisites
+      const currentSkillInOrder = orderedSkills.find(s => 
+        skillMatches(s.skill_name, effectiveSkillFilter)
       );
       
       // If skill is not in skill_order table, show the task (don't block on unknown skills)
-      if (!skillExistsInOrder) {
+      if (!currentSkillInOrder) {
         return true;
       }
       
-      // Check if the skill is unlocked for this student
+      // Check prerequisites: Get all skills that must be completed before this one
+      const prerequisiteSkills = orderedSkills.filter(s => 
+        s.display_order < currentSkillInOrder.display_order &&
+        s.course_type === currentSkillInOrder.course_type
+      );
+      
+      // Check if all prerequisites are cleared
+      const allPrerequisitesCleared = prerequisiteSkills.every(prereq => {
+        const isPrereqCleared = Array.from(clearedSkillsMap.keys()).some(clearedSkillName => {
+          return skillMatches(prereq.skill_name, clearedSkillName);
+        });
+        return isPrereqCleared;
+      });
+      
+      // If prerequisites are not met, don't show the task
+      if (!allPrerequisitesCleared) {
+        return false;
+      }
+      
+      // Check if the skill is unlocked for this student (not locked by incomplete prerequisites)
       const isSkillUnlocked = unlockedSkills.has(normalizedSkillFilter);
       
       // If skill is locked, don't show the task
@@ -1699,7 +1732,7 @@ export const getStudentTasks = async (req, res) => {
         return false;
       }
       
-      // Show task - skill is unlocked and not yet cleared
+      // Show task - skill is unlocked, prerequisites met, and not yet cleared
       return true;
     });
 
@@ -3680,6 +3713,73 @@ export const submitMCQ = async (req, res) => {
   }
 };
 
+/**
+ * Get all coding submissions (from student_submissions table) for faculty review
+ * GET /api/tasks/coding-submissions/venue/:venue_id
+ */
+export const getCodingSubmissions = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { venue_id } = req.params;
+    const { status = 'all' } = req.query;
+
+    let query = `
+      SELECT 
+        ss.submission_id,
+        ss.task_id,
+        ss.student_id,
+        ss.submission_type,
+        ss.submitted_at,
+        ss.attempt_number,
+        ss.status,
+        ss.grade,
+        ss.max_score,
+        ss.percentage,
+        ss.auto_graded_score,
+        ss.passed_test_cases,
+        ss.total_test_cases,
+        ss.graded_at,
+        t.title as task_title,
+        t.question_type,
+        u.name as student_name,
+        u.email as student_email,
+        u.ID as student_roll
+      FROM student_submissions ss
+      JOIN tasks t ON ss.task_id = t.task_id
+      JOIN students s ON ss.student_id = s.student_id
+      JOIN users u ON s.user_id = u.user_id
+      WHERE ss.current_venue_id = ? 
+        AND ss.submission_type = 'coding'
+    `;
+
+    const params = [venue_id];
+
+    if (status !== 'all') {
+      query += ' AND ss.status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY ss.submitted_at DESC';
+
+    const [submissions] = await connection.execute(query, params);
+
+    res.json({
+      success: true,
+      data: submissions
+    });
+
+  } catch (error) {
+    console.error('Error fetching coding submissions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching coding submissions',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
 // Get web code submissions for faculty review
 export const getWebCodeSubmissions = async (req, res) => {
   const connection = await db.getConnection();
@@ -3756,10 +3856,14 @@ export const getWebCodeSubmissionDetail = async (req, res) => {
         t.description as task_description,
         u.name as student_name,
         u.email as student_email,
+        u.ID as student_roll,
+        s.student_id,
         qb.title as question_title,
         qb.description as question_description,
         qb.coding_test_cases,
         qb.sample_image as expected_output_image,
+        qb.difficulty_level,
+        qb.hints,
         grader.name as graded_by_name
       FROM web_code_submissions wcs
       JOIN tasks t ON wcs.task_id = t.task_id
@@ -3855,12 +3959,38 @@ export const gradeWebCodeSubmission = async (req, res) => {
 
     if (submission.length > 0) {
       const maxScore = submission[0].max_score;
+      const taskId = submission[0].task_id;
+      const studentId = submission[0].student_id;
       const percentage = (grade / maxScore) * 100;
       
+      // Determine final status based on grade
+      let finalStatus = 'Graded';
       if (percentage < 50) {
+        finalStatus = 'Needs Revision';
         await connection.execute(
           'UPDATE web_code_submissions SET is_reassigned = 1 WHERE submission_id = ?',
           [submission_id]
+        );
+      }
+
+      // Update or create task_submissions record
+      const [existingTaskSubmission] = await connection.execute(
+        'SELECT submission_id FROM task_submissions WHERE task_id = ? AND student_id = ? LIMIT 1',
+        [taskId, studentId]
+      );
+
+      if (existingTaskSubmission.length > 0) {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET status = ?, grade = ?, feedback = ?
+           WHERE task_id = ? AND student_id = ?`,
+          [finalStatus, grade, feedback || null, taskId, studentId]
+        );
+      } else {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, status, grade, feedback, submitted_at) 
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [taskId, studentId, finalStatus, grade, feedback || null]
         );
       }
     }
@@ -3875,6 +4005,55 @@ export const gradeWebCodeSubmission = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while grading submission',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Request student to resubmit web code submission
+ * PUT /api/tasks/web-submissions/:submission_id/request-resubmit
+ */
+export const requestWebCodeResubmit = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { submission_id } = req.params;
+
+    // Update submission status to Needs Revision
+    await connection.execute(`
+      UPDATE web_code_submissions 
+      SET status = 'Needs Revision', is_reassigned = 1
+      WHERE submission_id = ?
+    `, [submission_id]);
+
+    // Also update task_submissions if it exists
+    const [submission] = await connection.execute(
+      'SELECT task_id, student_id FROM web_code_submissions WHERE submission_id = ?',
+      [submission_id]
+    );
+
+    if (submission.length > 0) {
+      const { task_id, student_id } = submission[0];
+      await connection.execute(
+        `UPDATE task_submissions 
+         SET status = 'Needs Revision'
+         WHERE task_id = ? AND student_id = ?`,
+        [task_id, student_id]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Resubmission requested successfully'
+    });
+
+  } catch (error) {
+    console.error('Error requesting resubmit:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while requesting resubmit',
       error: error.message
     });
   } finally {
@@ -3979,6 +4158,86 @@ export const getCodingSubmissionDetail = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching submission',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Request resubmit for coding submission (when student fails)
+ * PUT /api/tasks/code-submission/:submission_id/request-resubmit
+ */
+export const requestCodingResubmit = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { submission_id } = req.params;
+    const user_id = req.user.user_id;
+
+    // Get faculty_id
+    const [facultyResult] = await connection.execute(
+      'SELECT faculty_id FROM faculties WHERE user_id = ?',
+      [user_id]
+    );
+
+    if (facultyResult.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty not found'
+      });
+    }
+
+    const faculty_id = facultyResult[0].faculty_id;
+
+    // Get task_id from submission
+    const [submissionResult] = await connection.execute(
+      'SELECT task_id FROM student_submissions WHERE submission_id = ?',
+      [submission_id]
+    );
+
+    if (submissionResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    const task_id = submissionResult[0].task_id;
+
+    await connection.beginTransaction();
+
+    // Update student_submissions status to 'Needs Revision' and mark as reassigned
+    await connection.execute(
+      `UPDATE student_submissions 
+       SET status = 'Needs Revision',
+           is_reassigned = 1
+       WHERE submission_id = ?`,
+      [submission_id]
+    );
+
+    // Update task_submissions status to 'Needs Revision'
+    await connection.execute(
+      `UPDATE task_submissions 
+       SET status = 'Needs Revision'
+       WHERE task_id = ? 
+       AND submission_id = ?`,
+      [task_id, submission_id]
+    );
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Student has been requested to resubmit the assignment'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error requesting coding resubmit:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while requesting resubmit',
       error: error.message
     });
   } finally {

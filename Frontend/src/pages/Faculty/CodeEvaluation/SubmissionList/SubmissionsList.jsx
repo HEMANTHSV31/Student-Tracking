@@ -9,8 +9,10 @@ import {
   Code,
   Assessment,
   Visibility,
+  Refresh,
 } from "@mui/icons-material";
 import { getPendingSubmissions, getGradedSubmissions } from "../../../../services/questionBankApi";
+import { apiGet } from "../../../../utils/api";
 import "./SubmissionsList.css";
 
 const SubmissionsList = () => {
@@ -21,63 +23,149 @@ const SubmissionsList = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
   const [selectedVenue, setSelectedVenue] = useState('all');
+  const [venues, setVenues] = useState([]);
+
+  useEffect(() => {
+    fetchVenues();
+  }, []);
 
   useEffect(() => {
     loadSubmissions();
   }, [selectedVenue]);
+
+  const fetchVenues = async () => {
+    try {
+      const response = await apiGet('/tasks/venues');
+      const data = await response.json();
+      if (data.success && data.data && data.data.length > 0) {
+        setVenues(data.data);
+        // Auto-select first venue if available
+        if (data.data.length === 1) {
+          setSelectedVenue(data.data[0].venue_id.toString());
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching venues:', error);
+    }
+  };
+
+  const handleRequestResubmit = async (submissionId, submissionType) => {
+    if (!confirm('Request student to resubmit this assignment? The status will be changed to "Needs Revision".')) {
+      return;
+    }
+    
+    try {
+      const endpoint = submissionType === 'web' 
+        ? `/tasks/web-submissions/${submissionId}/request-resubmit`
+        : `/tasks/code-submission/${submissionId}/request-resubmit`;
+      
+      const response = await apiPut(endpoint, {
+        status: 'Needs Revision'
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('Resubmission request sent successfully!');
+        loadSubmissions(); // Refresh the list
+      } else {
+        alert(data.message || 'Failed to request resubmission');
+      }
+    } catch (error) {
+      console.error('Error requesting resubmit:', error);
+      alert('Failed to request resubmission');
+    }
+  };
 
   const loadSubmissions = async () => {
     try {
       setLoading(true);
       const venueId = selectedVenue === 'all' ? null : parseInt(selectedVenue);
       
-      // Fetch both pending and graded submissions
-      const [pendingRes, gradedRes] = await Promise.all([
-        getPendingSubmissions(venueId),
-        getGradedSubmissions(venueId)
-      ]);
-      
       const allSubmissions = [];
       
-      // Transform pending submissions
-      if (pendingRes.success && pendingRes.data.submissions) {
-        const pending = pendingRes.data.submissions.map(sub => ({
-          id: sub.submission_id,
-          studentName: sub.student_name,
-          studentId: sub.roll_number || 'N/A',
-          taskTitle: sub.skill_name,
-          submittedAt: sub.submitted_at,
-          status: 'pending',
-          autoTestScore: 0,
-          autoTestTotal: 5,
-          type: 'code',
-          technology: sub.skill_name,
-          avatarBg: '#EFF6FF',
-          avatarColor: '#3B82F6',
-        }));
-        allSubmissions.push(...pending);
+      // Fetch coding submissions (from student_submissions table)
+      if (venueId) {
+        try {
+          const codingRes = await apiGet(`/tasks/coding-submissions/venue/${venueId}`);
+          const codingData = await codingRes.json();
+          
+          if (codingData.success && codingData.data) {
+            const codingSubs = codingData.data.map(sub => {
+              let status = 'pending';
+              if (sub.status === 'Graded' || sub.status === 'Auto-Graded') {
+                status = sub.grade >= 50 ? 'graded' : 'revision';
+              }
+              return {
+                id: sub.submission_id,
+                studentName: sub.student_name,
+                studentId: sub.student_roll || sub.student_id || 'N/A',
+                taskTitle: sub.task_title || 'Coding Task',
+                submittedAt: sub.submitted_at,
+                status: status,
+                finalScore: sub.grade || 0,
+                maxScore: 100,
+                type: 'coding',
+                technology: 'Coding',
+                avatarBg: '#FEF3C7',
+                avatarColor: '#F59E0B',
+              };
+            });
+            allSubmissions.push(...codingSubs);
+          }
+        } catch (err) {
+          console.error('Error fetching coding submissions:', err);
+        }
       }
       
-      // Transform graded submissions
-      if (gradedRes.success && gradedRes.data.submissions) {
-        const graded = gradedRes.data.submissions.map(sub => ({
-          id: sub.submission_id,
-          studentName: sub.student_name,
-          studentId: sub.roll_number || 'N/A',
-          taskTitle: sub.skill_name,
-          submittedAt: sub.submitted_at,
-          status: sub.score >= 50 ? 'graded' : 'revision',
-          finalScore: sub.score,
-          maxScore: 100,
-          type: 'code',
-          technology: sub.skill_name,
-          avatarBg: sub.score >= 50 ? '#F3E8FF' : '#FEE2E2',
-          avatarColor: sub.score >= 50 ? '#9333EA' : '#DC2626',
-        }));
-        allSubmissions.push(...graded);
+      // Fetch web code submissions (HTML/CSS/JS from web_code_submissions table)
+      if (venueId) {
+        try {
+          const webRes = await apiGet(`/tasks/web-submissions/venue/${venueId}`);
+          const webData = await webRes.json();
+          
+          if (webData.success && webData.data) {
+            const webSubs = webData.data.map(sub => {
+              let status = 'pending';
+              if (sub.status === 'Graded' || sub.status === 'Needs Revision') {
+                status = sub.grade >= 50 ? 'graded' : 'revision';
+              }
+              return {
+                id: sub.submission_id,
+                studentName: sub.student_name,
+                studentId: sub.student_roll || sub.student_id || 'N/A',
+                taskTitle: sub.task_title || 'Web Practice',
+                submittedAt: sub.submitted_at,
+                status: status,
+                finalScore: sub.grade || 0,
+                maxScore: 100,
+                type: 'web',
+                technology: sub.workspace_mode === 'html-css-js' ? 'HTML+CSS+JS' : 'HTML+CSS',
+                avatarBg: '#DBEAFE',
+                avatarColor: '#3B82F6',
+              };
+            });
+            allSubmissions.push(...webSubs);
+          }
+        } catch (err) {
+          console.error('Error fetching web submissions:', err);
+        }
       }
       
-      setSubmissions(allSubmissions);
+      // Remove duplicates by submission_id (in case of any overlap)
+      const uniqueSubmissions = allSubmissions.reduce((acc, current) => {
+        const existing = acc.find(item => item.id === current.id && item.type === current.type);
+        if (!existing) {
+          acc.push(current);
+        }
+        return acc;
+      }, []);
+      
+      console.log('Total submissions before dedup:', allSubmissions.length);
+      console.log('Unique submissions after dedup:', uniqueSubmissions.length);
+      console.log('Submissions with revision status:', uniqueSubmissions.filter(s => s.status === 'revision').length);
+      
+      setSubmissions(uniqueSubmissions);
     } catch (error) {
       console.error("Error loading submissions:", error);
       // Only log error, don't show error state for empty data
@@ -158,7 +246,7 @@ const SubmissionsList = () => {
     if (status === "pending") {
       return (
         <>
-          <span className="btn-icon">👁</span>
+          <Assessment style={{ fontSize: '18px', marginRight: '4px' }} />
           Review & Grade
         </>
       );
@@ -166,7 +254,7 @@ const SubmissionsList = () => {
     if (status === "graded") {
       return (
         <>
-          <span className="btn-icon">📄</span>
+          <Visibility style={{ fontSize: '18px', marginRight: '4px' }} />
           View Details
         </>
       );
@@ -174,12 +262,17 @@ const SubmissionsList = () => {
     if (status === "revision") {
       return (
         <>
-          <span className="btn-icon">🔄</span>
-          Request Re-submit
+          <Refresh style={{ fontSize: '18px', marginRight: '4px' }} />
+          Request Resubmit
         </>
       );
     }
-    return "View Details";
+    return (
+      <>
+        <Visibility style={{ fontSize: '18px', marginRight: '4px' }} />
+        View Details
+      </>
+    );
   };
 
   const filteredSubmissions = getFilteredSubmissions();
@@ -226,6 +319,19 @@ const SubmissionsList = () => {
         </div>
 
         <div className="filter-controls">
+          <select
+            value={selectedVenue}
+            onChange={(e) => setSelectedVenue(e.target.value)}
+            className="filter-select"
+          >
+            <option value="all">All Venues</option>
+            {venues.map(venue => (
+              <option key={venue.venue_id} value={venue.venue_id}>
+                {venue.venue_name}
+              </option>
+            ))}
+          </select>
+
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -275,7 +381,6 @@ const SubmissionsList = () => {
                   </div>
                   <div className="student-details">
                     <h3 className="student-name">{submission.studentName}</h3>
-                    <span className="student-id">{submission.studentId}</span>
                   </div>
                 </div>
                 <button className="menu-btn">⋯</button>
@@ -304,12 +409,25 @@ const SubmissionsList = () => {
               </div>
 
               <div className="card-footer">
-                <button
-                  className={`action-btn ${submission.status === 'pending' ? 'primary' : 'secondary'}`}
-                  onClick={() => navigate(`/faculty/question-bank/grade/${submission.id}`)}
-                >
-                  {getButtonContent(submission.status)}
-                </button>
+                {submission.status === 'revision' ? (
+                  <button
+                    className="action-btn primary"
+                    onClick={() => handleRequestResubmit(submission.id, submission.type)}
+                  >
+                    <Refresh style={{ fontSize: '18px', marginRight: '4px' }} />
+                    Request Resubmit
+                  </button>
+                ) : (
+                  <button
+                    className={`action-btn ${submission.status === 'pending' ? 'primary' : 'secondary'}`}
+                    onClick={() => {
+                      // Navigate to code evaluation screen
+                      navigate(`/submissions/${submission.id}`);
+                    }}
+                  >
+                    {getButtonContent(submission.status)}
+                  </button>
+                )}
               </div>
             </div>
           ))}

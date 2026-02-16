@@ -554,7 +554,7 @@ const StudentAttendance = () => {
                                                 }}
                                                 value={selectedDate}
                                                 onChange={(e) => handleDateChange(e.target.value)}
-                                                max={uniqueDates.length > 0 ? uniqueDates[0] : new Date().toISOString().split('T')[0]}
+                                                max={new Date().toISOString().split('T')[0]}
                                                 min={uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : ''}
                                                 placeholder="All dates"
                                             />
