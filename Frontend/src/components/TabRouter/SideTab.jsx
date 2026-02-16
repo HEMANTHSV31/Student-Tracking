@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import useAuthStore from "../../store/useAuthStore";
 import logoIcon from "../../assets/logo-Icon.png";
+import { getMenuByRole } from "../../utils/menuConfig";
 
 import {
   LayoutDashboard,
@@ -45,150 +46,7 @@ const SideTab = () => {
   }, [location]);
 
   /* ================= ROLE BASED MENU ================= */
-  const menuByRole = {
-    admin: [
-      // Dashboard (separate)
-      {
-        id: "dashboard",
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        section: "top",
-      },
-
-      // Faculty & Accounts + Students (one group)
-      {
-        id: "faculty",
-        label: "Faculty & Accounts",
-        icon: Users,
-        section: "management",
-      },
-      { id: "students", label: "Students", icon: Users, section: "management" },
-
-      // Classes & Groups + Group Insights (one group)
-      {
-        id: "classes",
-        label: "Classes & Groups",
-        icon: Layers,
-        section: "classes",
-      },
-      {
-        id: "group-insights",
-        label: "Group Insights",
-        icon: BarChart3,
-        section: "classes",
-      },
-      {
-        id: "venue-allocation",
-        label: "Venue Allocation",
-        icon: MapPin,
-        section: "classes",
-      },
-
-      // Remaining under Academic
-      {
-        id: "attendance",
-        label: "Attendance",
-        icon: CalendarCheck,
-        section: "academic",
-      },
-      {
-        id: "tasks",
-        label: "Task & Assignment",
-        icon: ClipboardCheck,
-        section: "academic",
-      },
-      { id: "reports", label: "Reports", icon: BarChart3, section: "academic" },
-      {
-        id: "courses",
-        label: "Question Bank",
-        icon: BookOpen,
-        section: "academic",
-      },
-      {
-        id: "admin-tools",
-        label: "Admin Tools",
-        icon: Briefcase,
-        section: "tools",
-      },
-      // { id: 'settings', label: 'Settings', icon: Settings, section: 'system' },
-    ],
-    faculty: [
-      // { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
-      {
-        id: "classes",
-        label: "My Classes / Groups",
-        icon: Layers,
-        section: "top",
-      },
-
-      // Management Section
-      { id: "students", label: "Students", icon: Users, section: "management" },
-
-      // Academic Section
-      {
-        id: "attendance",
-        label: "Attendance",
-        icon: CalendarCheck,
-        section: "academic",
-      },
-      {
-        id: "tasks",
-        label: "Task & Assignment",
-        icon: ClipboardCheck,
-        section: "academic",
-      },
-      {
-        id: "submissions",
-        label: "Code Evaluation",
-        icon: Code,
-        section: "academic",
-      },
-      // { id: 'skill-reports', label: 'Course Progress', icon: FileSpreadsheet, section: 'academic' },
-      {
-        id: "group-insights",
-        label: "Group Insights",
-        icon: BarChart3,
-        section: "classes",
-      },
-      { id: "reports", label: "Reports", icon: BarChart3, section: "academic" },
-      // { id: 'settings', label: 'Settings', icon: Settings, section: 'system' },
-    ],
-    student: [
-      {
-        id: "dashboard",
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        section: "top",
-      },
-      { id: "classes", label: "My Class Room", icon: Home, section: "classes" },
-      {
-        id: "roadmap",
-        label: "Roadmap & Material",
-        icon: Map,
-        section: "academic",
-      },
-      {
-        id: "tasks",
-        label: "Tasks & Assignments",
-        icon: ClipboardCheck,
-        section: "academic",
-      },
-      {
-        id: "code-practice",
-        label: "P Skills Practice",
-        icon: Braces,
-        section: "assessment",
-      },
-      {
-        id: "attendance",
-        label: "Attendance",
-        icon: CalendarCheck,
-        section: "academic",
-      },
-    ],
-  };
-
-  const menuItems = menuByRole[user?.role] || [];
+  const menuItems = getMenuByRole(user);
 
   const tabContent = {
     submissions: { title: "Code Evaluation" },

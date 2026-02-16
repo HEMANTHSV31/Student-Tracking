@@ -6,8 +6,6 @@ import {
     ChevronDown,
     AlertCircle,
     CheckCircle2,
-    ArrowLeft,
-    FileSpreadsheet,
     Filter
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -17,7 +15,6 @@ import { apiGet } from '../../../../utils/api';
 const AttendanceExport = () => {
     const navigate = useNavigate();
     const { user } = useAuthStore();
-    const [hoveredButton, setHoveredButton] = React.useState(null);
 
     // State variables
     const [venues, setVenues] = useState([]);
@@ -357,30 +354,7 @@ const AttendanceExport = () => {
                     }
                 `}
             </style>
-            {/* Header */}
-            <div style={styles.header}>
-                <div style={styles.headerContent}>
-                    <button 
-                        style={{
-                            ...styles.backButton,
-                            ...(hoveredButton === 'back' ? styles.backButtonHover : {})
-                        }}
-                        onClick={() => navigate('/admin-tools')}
-                        onMouseEnter={() => setHoveredButton('back')}
-                        onMouseLeave={() => setHoveredButton(null)}
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div style={styles.iconWrapper}>
-                        <FileSpreadsheet size={28} color="#FFFFFF" />
-                    </div>
-                    <div>
-                        <h1 style={styles.title}>Attendance Data Export</h1>
-                        <p style={styles.subtitle}>Export attendance records with custom filters</p>
-                    </div>
-                </div>
-            </div>
-
+            
             {/* Error/Success Messages */}
             {error && (
                 <div style={{ ...styles.alertBanner, ...styles.errorBanner }}>
@@ -742,60 +716,6 @@ const styles = {
     container: {
         minHeight: '100vh',
         background: '#f8fafc'
-    },
-    header: {
-        background: '#FFFFFF',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '24px 40px',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-    },
-    headerContent: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '20px',
-        maxWidth: '1400px',
-        margin: '0 auto'
-    },
-    backButton: {
-        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '10px',
-        borderRadius: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#FFFFFF',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.2)'
-    },
-    backButtonHover: {
-        transform: 'translateY(-2px)',
-        boxShadow: '0 10px 15px -3px rgba(99, 102, 241, 0.3)'
-    },
-    iconWrapper: {
-        width: '56px',
-        height: '56px',
-        borderRadius: '16px',
-        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.2)'
-    },
-    title: {
-        fontSize: '28px',
-        fontWeight: '700',
-        color: '#0f172a',
-        margin: '0 0 6px 0',
-        letterSpacing: '-0.02em',
-        fontFamily: 'Outfit, sans-serif'
-    },
-    subtitle: {
-        fontSize: '15px',
-        color: '#64748b',
-        margin: '0',
-        fontWeight: '500'
     },
     content: {
         maxWidth: '1400px',

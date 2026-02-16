@@ -36,6 +36,7 @@ import AdminSkillReport from "../pages/SuperAdmin/AdminTools/SkillReports/AdminS
 //Super Admin -> Admin Tools
 import AdminTools from "../pages/SuperAdmin/AdminTools/AdminTools";
 import AttendanceExport from "../pages/SuperAdmin/AdminTools/AttendanceExport/AttendanceExport";
+import RoleChanger from "../pages/SuperAdmin/AdminTools/RoleChanger/RoleChager";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
@@ -120,6 +121,7 @@ const AppNavigator = () => {
             <Route path="admin-tools" element={<AdminTools />} />
             <Route path="admin-tools/attendance-export" element={<AttendanceExport />} />
             <Route path="admin-tools/progress-import" element={<AdminSkillReport />} />
+            <Route path="admin-tools/role-changer" element={<RoleChanger />} />
           </Route>
         )}
 

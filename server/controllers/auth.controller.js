@@ -31,6 +31,28 @@ export const googleAuth = async (req, res) => {
 
     const user = rows[0];
   
+    // Get user permissions (handle if table doesn't exist yet)
+    let userPermissions = {};
+    try {
+      const [permissions] = await db.query(
+        'SELECT * FROM user_permissions WHERE user_id = ?',
+        [user.user_id]
+      );
+
+      userPermissions = permissions.length > 0 ? {
+        tasks: Boolean(permissions[0].can_manage_tasks),
+        assignments: Boolean(permissions[0].can_manage_assignments),
+        questionBank: Boolean(permissions[0].can_manage_question_bank),
+        attendance: Boolean(permissions[0].can_manage_attendance),
+        grades: Boolean(permissions[0].can_manage_grades),
+        students: Boolean(permissions[0].can_manage_students),
+        venues: Boolean(permissions[0].can_manage_venues)
+      } : {};
+    } catch (err) {
+      // Table doesn't exist yet or query failed - continue without permissions
+      console.warn('Could not fetch user permissions:', err.message);
+    }
+  
     // Get client IP for token binding
     const clientIP = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     
@@ -61,7 +83,8 @@ export const googleAuth = async (req, res) => {
         user_id: user.user_id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        permissions: userPermissions
       }
     });
   } catch (err) {
@@ -86,6 +109,29 @@ export const getMe = async (req, res) => {
     }
 
     const user = rows[0];
+
+    // Get user permissions (handle if table doesn't exist yet)
+    let userPermissions = {};
+    try {
+      const [permissions] = await db.query(
+        'SELECT * FROM user_permissions WHERE user_id = ?',
+        [req.user.user_id]
+      );
+
+      userPermissions = permissions.length > 0 ? {
+        tasks: Boolean(permissions[0].can_manage_tasks),
+        assignments: Boolean(permissions[0].can_manage_assignments),
+        questionBank: Boolean(permissions[0].can_manage_question_bank),
+        attendance: Boolean(permissions[0].can_manage_attendance),
+        grades: Boolean(permissions[0].can_manage_grades),
+        students: Boolean(permissions[0].can_manage_students),
+        venues: Boolean(permissions[0].can_manage_venues)
+      } : {};
+    } catch (err) {
+      // Table doesn't exist yet or query failed - continue without permissions
+      console.warn('Could not fetch user permissions:', err.message);
+    }
+
     res.json({
       user: {
         user_id: user.user_id,
@@ -93,7 +139,8 @@ export const getMe = async (req, res) => {
         email: user.email,
         role: user.role,
         ID: user.ID,
-        department: user.department
+        department: user.department,
+        permissions: userPermissions
       }
     });
   } catch (err) {

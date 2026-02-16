@@ -5,7 +5,6 @@ import {
     UserCog,
     CheckSquare,
     ArrowRight,
-    Briefcase,
     ClipboardList,
     Database,
     TrendingUp
@@ -46,8 +45,7 @@ const AdminTools = () => {
                     description: 'Manage user roles and permissions',
                     icon: UserCog,
                     color: '#8B5CF6', // Purple
-                    route: '/admin-tools/role-changer',
-                    disabled: true // Coming soon
+                    route: '/admin-tools/role-changer'
                 }
             ]
         },
@@ -75,18 +73,6 @@ const AdminTools = () => {
 
     return (
         <div style={styles.container}>
-            <div style={styles.header}>
-                <div style={styles.headerContent}>
-                    <div style={styles.iconWrapper}>
-                        <Briefcase size={32} color="#6366F1" />
-                    </div>
-                    <div>
-                        <h1 style={styles.title}>Admin Tools</h1>
-                        <p style={styles.subtitle}>Manage and export data across the platform</p>
-                    </div>
-                </div>
-            </div>
-
             <div style={styles.content}>
                 {functionCategories.map((category, index) => (
                     <div key={index} style={styles.categorySection}>
@@ -141,39 +127,6 @@ const styles = {
         minHeight: '100vh',
         backgroundColor: '#F9FAFB',
         padding: '0'
-    },
-    header: {
-        backgroundColor: '#FFFFFF',
-        borderBottom: '1px solid #E5E7EB',
-        padding: '24px 32px',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-    },
-    headerContent: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        maxWidth: '1400px',
-        margin: '0 auto'
-    },
-    iconWrapper: {
-        width: '56px',
-        height: '56px',
-        borderRadius: '12px',
-        backgroundColor: '#EEF2FF',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    title: {
-        fontSize: '28px',
-        fontWeight: '700',
-        color: '#111827',
-        margin: '0 0 4px 0'
-    },
-    subtitle: {
-        fontSize: '14px',
-        color: '#6B7280',
-        margin: '0'
     },
     content: {
         maxWidth: '1400px',
