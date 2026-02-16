@@ -41,12 +41,12 @@ const ReportsAnalytics = () => {
   const [loading, setLoading] = useState(false);
   const [venuesLoading, setVenuesLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [paginationData, setPaginationData] = useState({ total: 0, page: 1, limit: 10, totalPages: 0 });
+  const [paginationData, setPaginationData] = useState({ total: 0, page: 1, limit: 20, totalPages: 0 });
 
   // Menu States
   const [anchorElStatus, setAnchorElStatus] = useState(null);
 
-  const itemsPerPage = 10;
+  const itemsPerPage = 20;
 
   // Fetch venues on mount
   useEffect(() => {
@@ -143,7 +143,14 @@ const ReportsAnalytics = () => {
 
         const data = await response.json();
 
+        console.log('Full API response:', data);
+        console.log('Submissions array length:', data.data?.length);
+
         if (data.success) {
+          if (data.data && data.data.length > 0) {
+            console.log('First submission data:', data.data[0]);
+          }
+          
           const transformed = data.data.map((sub) => {
             const hasFile =
               sub.file_path &&
@@ -157,10 +164,15 @@ const ReportsAnalytics = () => {
             const hasSubmitted = sub.submitted_at !== null;
 
             // Determine the grade to display
-            // For MCQ tasks: use mcq_percentage or auto_graded_score or student_grade
-            // For manual/coding tasks: use grade from task_submissions
+            // Priority: web_grade > student_grade > mcq_percentage > auto_graded_score > grade
             let displayGrade = "";
-            if (sub.submission_type === 'mcq') {
+            
+            // Check if it's a web code submission
+            if (sub.web_submission_id && sub.web_grade !== null && sub.web_grade !== undefined) {
+              displayGrade = sub.web_grade.toString();
+            } 
+            // For MCQ tasks
+            else if (sub.submission_type === 'mcq') {
               // Priority: student_grade > mcq_percentage > auto_graded_score > grade
               if (sub.student_grade !== null && sub.student_grade !== undefined) {
                 displayGrade = sub.student_grade.toString();
@@ -171,9 +183,15 @@ const ReportsAnalytics = () => {
               } else if (sub.grade !== null) {
                 displayGrade = sub.grade.toString();
               }
+            } 
+            // For coding tasks or other manual tasks
+            else if (sub.student_grade !== null && sub.student_grade !== undefined) {
+              displayGrade = sub.student_grade.toString();
             } else if (sub.grade !== null) {
               displayGrade = sub.grade.toString();
             }
+
+            console.log(`Student ${sub.student_name}: displayGrade="${displayGrade}", web_grade=${sub.web_grade}, student_grade=${sub.student_grade}, grade=${sub.grade}`);
 
             return {
               id: sub.student_roll,
@@ -1010,37 +1028,22 @@ const ReportsAnalytics = () => {
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <button
                     className="btn-ui"
-                    style={{ padding: "5px 8px" }}
+                    style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: "6px" }}
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((prev) => prev - 1)}
                   >
-                    <ChevronLeftIcon />
+                    <ChevronLeftIcon /> Previous
                   </button>
-                  {totalPages > 0 &&
-                    [...Array(totalPages)].map((_, i) => (
-                      <button
-                        key={i}
-                        className="btn-ui"
-                        style={{
-                          padding: "6px 14px",
-                          background:
-                            i + 1 === currentPage ? "#2563eb" : "white",
-                          color: i + 1 === currentPage ? "white" : "#64748b",
-                          borderColor:
-                            i + 1 === currentPage ? "#2563eb" : "#e2e8f0",
-                        }}
-                        onClick={() => setCurrentPage(i + 1)}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
+                  <span style={{ color: "#64748b", fontSize: 14 }}>
+                    Page {currentPage} of {totalPages || 1}
+                  </span>
                   <button
                     className="btn-ui"
-                    style={{ padding: "5px 8px" }}
+                    style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: "6px" }}
                     disabled={currentPage === totalPages || totalPages === 0}
                     onClick={() => setCurrentPage((prev) => prev + 1)}
                   >
-                    <ChevronRightIcon />
+                    Next <ChevronRightIcon />
                   </button>
                 </div>
               </div>

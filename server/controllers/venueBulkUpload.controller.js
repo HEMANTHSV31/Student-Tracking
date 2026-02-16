@@ -21,6 +21,7 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
   
   try {
     if (!req.file) {
+      console.log('❌ No file uploaded');
       return res.status(400).json({
         success: false,
         message: 'No Excel file uploaded'
@@ -33,7 +34,10 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
     const worksheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(worksheet);
 
+    console.log(`📊 Parsed ${data.length} rows from Excel file`);
+
     if (data.length === 0) {
+      console.log('❌ Excel file is empty');
       return res.status(400).json({
         success: false,
         message: 'Excel file is empty'
@@ -42,24 +46,30 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
 
     // Determine which format is being used
     const firstRow = data[0];
+    console.log('📋 First row columns:', Object.keys(firstRow));
+    
     const hasRegistrationNumber = 'Registration Number' in firstRow;
     const hasVenueName = 'Venue Name' in firstRow;
     const hasFacultyEmail = 'Faculty Email' in firstRow;
 
     // Validate format
     if (!hasRegistrationNumber) {
+      console.log('❌ Missing "Registration Number" column');
       return res.status(400).json({
         success: false,
         message: 'Invalid Excel format. "Registration Number" column is required.',
-        hint: 'Required columns: Registration Number, Venue Name, Faculty Email'
+        hint: 'Required columns: Registration Number, Venue Name, Faculty Email',
+        foundColumns: Object.keys(firstRow)
       });
     }
 
     if (!hasVenueName || !hasFacultyEmail) {
+      console.log('❌ Missing required columns:', { hasVenueName, hasFacultyEmail });
       return res.status(400).json({
         success: false,
         message: 'Invalid Excel format. Please use: Registration Number, Venue Name, and Faculty Email columns',
-        hint: 'All three columns are required for bulk upload'
+        hint: 'All three columns are required for bulk upload',
+        foundColumns: Object.keys(firstRow)
       });
     }
 
@@ -68,8 +78,9 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
     
     for (const row of data) {
       const regNo = row['Registration Number']?.toString().trim();
-      const venueName = row['Venue Name']?.trim();
-      const facultyEmail = row['Faculty Email']?.trim();
+      // Use venue name EXACTLY as given in Excel - no trimming or normalization
+      const venueName = row['Venue Name']?.toString();
+      const facultyEmail = row['Faculty Email']?.toString().trim();
 
       if (!regNo || !venueName || !facultyEmail) {
         continue; // Skip incomplete rows
@@ -105,14 +116,21 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
       const { venueName, facultyEmail, students: registrationNumbers } = venueGroup;
 
       try {
-        // 1. Validate venue exists
+        // 1. Validate venue exists - EXACT MATCH ONLY (no normalization)
+        console.log(`🔍 Looking for EXACT venue name: "${venueName}"`);
+        
         const [venueRows] = await connection.query(
-          'SELECT venue_id, venue_name, assigned_faculty_id FROM venue WHERE venue_name = ? AND deleted_at IS NULL',
+          `SELECT venue_id, venue_name, assigned_faculty_id 
+           FROM venue 
+           WHERE venue_name = ? AND deleted_at IS NULL`,
           [venueName]
         );
+        
+        console.log(`✅ Found ${venueRows.length} venue(s)${venueRows.length > 0 ? ': ' + venueRows.map(v => `ID ${v.venue_id} - "${v.venue_name}"`).join(', ') : ''}`);
 
         if (venueRows.length === 0) {
-          errors.push(`Venue "${venueName}" not found`);
+          console.log(`❌ Venue not found. Excel value: "${venueName}"`);
+          errors.push(`Venue "${venueName}" not found. Please ensure the venue name in Excel matches EXACTLY with the database (including spaces, capitalization).`);
           continue;
         }
 
@@ -214,34 +232,44 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
         }
 
         // 7. Add new students to the target venue's group
+        // Use INSERT ... ON DUPLICATE KEY UPDATE to handle re-uploads without errors
         const groupStudentValues = studentIds.map(studentId => [
           targetGroupId,
           studentId,
           'Active'
         ]);
 
-        await connection.query(`
-          INSERT INTO group_students (group_id, student_id, status)
-          VALUES ?
-        `, [groupStudentValues]);
+        if (groupStudentValues.length > 0) {
+          await connection.query(`
+            INSERT INTO group_students (group_id, student_id, status)
+            VALUES ?
+            ON DUPLICATE KEY UPDATE status = 'Active'
+          `, [groupStudentValues]);
+        }
 
         // 8. Update venue's assigned faculty
-        await connection.query(
+        console.log(`📍 Assigning faculty ${facultyId} (${facultyEmail}) to venue ${venueId} (${venueName})`);
+        const [venueUpdateResult] = await connection.query(
           'UPDATE venue SET assigned_faculty_id = ? WHERE venue_id = ?',
           [facultyId, venueId]
         );
+        console.log(`✅ Venue updated: ${venueUpdateResult.affectedRows} row(s)`);
 
         // 9. Update students' assigned faculty
-        await connection.query(
+        console.log(`👥 Assigning faculty ${facultyId} to ${studentIds.length} students`);
+        const [studentUpdateResult] = await connection.query(
           'UPDATE students SET assigned_faculty_id = ? WHERE student_id IN (?)',
           [facultyId, studentIds]
         );
+        console.log(`✅ Students updated: ${studentUpdateResult.affectedRows} row(s)`);
 
         // 10. Update group's faculty assignment
-        await connection.query(
+        console.log(`👨‍🏫 Assigning faculty ${facultyId} to groups in venue ${venueId}`);
+        const [groupUpdateResult] = await connection.query(
           'UPDATE `groups` SET faculty_id = ? WHERE venue_id = ?',
           [facultyId, venueId]
         );
+        console.log(`✅ Groups updated: ${groupUpdateResult.affectedRows} row(s)`);
 
         // Track success
         processResults.push({

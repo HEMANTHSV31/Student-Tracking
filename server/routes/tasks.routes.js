@@ -21,11 +21,14 @@ import {
   submitMCQTest,
   submitCodingTask,
   submitWebCode,
+  getCodingSubmissions,
   getWebCodeSubmissions,
   getWebCodeSubmissionDetail,
   gradeWebCodeSubmission,
   getCodingSubmissionDetail,
   gradeCodingSubmission,
+  requestWebCodeResubmit,
+  requestCodingResubmit,
   upload,
   studentUpload
 } from '../controllers/tasks.controller.js';
@@ -94,12 +97,22 @@ router.get('/web-submissions/:submission_id', authenticate, facultyOrAdmin, getW
 // Grade a web code submission
 router.put('/web-submissions/:submission_id/grade', authenticate, facultyOrAdmin, gradeWebCodeSubmission);
 
+// Request resubmit for web code submission (when student fails)
+router.put('/web-submissions/:submission_id/request-resubmit', authenticate, facultyOrAdmin, requestWebCodeResubmit);
+
+// ============ CODING TASK SUBMISSIONS ============
+// Get all coding submissions for a venue (from student_submissions table)
+router.get('/coding-submissions/venue/:venue_id', authenticate, facultyOrAdmin, getCodingSubmissions);
+
 // ============ CODE PRACTICE SUBMISSIONS (MCQ/CODING) ============
 // Get single code practice submission (coding task or MCQ)
 router.get('/code-submission/:submission_id', authenticate, facultyOrAdmin, getCodingSubmissionDetail);
 
 // Grade a code practice submission (coding task)
 router.put('/code-submission/:submission_id/grade', authenticate, facultyOrAdmin, gradeCodingSubmission);
+
+// Request resubmit for coding submission (when student fails)
+router.put('/code-submission/:submission_id/request-resubmit', authenticate, facultyOrAdmin, requestCodingResubmit);
 
 // Error handling middleware for multer errors
 router.use((err, req, res, next) => {

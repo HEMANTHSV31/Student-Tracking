@@ -1162,19 +1162,21 @@ export const bulkUploadStudentsToVenue = async (req, res) => {
       droppedCount = dropResult.affectedRows;
     }
 
-    // Check capacity after potential drop
+    // Check capacity after potential drop - count DISTINCT students only
     const [currentCount] = await connection.query(`
-      SELECT COUNT(*) as count 
+      SELECT COUNT(DISTINCT gs.student_id) as count 
       FROM group_students gs
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       WHERE g.venue_id = ? AND gs.status = 'Active'
     `, [venueId]);
 
-   
+    console.log(`📊 Venue ${venueId} - Capacity: ${venue.capacity}, Current students: ${currentCount[0].count}, Excel file: ${data.length} students`);
+    
     const availableSlots = venue.capacity - currentCount[0].count;
 
     if (data.length > availableSlots) {
       await connection.rollback();
+      console.log(`❌ Capacity exceeded - Available: ${availableSlots}, Trying to add: ${data.length}`);
       return res.status(400).json({ 
         success: false, 
         message: `Venue capacity exceeded. Available slots: ${availableSlots}, Students in file: ${data.length}` 

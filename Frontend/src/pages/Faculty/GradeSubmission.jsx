@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSubmissionDetails, gradeSubmission } from '../../services/questionBankApi';
+import { apiGet, apiPut } from '../../utils/api';
 import Editor from '@monaco-editor/react';
 import '../../styles/GradeSubmission.css';
 
@@ -20,6 +21,7 @@ const GradeSubmission = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [showTestCases, setShowTestCases] = useState(false);
+  const [submissionType, setSubmissionType] = useState(null); // 'question-bank', 'coding', or 'web'
 
   useEffect(() => {
     fetchSubmission();
@@ -28,11 +30,36 @@ const GradeSubmission = () => {
   const fetchSubmission = async () => {
     try {
       setLoading(true);
-      const response = await getSubmissionDetails(submissionId);
       
+      // Try coding submission from student_submissions table first
+      try {
+        const codingResponse = await apiGet(`/tasks/code-submission/${submissionId}`);
+        const codingData = await codingResponse.json();
+        if (codingData.success) {
+          setSubmissionType('coding');
+          setSubmission({
+            ...codingData.data,
+            code: codingData.data.coding_content,
+            language: codingData.data.programming_language || 'javascript'
+          });
+          if (codingData.data.feedback) {
+            setFeedback(codingData.data.feedback);
+          }
+          if (codingData.data.grade !== null) {
+            setScore(codingData.data.grade.toString());
+          }
+          setLoading(false);
+          return;
+        }
+      } catch (codingErr) {
+        // Not a coding submission, try question bank
+      }
+      
+      // Fall back to question bank submission
+      const response = await getSubmissionDetails(submissionId);
       if (response.success) {
+        setSubmissionType('question-bank');
         setSubmission(response.data);
-        // Pre-fill feedback if exists
         if (response.data.feedback) {
           setFeedback(response.data.feedback);
         }
@@ -68,10 +95,23 @@ const GradeSubmission = () => {
 
     try {
       setSubmitting(true);
-      const response = await gradeSubmission(submissionId, scoreValue, feedback);
+      
+      let response;
+      if (submissionType === 'coding') {
+        // Grade coding submission using student_submissions table
+        const gradeResponse = await apiPut(`/tasks/code-submission/${submissionId}/grade`, {
+          grade: scoreValue,
+          feedback: feedback,
+          status: scoreValue >= 50 ? 'Graded' : 'Needs Revision'
+        });
+        response = await gradeResponse.json();
+      } else {
+        // Use question bank grading for question-bank submissions
+        response = await gradeSubmission(submissionId, scoreValue, feedback);
+      }
       
       if (response.success) {
-        const message = response.data.reassigned
+        const message = response.data?.reassigned
           ? `Grade submitted successfully! Student scored ${scoreValue}% (below 50%), so a new question has been assigned automatically.`
           : `Grade submitted successfully! Student scored ${scoreValue}%.`;
         

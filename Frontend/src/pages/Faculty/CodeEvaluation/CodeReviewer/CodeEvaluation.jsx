@@ -13,6 +13,8 @@ import { apiGet, apiPut } from "../../../../utils/api";
 import Editor from '@monaco-editor/react';
 import "./CodeEvaluation.css";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const CodeEvaluation = () => {
   const { submissionId } = useParams();
   const navigate = useNavigate();
@@ -56,6 +58,11 @@ const CodeEvaluation = () => {
       if (jsonData.success) {
         const data = jsonData.data;
         
+        console.log('Raw API data:', data);
+        console.log('Expected output image:', data.expected_output_image);
+        console.log('Question description:', data.question_description);
+        console.log('Files:', data.files);
+        
         // Parse files from web_submission_files
         let html = '', css = '', js = '';
         
@@ -75,11 +82,11 @@ const CodeEvaluation = () => {
         const transformedSubmission = {
           id: data.submission_id,
           studentName: data.student_name,
-          studentId: data.student_email || 'N/A',
+          studentId: data.student_roll || data.student_id || 'N/A',
+          studentEmail: data.student_email || '',
           title: data.task_title || 'Web Code Practice',
           submittedAt: new Date(data.submitted_at).toLocaleString(),
           status: data.status === 'Graded' ? (data.grade >= 50 ? 'PASSED' : 'FAILED') : 'PENDING',
-          autoTestOutcome: 'N/A',
           code: {
             html: html || '<!-- No HTML code submitted -->',
             css: css || '/* No CSS code submitted */',
@@ -92,10 +99,23 @@ const CodeEvaluation = () => {
           },
           totalScore: data.grade || 0,
           maxScore: data.max_score || 100,
-          language: 'html-css-js',
-          questionText: data.question_description || data.task_description,
-          sampleImage: data.expected_output_image, // Sample image from question_bank
+          language: data.workspace_mode || 'html-css-js',
+          questionTitle: data.question_title || data.task_title || '',
+          questionText: data.question_description || data.task_description || '',
+          expectedOutputImage: data.expected_output_image ? 
+            (data.expected_output_image.startsWith('http') ? 
+              data.expected_output_image : 
+              data.expected_output_image.startsWith('/') ? 
+                `${API_URL}${data.expected_output_image}` : 
+                `${API_URL}/uploads/${data.expected_output_image}`
+            ) : '',
+          difficultyLevel: data.difficulty_level || '',
+          hints: data.hints || '',
+          feedback: data.feedback || '',
         };
+        
+        console.log('Transformed submission:', transformedSubmission);
+        console.log('Expected output image in transformed:', transformedSubmission.expectedOutputImage);
         
         setSubmission(transformedSubmission);
         setScores({
@@ -103,6 +123,9 @@ const CodeEvaluation = () => {
           requirements: transformedSubmission.rubric.requirements.current,
           expectedOutput: transformedSubmission.rubric.expectedOutput.current,
         });
+        if (transformedSubmission.feedback) {
+          setFeedback(prev => ({ ...prev, comment: transformedSubmission.feedback }));
+        }
       }
     } catch (error) {
       console.error("Error loading submission:", error);
@@ -124,7 +147,48 @@ const CodeEvaluation = () => {
   };
 
   const handleRunTests = () => {
-    showResult("info", "Info", "Running automated tests...");
+    if (!submission || !submission.code) {
+      showResult("error", "Error", "No code available to preview");
+      return;
+    }
+    
+    console.log('Running preview with code:', {
+      html: submission.code.html?.substring(0, 100),
+      css: submission.code.css?.substring(0, 100),
+      js: submission.code.js?.substring(0, 100)
+    });
+    
+    // Create HTML document with embedded CSS and JS
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview</title>
+  <style>
+${submission.code.css || ''}
+  </style>
+</head>
+<body>
+${submission.code.html || ''}
+  <script>
+${submission.code.js || ''}
+  </script>
+</body>
+</html>`;
+    
+    console.log('Generated HTML for preview:', htmlContent.substring(0, 200));
+    
+    // Update iframe with the content
+    const iframe = document.getElementById('live-preview-frame');
+    if (iframe) {
+      // Use srcdoc for better compatibility
+      iframe.srcdoc = htmlContent;
+      showResult("success", "Preview Updated", "Live preview is now showing the student's code output");
+    } else {
+      console.error('Preview iframe not found');
+      showResult("error", "Error", "Preview frame not found");
+    }
   };
 
   const handleFinalizeEvaluation = async () => {
@@ -147,7 +211,7 @@ const CodeEvaluation = () => {
       
       if (data.success) {
         showResult("success", "Success", "Evaluation finalized successfully!");
-        setTimeout(() => navigate("/faculty/question-bank/pending"), 1500);
+        setTimeout(() => navigate("/submissions"), 1500);
       } else {
         throw new Error(data.message || 'Failed to grade submission');
       }
@@ -176,7 +240,7 @@ const CodeEvaluation = () => {
     return (
       <div className="code-eval-error">
         <p>{error || 'Submission not found'}</p>
-        <button onClick={() => navigate("/faculty/question-bank/pending")}>
+        <button onClick={() => navigate("/submissions")}>
           Go Back
         </button>
       </div>
@@ -192,7 +256,7 @@ const CodeEvaluation = () => {
       <div className="code-eval-header">
         <button
           className="back-button"
-          onClick={() => navigate("/faculty/question-bank/pending")}
+          onClick={() => navigate("/submissions")}
         >
           <ArrowBack /> Back to Submissions
         </button>
@@ -209,6 +273,46 @@ const CodeEvaluation = () => {
       <div className="code-eval-content">
         {/* Left Panel - Code Editor */}
         <div className="code-panel">
+          {/* Question Section - Display First */}
+          {submission.questionText && (
+            <div className="question-section">
+              <h3>QUESTION</h3>
+              {submission.questionTitle && <h4>{submission.questionTitle}</h4>}
+              <p className="question-text">{submission.questionText}</p>
+              {submission.difficultyLevel && (
+                <span className="difficulty-badge">{submission.difficultyLevel}</span>
+              )}
+              {submission.hints && (
+                <div className="hints-section">
+                  <strong>Hints:</strong>
+                  <p>{submission.hints}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Expected Output / Reference Image */}
+          <div className="expected-output-section">
+            <h3>EXPECTED OUTPUT</h3>
+            <div className="sample-image-container">
+              {submission.expectedOutputImage ? (
+                <img 
+                  src={submission.expectedOutputImage} 
+                  alt="Expected output" 
+                  className="sample-image"
+                  onError={(e) => { 
+                    console.error('Image failed to load:', submission.expectedOutputImage);
+                    e.target.style.display = 'none';
+                    e.target.nextElementSibling.style.display = 'block';
+                  }}
+                />
+              ) : null}
+              <p className="no-image-text" style={{ display: submission.expectedOutputImage ? 'none' : 'block' }}>
+                No reference image provided for this question
+              </p>
+            </div>
+          </div>
+
           <div className="code-panel-header">
             <div className="code-tabs">
               <button
@@ -229,113 +333,44 @@ const CodeEvaluation = () => {
               >
                 <span className="tab-icon">⚡</span> JS
               </button>
-              <button className="tab">
-                <span className="tab-icon">🔥</span> LIVE
-              </button>
-              <button className="tab">
-                <span className="tab-icon">📊</span> REF
-              </button>
-              <button className="tab">
-                <span className="tab-icon">🔍</span> MATCH
-              </button>
             </div>
             <button className="run-tests-btn" onClick={handleRunTests}>
-              <PlayArrow /> RUN TESTS
+              <PlayArrow /> RUN / PREVIEW
             </button>
           </div>
 
           <div className="code-editor">
-            <Editor
-              height="500px"
-              language={activeTab === 'html' ? 'html' : activeTab === 'css' ? 'css' : 'javascript'}
-              value={submission.code[activeTab]}
-              theme="vs-dark"
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-              }}
-            />
+            {submission.code && submission.code[activeTab] ? (
+              <Editor
+                height="500px"
+                language={activeTab === 'html' ? 'html' : activeTab === 'css' ? 'css' : 'javascript'}
+                value={submission.code[activeTab]}
+                theme="vs-dark"
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                }}
+              />
+            ) : (
+              <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center' }}>
+                No code available
+              </div>
+            )}
           </div>
 
-          {/* Sample Image Reference */}
-          {submission.sampleImage && (
-            <div className="sample-image-section">
-              <h3>EXPECTED OUTPUT / REFERENCE</h3>
-              <div className="sample-image-container">
-                <img 
-                  src={submission.sampleImage} 
-                  alt="Expected output" 
-                  className="sample-image"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Question Text */}
-          {submission.questionText && (
-            <div className="question-text-section">
-              <h3>QUESTION</h3>
-              <p className="question-text">{submission.questionText}</p>
-            </div>
-          )}
-
-          {/* Telemetry */}
-          <div className="telemetry-section">
-            <h3>TELEMETRY</h3>
-            <div className="telemetry-item">
-              <span className="telemetry-label">AUTO-TEST OUTCOME</span>
-              <span className={`telemetry-value ${submission.status.toLowerCase()}`}>
-                <CheckCircle /> {submission.autoTestOutcome}
-              </span>
-            </div>
-            <div className="telemetry-item">
-              <span className="telemetry-label">SUBMISSION TIME</span>
-              <span className="telemetry-value">
-                <Timer /> {submission.submittedAt}
-              </span>
-            </div>
-          </div>
-
-          {/* Student Feedback */}
-          <div className="student-feedback-section">
-            <h3>STUDENT FEEDBACK</h3>
-            <div className="feedback-ratings">
-              <div className="rating-item">
-                <span className="rating-label">DIFFICULTY RATING</span>
-                <div className="stars">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <span
-                      key={star}
-                      className={`star ${feedback.difficulty >= star ? "filled" : ""}`}
-                      onClick={() =>
-                        setFeedback((prev) => ({ ...prev, difficulty: star }))
-                      }
-                    >
-                      {feedback.difficulty >= star ? "●" : "○"}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="rating-item">
-                <span className="rating-label">CLARITY RATING</span>
-                <div className="stars">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <span
-                      key={star}
-                      className={`star ${feedback.clarity >= star ? "filled" : ""}`}
-                      onClick={() =>
-                        setFeedback((prev) => ({ ...prev, clarity: star }))
-                      }
-                    >
-                      {feedback.clarity >= star ? "●" : "○"}
-                    </span>
-                  ))}
-                </div>
-              </div>
+          {/* Live Preview Output */}
+          <div className="live-preview-section">
+            <h3>LIVE PREVIEW OUTPUT</h3>
+            <div className="preview-container">
+              <iframe 
+                id="live-preview-frame"
+                title="Live Preview"
+                className="preview-iframe"
+              >
+              </iframe>
             </div>
           </div>
         </div>

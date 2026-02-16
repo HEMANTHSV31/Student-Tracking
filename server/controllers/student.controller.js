@@ -1127,8 +1127,8 @@ export const bulkUploadStudents = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Excel file is empty' });
     }
 
-    if (data.length > 5000) {
-      return res.status(400).json({ success: false, message: 'Maximum 5000 records allowed per upload' });
+    if (data.length > 7500) {
+      return res.status(400).json({ success: false, message: 'Maximum 7500 records allowed per upload' });
     }
 
     await connection.beginTransaction();
