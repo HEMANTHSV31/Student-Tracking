@@ -419,10 +419,10 @@ export const getUnmarkedAttendanceVenues = async (req, res) => {
     // Define the 4 standard sessions with start times in minutes from midnight
     // Sessions become "overdue" 45 minutes after they start
     const sessions = [
-      { id: 'S1', name: 'Session 1', time: '09:00 AM - 10:30 AM', startMinutes: 9 * 60, deadlineMinutes: 9 * 60 + 45 },      // 9:00 AM, deadline 9:45 AM
-      { id: 'S2', name: 'Session 2', time: '10:30 AM - 12:30 PM', startMinutes: 10 * 60 + 30, deadlineMinutes: 10 * 60 + 30 + 45 }, // 10:30 AM, deadline 11:15 AM
-      { id: 'S3', name: 'Session 3', time: '01:30 PM - 03:00 PM', startMinutes: 13 * 60 + 30, deadlineMinutes: 13 * 60 + 30 + 45 }, // 1:30 PM, deadline 2:15 PM
-      { id: 'S4', name: 'Session 4', time: '03:00 PM - 04:30 PM', startMinutes: 15 * 60, deadlineMinutes: 15 * 60 + 45 }      // 3:00 PM, deadline 3:45 PM
+      { id: 'S1', name: 'Session 1', time: '08:45 AM - 10:30 AM', startMinutes: 8 * 60 + 45, deadlineMinutes: 8 * 60 + 45 + 45 },      // 8:45 AM, deadline 9:30 AM
+      { id: 'S2', name: 'Session 2', time: '10:40 AM - 12:30 PM', startMinutes: 10 * 60 + 40, deadlineMinutes: 10 * 60 + 40 + 45 }, // 10:40 AM, deadline 11:25 AM
+      { id: 'S3', name: 'Session 3', time: '01:30 PM - 03:10 PM', startMinutes: 13 * 60 + 30, deadlineMinutes: 13 * 60 + 30 + 45 }, // 1:30 PM, deadline 2:15 PM
+      { id: 'S4', name: 'Session 4', time: '03:25 PM - 04:30 PM', startMinutes: 15 * 60 + 25, deadlineMinutes: 15 * 60 + 25 + 45 }      // 3:25 PM, deadline 4:10 PM
     ];
 
     // Filter sessions that are past their 45-minute deadline

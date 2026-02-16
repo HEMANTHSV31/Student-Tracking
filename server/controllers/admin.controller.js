@@ -135,7 +135,8 @@ export const getUserPermissions = async (req, res) => {
     const { userId } = req.params;
 
     const [permissions] = await db.query(
-      'SELECT * FROM user_permissions WHERE user_id = ?',
+      `SELECT can_access_question_bank, can_manage_tasks, can_access_classes_groups 
+       FROM user_permissions WHERE user_id = ?`,
       [userId]
     );
 
@@ -144,13 +145,9 @@ export const getUserPermissions = async (req, res) => {
       return res.status(200).json({ 
         success: true, 
         data: {
-          tasks: false,
-          assignments: false,
           questionBank: false,
-          attendance: false,
-          grades: false,
-          students: false,
-          venues: false
+          tasks: false,
+          classes: false
         }
       });
     }
@@ -159,13 +156,9 @@ export const getUserPermissions = async (req, res) => {
     res.status(200).json({ 
       success: true, 
       data: {
+        questionBank: Boolean(permData.can_access_question_bank),
         tasks: Boolean(permData.can_manage_tasks),
-        assignments: Boolean(permData.can_manage_assignments),
-        questionBank: Boolean(permData.can_manage_question_bank),
-        attendance: Boolean(permData.can_manage_attendance),
-        grades: Boolean(permData.can_manage_grades),
-        students: Boolean(permData.can_manage_students),
-        venues: Boolean(permData.can_manage_venues)
+        classes: Boolean(permData.can_access_classes_groups)
       }
     });
   } catch (error) {
@@ -208,23 +201,15 @@ export const updateUserPermissions = async (req, res) => {
       // Update existing permissions
       await connection.query(
         `UPDATE user_permissions SET 
+          can_access_question_bank = ?,
           can_manage_tasks = ?,
-          can_manage_assignments = ?,
-          can_manage_question_bank = ?,
-          can_manage_attendance = ?,
-          can_manage_grades = ?,
-          can_manage_students = ?,
-          can_manage_venues = ?,
+          can_access_classes_groups = ?,
           updated_at = NOW()
         WHERE user_id = ?`,
         [
-          permissions.tasks ? 1 : 0,
-          permissions.assignments ? 1 : 0,
           permissions.questionBank ? 1 : 0,
-          permissions.attendance ? 1 : 0,
-          permissions.grades ? 1 : 0,
-          permissions.students ? 1 : 0,
-          permissions.venues ? 1 : 0,
+          permissions.tasks ? 1 : 0,
+          permissions.classes ? 1 : 0,
           userId
         ]
       );
@@ -232,18 +217,14 @@ export const updateUserPermissions = async (req, res) => {
       // Insert new permissions
       await connection.query(
         `INSERT INTO user_permissions 
-          (user_id, can_manage_tasks, can_manage_assignments, can_manage_question_bank, 
-           can_manage_attendance, can_manage_grades, can_manage_students, can_manage_venues, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          (user_id, can_access_question_bank, can_manage_tasks, 
+           can_access_classes_groups, created_at)
+        VALUES (?, ?, ?, ?, NOW())`,
         [
           userId,
-          permissions.tasks ? 1 : 0,
-          permissions.assignments ? 1 : 0,
           permissions.questionBank ? 1 : 0,
-          permissions.attendance ? 1 : 0,
-          permissions.grades ? 1 : 0,
-          permissions.students ? 1 : 0,
-          permissions.venues ? 1 : 0
+          permissions.tasks ? 1 : 0,
+          permissions.classes ? 1 : 0
         ]
       );
     }

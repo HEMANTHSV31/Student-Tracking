@@ -147,27 +147,31 @@ const TasksAssignments = () => {
     // First Filter by Course
     if (selectedCourse && t.subject !== selectedCourse) return false;
 
-    const hasActualSubmission = Boolean(
-      t.fileName || t.linkUrl || t.submittedDate,
-    );
+    // Determine if task is completed based on submission status
+    const isCompleted = 
+      t.submissionStatus === 'Submitted' || 
+      t.submissionStatus === 'Auto-Graded' || 
+      t.submissionStatus === 'Graded';
+    
+    const isPending = 
+      t.submissionStatus === 'Pending Review' || 
+      (!t.submissionStatus && !t.fileName && !t.linkUrl);
+    
+    const needsRevision = t.submissionStatus === 'Needs Revision';
 
     // Then Filter by Status
     if (activeFilter === "pending") {
-      // Pending = needs student action (includes redo / revision)
-      return (
-        t.status === "revision" ||
-        (t.status !== "completed" && !hasActualSubmission)
-      );
+      // Pending = needs student action (includes new tasks and revision)
+      return isPending || needsRevision;
     }
     if (activeFilter === "submitted") {
-      // Submitted = student has submitted, waiting for grading
-      return (
-        t.status !== "completed" &&
-        t.status !== "revision" &&
-        hasActualSubmission
-      );
+      // Submitted = student has submitted, waiting for grading (Pending Review only)
+      return t.submissionStatus === 'Pending Review';
     }
-    if (activeFilter === "graded") return t.status === "completed";
+    if (activeFilter === "graded") {
+      // Graded = completed (Submitted, Auto-Graded, or Graded)
+      return isCompleted;
+    }
     return true;
   });
 
@@ -1049,21 +1053,33 @@ const TasksAssignments = () => {
                     <div className="card-meta">
                       <span className="subject-tag">{task.subject}</span>
                       <span
-                        className={`status-badge ${getStatusColor(
-                          task.status === "completed"
-                            ? "completed"
-                            : task.submissionStatus === "submitted" ||
-                                task.fileName
-                              ? "submitted"
-                              : task.status,
-                        )}`}
+                        className={`status-badge ${
+                          task.submissionStatus === 'Submitted' || task.submissionStatus === 'Auto-Graded'
+                            ? getStatusColor('completed')
+                            : task.submissionStatus === 'Graded'
+                              ? getStatusColor('completed')
+                              : task.submissionStatus === 'Pending Review'
+                                ? getStatusColor('submitted')
+                                : task.submissionStatus === 'Needs Revision'
+                                  ? getStatusColor('revision')
+                                  : task.fileName
+                                    ? getStatusColor('submitted')
+                                    : getStatusColor(task.status)
+                        }`}
                       >
-                        {task.status === "completed"
-                          ? "Graded"
-                          : task.submissionStatus === "submitted" ||
-                              task.fileName
-                            ? "Submitted"
-                            : getStatusLabel(task.status)}
+                        {task.submissionStatus === 'Submitted'
+                          ? 'Completed'
+                          : task.submissionStatus === 'Auto-Graded'
+                            ? 'Completed'
+                            : task.submissionStatus === 'Graded'
+                              ? 'Graded'
+                              : task.submissionStatus === 'Pending Review'
+                                ? 'Pending Review'
+                                : task.submissionStatus === 'Needs Revision'
+                                  ? 'Needs Revision'
+                                  : task.fileName
+                                    ? 'Submitted'
+                                    : getStatusLabel(task.status)}
                       </span>
                     </div>
                   </div>
@@ -1233,6 +1249,23 @@ const TasksAssignments = () => {
 
                       <button
                         onClick={() => {
+                          // Check if task is already submitted/completed
+                          const isCompleted = 
+                            selectedTask.submissionStatus === 'Submitted' ||
+                            selectedTask.submissionStatus === 'Auto-Graded' ||
+                            selectedTask.submissionStatus === 'Graded' ||
+                            (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding');
+                          
+                          // Only allow if task is in revision state or not yet started
+                          const canStart = 
+                            !isCompleted ||
+                            selectedTask.submissionStatus === 'Needs Revision';
+                          
+                          if (!canStart) {
+                            alert('This task has already been completed. It will be available again if your instructor marks it for revision.');
+                            return;
+                          }
+                          
                           // All code_practice tasks (MCQ and Coding) go to code-practice page
                           // Determine workspace mode based on skill filter
                           const skillName = (
@@ -1259,30 +1292,66 @@ const TasksAssignments = () => {
                             `/code-practice/${selectedTask.id}?mode=${mode}`,
                           );
                         }}
+                        disabled={
+                          (selectedTask.submissionStatus === 'Submitted' ||
+                           selectedTask.submissionStatus === 'Auto-Graded' ||
+                           selectedTask.submissionStatus === 'Graded' ||
+                           (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding')) &&
+                          selectedTask.submissionStatus !== 'Needs Revision'
+                        }
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: "8px",
                           padding: "12px 24px",
                           background:
-                            selectedTask.questionType === "mcq"
-                              ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                              : "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                            (selectedTask.submissionStatus === 'Submitted' ||
+                             selectedTask.submissionStatus === 'Auto-Graded' ||
+                             selectedTask.submissionStatus === 'Graded' ||
+                             (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding')) &&
+                            selectedTask.submissionStatus !== 'Needs Revision'
+                              ? '#94a3b8'
+                              : selectedTask.questionType === "mcq"
+                                ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                                : "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
                           color: "white",
                           border: "none",
                           borderRadius: "10px",
                           fontSize: "14px",
                           fontWeight: "600",
-                          cursor: "pointer",
+                          cursor:
+                            (selectedTask.submissionStatus === 'Submitted' ||
+                             selectedTask.submissionStatus === 'Auto-Graded' ||
+                             selectedTask.submissionStatus === 'Graded' ||
+                             (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding')) &&
+                            selectedTask.submissionStatus !== 'Needs Revision'
+                              ? 'not-allowed'
+                              : 'pointer',
                           boxShadow: "0 4px 14px rgba(99, 102, 241, 0.3)",
                           transition: "all 0.2s ease",
                           width: "100%",
                           justifyContent: "center",
+                          opacity:
+                            (selectedTask.submissionStatus === 'Submitted' ||
+                             selectedTask.submissionStatus === 'Auto-Graded' ||
+                             selectedTask.submissionStatus === 'Graded' ||
+                             (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding')) &&
+                            selectedTask.submissionStatus !== 'Needs Revision'
+                              ? 0.6
+                              : 1,
                         }}
                         onMouseOver={(e) => {
-                          e.currentTarget.style.transform = "translateY(-2px)";
-                          e.currentTarget.style.boxShadow =
-                            "0 6px 20px rgba(99, 102, 241, 0.4)";
+                          if (
+                            !(selectedTask.submissionStatus === 'Submitted' ||
+                              selectedTask.submissionStatus === 'Auto-Graded' ||
+                              selectedTask.submissionStatus === 'Graded' ||
+                              (selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding')) ||
+                            selectedTask.submissionStatus === 'Needs Revision'
+                          ) {
+                            e.currentTarget.style.transform = "translateY(-2px)";
+                            e.currentTarget.style.boxShadow =
+                              "0 6px 20px rgba(99, 102, 241, 0.4)";
+                          }
                         }}
                         onMouseOut={(e) => {
                           e.currentTarget.style.transform = "translateY(0)";
@@ -1290,11 +1359,36 @@ const TasksAssignments = () => {
                             "0 4px 14px rgba(99, 102, 241, 0.3)";
                         }}
                       >
-                        <Code size={18} />
-                        {selectedTask.questionType === "mcq"
-                          ? "Start MCQ Test"
-                          : "Start Coding Practice"}
-                        <ChevronRight size={16} />
+                        {(selectedTask.submissionStatus === 'Submitted' ||
+                          selectedTask.submissionStatus === 'Auto-Graded' ||
+                          selectedTask.submissionStatus === 'Graded') &&
+                         selectedTask.submissionStatus !== 'Needs Revision' ? (
+                          <>
+                            <CheckCircle2 size={18} />
+                            {selectedTask.questionType === "mcq"
+                              ? "MCQ Test Completed"
+                              : "Task Completed"}
+                          </>
+                        ) : selectedTask.submissionStatus === 'Pending Review' && selectedTask.questionType === 'coding' ? (
+                          <>
+                            <Clock size={18} />
+                            Awaiting Faculty Review
+                          </>
+                        ) : selectedTask.submissionStatus === 'Needs Revision' ? (
+                          <>
+                            <Code size={18} />
+                            Resubmit Task
+                            <ChevronRight size={16} />
+                          </>
+                        ) : (
+                          <>
+                            <Code size={18} />
+                            {selectedTask.questionType === "mcq"
+                              ? "Start MCQ Test"
+                              : "Start Coding Practice"}
+                            <ChevronRight size={16} />
+                          </>
+                        )}
                       </button>
                     </div>
                   )}

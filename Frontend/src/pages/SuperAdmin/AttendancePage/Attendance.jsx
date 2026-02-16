@@ -44,7 +44,7 @@ const AttendanceManagement = () => {
         const today = new Date();
         return today.toISOString().split('T')[0];
     });
-    const [timeSlot, setTimeSlot] = useState('09:00 AM - 10:30 AM');
+    const [timeSlot, setTimeSlot] = useState('08:45 AM - 10:30 AM');
     const [students, setStudents] = useState([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
@@ -53,10 +53,10 @@ const AttendanceManagement = () => {
     const [sessionId, setSessionId] = useState(null);
 
     const TIME_SLOTS = [
-        '09:00 AM - 10:30 AM',
-        '10:30 AM - 12:30 PM',
-        '01:30 PM - 03:00 PM',
-        '03:00 PM - 04:30 PM'
+        '08:45 AM - 10:30 AM',
+        '10:40 AM - 12:30 PM',
+        '01:30 PM - 03:10 PM',
+        '03:25 PM - 04:30 PM'
     ];
 
 

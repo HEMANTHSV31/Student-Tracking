@@ -83,13 +83,13 @@ export const getStudentSchedule = async (req, res) => {
 
         // 3. Define the 4 Standard Sessions (start times in minutes)
         // 8:45 AM = 525 mins
-        // 10:30 AM = 630 mins
+        // 10:40 AM = 640 mins
         // 1:30 PM = 810 mins
-        // 3:00 PM = 900 mins
+        // 3:25 PM = 925 mins
         const SLOT_1_START = 8 * 60 + 45;  // 8:45
-        const SLOT_2_START = 10 * 60 + 30; // 10:30
+        const SLOT_2_START = 10 * 60 + 40; // 10:40
         const SLOT_3_START = 13 * 60 + 30; // 1:30 PM
-        const SLOT_4_START = 15 * 60 + 0;  // 3:00 PM
+        const SLOT_4_START = 15 * 60 + 25; // 3:25 PM
 
         // 4. Process Data based on date logic
         const schedule = [];

@@ -6,9 +6,9 @@ import { apiGet } from "../../../utils/api";
 // --- FIXED SESSION DEFINITIONS ---
 const SESSION_SLOTS = [
   { id: 1, label: "Session 1", time: "08:45 AM - 10:30 AM" },
-  { id: 2, label: "Session 2", time: "10:30 AM - 12:30 PM" },
-  { id: 3, label: "Session 3", time: "01:30 PM - 03:00 PM" },
-  { id: 4, label: "Session 4", time: "03:00 PM - 04:30 PM" },
+  { id: 2, label: "Session 2", time: "10:40 AM - 12:30 PM" },
+  { id: 3, label: "Session 3", time: "01:30 PM - 03:10 PM" },
+  { id: 4, label: "Session 4", time: "03:25 PM - 04:30 PM" },
 ];
 
 const MyClassRoom = () => {

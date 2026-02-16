@@ -141,6 +141,11 @@ const AppNavigator = () => {
             <Route path="reports" element={<FacultyReports />} />
             <Route path="submissions" element={<SubmissionsList />} />
             <Route path="submissions/:submissionId" element={<CodeEvaluation />} />
+            {/* Permission-based routes */}
+            <Route path="courses" element={<CourseList />} />
+            <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            <Route path="admin-tasks" element={<TaskHeader />} />
+            <Route path="all-classes" element={<GroupsClasses />} />
           </Route>
         )}
 
@@ -155,6 +160,11 @@ const AppNavigator = () => {
             {/* P Skills Workspace - HTML+CSS and HTML+CSS+JS */}
             <Route path="code-practice" element={<CodePracticePage />} />
             <Route path="code-practice/:taskId" element={<CodePracticePage />} />
+            {/* Permission-based routes */}
+            <Route path="courses" element={<CourseList />} />
+            <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            <Route path="admin-tasks" element={<TaskHeader />} />
+            <Route path="all-classes" element={<GroupsClasses />} />
           </Route>
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Shield,
     Users,
@@ -11,7 +11,9 @@ import {
     Unlock,
     ChevronDown,
     Save,
-    X
+    X,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../../../store/useAuthStore';
@@ -23,31 +25,34 @@ const RoleChanger = () => {
 
     // State variables
     const [users, setUsers] = useState([]);
-    const [filteredUsers, setFilteredUsers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState(''); // For debounced search - initialize as empty string
     const [filterRole, setFilterRole] = useState('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [selectedUser, setSelectedUser] = useState(null);
     const [showPermissionModal, setShowPermissionModal] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(20); // Pagination
     const [permissions, setPermissions] = useState({
-        tasks: false,
-        assignments: false,
         questionBank: false,
-        attendance: false,
-        grades: false,
-        students: false,
-        venues: false
+        tasks: false,
+        classes: false
     });
 
     useEffect(() => {
         fetchUsers();
     }, []);
 
+    // Debounced search
     useEffect(() => {
-        filterUsers();
-    }, [searchTerm, filterRole, users]);
+        const timer = setTimeout(() => {
+            setSearchTerm(searchInput);
+            setCurrentPage(1); // Reset to first page on search
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -65,7 +70,8 @@ const RoleChanger = () => {
         }
     };
 
-    const filterUsers = () => {
+    // Memoized filtered users with pagination
+    const filteredUsers = useMemo(() => {
         let filtered = users;
 
         // Filter by role
@@ -83,8 +89,16 @@ const RoleChanger = () => {
             );
         }
 
-        setFilteredUsers(filtered);
-    };
+        return filtered;
+    }, [users, filterRole, searchTerm]);
+
+    // Paginated users
+    const paginatedUsers = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return filteredUsers.slice(startIndex, startIndex + itemsPerPage);
+    }, [filteredUsers, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
 
     const handleRoleChange = async (userId, newRole) => {
         if (!confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
@@ -125,13 +139,9 @@ const RoleChanger = () => {
             const data = await response.json();
             if (data.success) {
                 setPermissions(data.data || {
-                    tasks: false,
-                    assignments: false,
                     questionBank: false,
-                    attendance: false,
-                    grades: false,
-                    students: false,
-                    venues: false
+                    tasks: false,
+                    classes: false
                 });
             }
         } catch (error) {
@@ -226,8 +236,8 @@ const RoleChanger = () => {
                             </label>
                             <input
                                 type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
                                 placeholder="Search by name, email, or ID..."
                                 style={styles.input}
                             />
@@ -280,20 +290,21 @@ const RoleChanger = () => {
                     )}
 
                     {!loading && filteredUsers.length > 0 && (
-                        <div style={styles.tableWrapper}>
-                            <table style={styles.table}>
-                                <thead>
-                                    <tr style={styles.tableHeaderRow}>
-                                        <th style={styles.tableHeader}>Name</th>
-                                        <th style={styles.tableHeader}>Email</th>
-                                        <th style={styles.tableHeader}>ID</th>
-                                        <th style={styles.tableHeader}>Current Role</th>
-                                        <th style={styles.tableHeader}>Change Role To</th>
-                                        <th style={styles.tableHeader}>Permissions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredUsers.map((userData) => {
+                        <>
+                            <div style={styles.tableWrapper}>
+                                <table style={styles.table}>
+                                    <thead>
+                                        <tr style={styles.tableHeaderRow}>
+                                            <th style={styles.tableHeader}>Name</th>
+                                            <th style={styles.tableHeader}>Email</th>
+                                            <th style={styles.tableHeader}>ID</th>
+                                            <th style={styles.tableHeader}>Current Role</th>
+                                            <th style={styles.tableHeader}>Change Role To</th>
+                                            <th style={styles.tableHeader}>Permissions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {paginatedUsers.map((userData) => {
                                         const roleBadge = getRoleBadgeColor(userData.role);
                                         return (
                                             <tr key={userData.user_id} style={styles.tableRow}>
@@ -359,6 +370,40 @@ const RoleChanger = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div style={styles.pagination}>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    style={{
+                                        ...styles.paginationButton,
+                                        ...(currentPage === 1 ? styles.paginationButtonDisabled : {})
+                                    }}
+                                >
+                                    <ChevronLeft size={16} />
+                                    Previous
+                                </button>
+                                
+                                <span style={styles.paginationInfo}>
+                                    Page {currentPage} of {totalPages} ({filteredUsers.length} total users)
+                                </span>
+                                
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    style={{
+                                        ...styles.paginationButton,
+                                        ...(currentPage === totalPages ? styles.paginationButtonDisabled : {})
+                                    }}
+                                >
+                                    Next
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        )}
+                    </>
                     )}
                 </div>
             </div>
@@ -384,31 +429,72 @@ const RoleChanger = () => {
 
                         <div style={styles.modalBody}>
                             <p style={styles.permissionDescription}>
-                                Select specific features this {selectedUser.role} can access:
+                                Select specific pages/features this {selectedUser.role} can access:
                             </p>
 
                             <div style={styles.permissionGrid}>
-                                {Object.keys(permissions).map((key) => (
-                                    <div key={key} style={styles.permissionItem}>
-                                        <label style={styles.permissionLabel}>
-                                            <input
-                                                type="checkbox"
-                                                checked={permissions[key]}
-                                                onChange={(e) => setPermissions({
-                                                    ...permissions,
-                                                    [key]: e.target.checked
-                                                })}
-                                                style={styles.checkbox}
-                                            />
-                                            <div style={styles.permissionInfo}>
-                                                {permissions[key] ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#ef4444" />}
-                                                <span style={styles.permissionName}>
-                                                    {key.charAt(0).toUpperCase() + key.slice(1)}
-                                                </span>
-                                            </div>
-                                        </label>
-                                    </div>
-                                ))}
+                                <div style={styles.permissionItem}>
+                                    <label style={styles.permissionLabel}>
+                                        <input
+                                            type="checkbox"
+                                            checked={permissions.questionBank}
+                                            onChange={(e) => setPermissions({
+                                                ...permissions,
+                                                questionBank: e.target.checked
+                                            })}
+                                            style={styles.checkbox}
+                                        />
+                                        <div style={styles.permissionInfo}>
+                                            {permissions.questionBank ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#ef4444" />}
+                                            <span style={styles.permissionName}>
+                                                Question Bank
+                                            </span>
+                                        </div>
+                                    </label>
+                                    <p style={styles.permissionDesc}>Access to practice questions and assessments</p>
+                                </div>
+
+                                <div style={styles.permissionItem}>
+                                    <label style={styles.permissionLabel}>
+                                        <input
+                                            type="checkbox"
+                                            checked={permissions.tasks}
+                                            onChange={(e) => setPermissions({
+                                                ...permissions,
+                                                tasks: e.target.checked
+                                            })}
+                                            style={styles.checkbox}
+                                        />
+                                        <div style={styles.permissionInfo}>
+                                            {permissions.tasks ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#ef4444" />}
+                                            <span style={styles.permissionName}>
+                                                Tasks & Assignments
+                                            </span>
+                                        </div>
+                                    </label>
+                                    <p style={styles.permissionDesc}>Create and manage tasks and assignments</p>
+                                </div>
+
+                                <div style={styles.permissionItem}>
+                                    <label style={styles.permissionLabel}>
+                                        <input
+                                            type="checkbox"
+                                            checked={permissions.classes}
+                                            onChange={(e) => setPermissions({
+                                                ...permissions,
+                                                classes: e.target.checked
+                                            })}
+                                            style={styles.checkbox}
+                                        />
+                                        <div style={styles.permissionInfo}>
+                                            {permissions.classes ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#ef4444" />}
+                                            <span style={styles.permissionName}>
+                                                Classes & Groups
+                                            </span>
+                                        </div>
+                                    </label>
+                                    <p style={styles.permissionDesc}>Manage classes and student groups</p>
+                                </div>
                             </div>
                         </div>
 
@@ -756,7 +842,8 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
-        cursor: 'pointer'
+        cursor: 'pointer',
+        marginBottom: '8px'
     },
     checkbox: {
         width: '18px',
@@ -773,6 +860,12 @@ const styles = {
         fontSize: '14px',
         fontWeight: '600',
         color: '#1e293b'
+    },
+    permissionDesc: {
+        fontSize: '12px',
+        color: '#64748b',
+        marginLeft: '30px',
+        margin: '0'
     },
     modalFooter: {
         display: 'flex',
@@ -806,6 +899,38 @@ const styles = {
         cursor: 'pointer',
         transition: 'all 0.2s',
         boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.3)'
+    },
+    pagination: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '20px 24px',
+        borderTop: '2px solid #e2e8f0',
+        background: '#f8fafc'
+    },
+    paginationButton: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '10px 16px',
+        fontSize: '14px',
+        fontWeight: '600',
+        border: '2px solid #e2e8f0',
+        borderRadius: '8px',
+        background: '#FFFFFF',
+        color: '#475569',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+    },
+    paginationButtonDisabled: {
+        opacity: 0.5,
+        cursor: 'not-allowed',
+        pointerEvents: 'none'
+    },
+    paginationInfo: {
+        fontSize: '14px',
+        color: '#64748b',
+        fontWeight: '600'
     }
 };
 

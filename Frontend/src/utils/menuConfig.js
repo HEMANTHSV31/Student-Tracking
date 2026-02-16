@@ -18,7 +18,8 @@ import {
   Braces,
   MapPin,
   Briefcase,
-  Award
+  Award,
+  ListTodo
 } from "lucide-react";
 
 export const getMenuByRole = (user) => {
@@ -137,12 +138,21 @@ export const getMenuByRole = (user) => {
       });
     }
 
-    if (hasPermission('venues')) {
+    if (hasPermission('tasks')) {
       menu.push({
-        id: "venue-allocation",
-        label: "Venue Allocation",
-        icon: MapPin,
-        section: "classes",
+        id: "admin-tasks",
+        label: "Tasks & Assignments",
+        icon: ListTodo,
+        section: "academic",
+      });
+    }
+
+    if (hasPermission('classes')) {
+      menu.push({
+        id: "all-classes",
+        label: "All Classes & Groups",
+        icon: Layers,
+        section: "management",
       });
     }
 
@@ -150,10 +160,6 @@ export const getMenuByRole = (user) => {
   }
 
   if (user.role === 'student') {
-    // DEBUG: Log user and permissions
-    console.log('🔍 Student Menu - User:', user);
-    console.log('🔍 Student Menu - Permissions:', user.permissions);
-    
     const menu = [
       {
         id: "dashboard",
@@ -190,7 +196,6 @@ export const getMenuByRole = (user) => {
     ];
 
     // Add EXTRA pages based on permissions
-    console.log('🔍 Checking questionBank permission:', hasPermission('questionBank'));
     if (hasPermission('questionBank')) {
       // Add Question Bank for additional practice
       if (!menu.find(item => item.id === 'courses')) {
@@ -203,19 +208,30 @@ export const getMenuByRole = (user) => {
       }
     }
 
-    console.log('🔍 Checking grades permission:', hasPermission('grades'));
-    if (hasPermission('grades')) {
-      if (!menu.find(item => item.id === 'grades')) {
+    if (hasPermission('tasks')) {
+      // Add admin-level Tasks & Assignments access
+      if (!menu.find(item => item.id === 'admin-tasks')) {
         menu.push({
-          id: "grades",
-          label: "My Grades",
-          icon: Award,
-          section: "academic",
+          id: "admin-tasks",
+          label: "Tasks & Assignments (Admin)",
+          icon: ListTodo,
+          section: "assessment",
         });
       }
     }
 
-    console.log('🔍 Final student menu:', menu.map(m => m.label));
+    if (hasPermission('classes')) {
+      // Add admin-level Classes & Groups access
+      if (!menu.find(item => item.id === 'all-classes')) {
+        menu.push({
+          id: "all-classes",
+          label: "All Classes & Groups",
+          icon: Layers,
+          section: "management",
+        });
+      }
+    }
+
     return menu;
   }
 

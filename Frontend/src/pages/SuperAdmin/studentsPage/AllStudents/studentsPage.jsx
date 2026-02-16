@@ -24,7 +24,7 @@ const StudentsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
-  const [limit] = useState(20);
+  const [limit] = useState(21);
 
   const [departments, setDepartments] = useState(['All Departments']);
   const [years, setYears] = useState(['All Years']);

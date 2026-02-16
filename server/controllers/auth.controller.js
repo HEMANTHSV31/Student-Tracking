@@ -35,18 +35,15 @@ export const googleAuth = async (req, res) => {
     let userPermissions = {};
     try {
       const [permissions] = await db.query(
-        'SELECT * FROM user_permissions WHERE user_id = ?',
+        `SELECT can_access_question_bank, can_manage_tasks, can_access_classes_groups 
+         FROM user_permissions WHERE user_id = ?`,
         [user.user_id]
       );
 
       userPermissions = permissions.length > 0 ? {
+        questionBank: Boolean(permissions[0].can_access_question_bank),
         tasks: Boolean(permissions[0].can_manage_tasks),
-        assignments: Boolean(permissions[0].can_manage_assignments),
-        questionBank: Boolean(permissions[0].can_manage_question_bank),
-        attendance: Boolean(permissions[0].can_manage_attendance),
-        grades: Boolean(permissions[0].can_manage_grades),
-        students: Boolean(permissions[0].can_manage_students),
-        venues: Boolean(permissions[0].can_manage_venues)
+        classes: Boolean(permissions[0].can_access_classes_groups)
       } : {};
     } catch (err) {
       // Table doesn't exist yet or query failed - continue without permissions
@@ -114,18 +111,15 @@ export const getMe = async (req, res) => {
     let userPermissions = {};
     try {
       const [permissions] = await db.query(
-        'SELECT * FROM user_permissions WHERE user_id = ?',
+        `SELECT can_access_question_bank, can_manage_tasks, can_access_classes_groups 
+         FROM user_permissions WHERE user_id = ?`,
         [req.user.user_id]
       );
 
       userPermissions = permissions.length > 0 ? {
+        questionBank: Boolean(permissions[0].can_access_question_bank),
         tasks: Boolean(permissions[0].can_manage_tasks),
-        assignments: Boolean(permissions[0].can_manage_assignments),
-        questionBank: Boolean(permissions[0].can_manage_question_bank),
-        attendance: Boolean(permissions[0].can_manage_attendance),
-        grades: Boolean(permissions[0].can_manage_grades),
-        students: Boolean(permissions[0].can_manage_students),
-        venues: Boolean(permissions[0].can_manage_venues)
+        classes: Boolean(permissions[0].can_access_classes_groups)
       } : {};
     } catch (err) {
       // Table doesn't exist yet or query failed - continue without permissions

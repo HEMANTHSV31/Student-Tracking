@@ -1,4 +1,4 @@
-
+﻿
 import db from '../config/db.js';
 
 // ====================== CONFIGURATION ======================
@@ -175,7 +175,7 @@ export const getVenueAllocations = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error fetching venues:', error);
+    console.error('âŒ Error fetching venues:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch venues',
@@ -234,7 +234,7 @@ export const getStudentsForVenue = async (req, res) => {
       count: students.length
     });
   } catch (error) {
-    console.error('❌ Error fetching students:', error);
+    console.error('âŒ Error fetching students:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch students',
@@ -259,10 +259,10 @@ export const getOrCreateSession = async (req, res) => {
 
     // Map timeSlot to session number (1-4)
     const timeSlotMapping = {
-      '09:00 AM - 10:30 AM': 'S1',
-      '10:30 AM - 12:30 PM': 'S2',
-      '01:30 PM - 03:00 PM': 'S3',
-      '03:00 PM - 04:30 PM': 'S4'
+      '08:45 AM - 10:30 AM': 'S1',
+      '10:40 AM - 12:30 PM': 'S2',
+      '01:30 PM - 03:10 PM': 'S3',
+      '03:25 PM - 04:30 PM': 'S4'
     };
     
     const sessionNum = timeSlotMapping[timeSlot] || 'S1';
@@ -304,7 +304,7 @@ export const getOrCreateSession = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error with session:', error);
+    console.error('âŒ Error with session:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to process session',
@@ -362,7 +362,7 @@ export const getSessionAttendance = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching session attendance:', error);
+    console.error('âŒ Error fetching session attendance:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch session attendance',
@@ -452,6 +452,21 @@ export const saveAttendance = async (req, res) => {
           isLate = 0;
           remarks = 'PS';
           break;
+        case 'mm':
+          isPresent = 1;
+          isLate = 0;
+          remarks = 'MM';
+          break;
+        case 'ad':
+          isPresent = 1;
+          isLate = 0;
+          remarks = 'AD';
+          break;
+        case 'other':
+          isPresent = 1;
+          isLate = 0;
+          remarks = record.remarks && String(record.remarks).trim() ? String(record.remarks).trim() : 'Other';
+          break;
         case 'absent':
         default:
           isPresent = 0;
@@ -491,6 +506,51 @@ export const saveAttendance = async (req, res) => {
       }
     }
 
+    // Apply "late in 3+ sessions = absent for day" rule
+    // Get the date from session name and check how many times each student is late on that date
+    const [sessionInfo] = await connection.query(
+      'SELECT session_name FROM attendance_session WHERE session_id = ?',
+      [sessionId]
+    );
+
+    if (sessionInfo.length > 0) {
+      const sessionName = sessionInfo[0].session_name;
+      // Extract date from session name format: Venue_YYYYMMDD_YYYY-MM-DD_Time
+      const dateMatch = sessionName.match(/_(\d{4}-\d{2}-\d{2})_/);
+      
+      if (dateMatch) {
+        const sessionDate = dateMatch[1];
+        
+        // Get all students who were marked in attendance records for this date
+        const studentsToCheck = [...new Set(attendance.map(r => r.student_id))];
+        
+        for (const studentId of studentsToCheck) {
+          // Count late sessions for this student on this date
+          const [lateCounts] = await connection.query(`
+            SELECT COUNT(*) as late_count
+            FROM attendance a
+            INNER JOIN attendance_session ats ON a.session_id = ats.session_id
+            WHERE a.student_id = ?
+              AND ats.session_name LIKE ?
+              AND a.is_late = 1
+          `, [studentId, `%_${sessionDate}_%`]);
+
+          const lateCount = lateCounts[0]?.late_count || 0;
+
+          // If late in 3 or more sessions (out of 4), mark all sessions as absent for this day
+          if (lateCount >= 3) {
+            await connection.query(`
+              UPDATE attendance a
+              INNER JOIN attendance_session ats ON a.session_id = ats.session_id
+              SET a.is_present = 0, a.is_late = 0, a.remarks = CONCAT(IFNULL(a.remarks, ''), ' [Auto: Late 3+ times]')
+              WHERE a.student_id = ?
+                AND ats.session_name LIKE ?
+            `, [studentId, `%_${sessionDate}_%`]);
+          }
+        }
+      }
+    }
+
     await connection.commit();
 
     res.status(201).json({ 
@@ -507,7 +567,7 @@ export const saveAttendance = async (req, res) => {
 
   } catch (error) {
     await connection.rollback();
-    console.error('❌ Error saving attendance:', error);
+    console.error('âŒ Error saving attendance:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to save attendance',
@@ -581,7 +641,7 @@ export const getLateStudents = async (req, res) => {
       count: students.length
     });
   } catch (error) {
-    console.error('❌ Error fetching late students:', error);
+    console.error('âŒ Error fetching late students:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch late students',
@@ -597,6 +657,7 @@ export const getStudentAttendanceHistory = async (req, res) => {
     const userId = req.user.user_id;
 
     // Get only the latest attendance record for each session (in case faculty marked multiple times)
+    // Extract session date and number from session_name for proper display
     const [history] = await db.query(`
       SELECT 
         a.attendance_id,
@@ -606,7 +667,15 @@ export const getStudentAttendanceHistory = async (req, res) => {
         a.created_at,
         ats.session_name,
         v.venue_name,
-        u.name as faculty_name
+        u.name as faculty_name,
+        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as session_date,
+        CASE 
+          WHEN ats.session_name LIKE '%_S1_%' THEN 1
+          WHEN ats.session_name LIKE '%_S2_%' THEN 2
+          WHEN ats.session_name LIKE '%_S3_%' THEN 3
+          WHEN ats.session_name LIKE '%_S4_%' THEN 4
+          ELSE 1
+        END as session_number
       FROM attendance a
       INNER JOIN students s ON a.student_id = s.student_id
       INNER JOIN attendance_session ats ON a.session_id = ats.session_id
@@ -626,7 +695,7 @@ export const getStudentAttendanceHistory = async (req, res) => {
               AND a.attendance_id = latest.max_attendance_id
       WHERE s.user_id = ?
         AND gs.status = 'Active'
-      ORDER BY a.created_at DESC
+      ORDER BY session_date DESC, session_number ASC
       LIMIT 50
     `, [userId, userId]);
 
@@ -636,7 +705,7 @@ export const getStudentAttendanceHistory = async (req, res) => {
       count: history.length
     });
   } catch (error) {
-    console.error('❌ Error fetching attendance history:', error);
+    console.error('âŒ Error fetching attendance history:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch attendance history',
@@ -676,6 +745,8 @@ export const getStudentAttendanceDashboard = async (req, res) => {
 
     // Get daily breakdown to calculate present/late/absent days
     // Extract date from session name (format: Venue_YYYYMMDD_YYYY-MM-DD_Time)
+    // is_present = 1 includes: Present, Late, PS, MM, AD, Other
+    // is_present = 0 is only: Absent
     const [dailyBreakdown] = await db.query(`
       SELECT 
         SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as attendance_date,
@@ -697,18 +768,50 @@ export const getStudentAttendanceDashboard = async (req, res) => {
       GROUP BY SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10)
     `, [userId, currentYear, SEMESTER_START_DATE]);
 
-    // Count days by status: only days with 4/4 hours present count as Present, everything else is Absent
+    // Count days by status
+    // Present Day: All sessions marked as present (is_present = 1), regardless of whether PS/MM/AD/Late
+    // Absent Day: At least one session marked as absent (is_present = 0)
     let presentDays = 0, lateDays = 0, absentDays = 0;
     dailyBreakdown.forEach(day => {
       const totalHours = parseInt(day.total_hours);
-      const presentHours = parseInt(day.present_hours);
+      const absentHours = parseInt(day.absent_hours);
+      const lateHours = parseInt(day.late_hours);
       
-      if (totalHours === 4 && presentHours === 4) {
-        presentDays++; // All 4 hours present = Present Day
-      } else {
-        absentDays++; // Less than 4 hours = Absent Day
+      // If any hour is absent (is_present = 0), mark the day as absent
+      if (absentHours > 0) {
+        absentDays++;
+      } 
+      // If no absent hours but has late hours, mark as present (late is still present)
+      else if (lateHours > 0) {
+        presentDays++;
+      }
+      // All present (includes PS, MM, AD, Other, regular Present)
+      else {
+        presentDays++;
       }
     });
+
+    // Calculate session-level counts for dashboard cards
+    const totalSessions = overallStats[0]?.total_hours || 0;
+    const presentSessions = overallStats[0]?.total_hours_present || 0;
+    const absentSessions = totalSessions - presentSessions;
+    
+    // Get actual late session count from database
+    const [lateStats] = await db.query(`
+      SELECT COUNT(*) as late_count
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.student_id
+      INNER JOIN venue v ON a.venue_id = v.venue_id
+      INNER JOIN \`groups\` g ON v.venue_id = g.venue_id
+      INNER JOIN group_students gs ON g.group_id = gs.group_id AND gs.student_id = s.student_id
+      WHERE s.user_id = ?
+        AND gs.status = 'Active'
+        AND a.is_late = 1
+        AND YEAR(a.created_at) = ?
+        AND DATE(a.created_at) >= ?
+    `, [userId, currentYear, SEMESTER_START_DATE]);
+    
+    const lateSessions = lateStats[0]?.late_count || 0;
 
     // Calculate overall stats
     const totalDays = dailyBreakdown.length;
@@ -804,9 +907,9 @@ export const getStudentAttendanceDashboard = async (req, res) => {
         }
       ],
       sessionStatus: [
-        { label: "Present", count: presentDays, theme: "green" },
-        { label: "Late", count: lateDays, theme: "orange" },
-        { label: "Absent", count: absentDays, theme: "red" }
+        { label: "Present", count: presentSessions - lateSessions, theme: "green" }, // Pure present (not late)
+        { label: "Late", count: lateSessions, theme: "orange" },
+        { label: "Absent", count: absentSessions, theme: "red" }
       ],
       subjects: subjects,
       skills: recentSkills,
@@ -820,7 +923,7 @@ export const getStudentAttendanceDashboard = async (req, res) => {
       year: currentYear
     });
   } catch (error) {
-    console.error('❌ Error fetching dashboard:', error);
+    console.error('âŒ Error fetching dashboard:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch dashboard data',
@@ -1051,7 +1154,7 @@ export const getVenueAttendanceDetails = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching venue attendance details:', error);
+    console.error('âŒ Error fetching venue attendance details:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch venue attendance details',
@@ -1114,7 +1217,7 @@ export const getAttendanceByDateAndSession = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching attendance by date and session:', error);
+    console.error('âŒ Error fetching attendance by date and session:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch attendance records',
@@ -1192,7 +1295,7 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
     try {
       await connection.query(`CALL sp_calculate_daily_attendance(?, ?)`, [date, venueId]);
     } catch (procError) {
-      console.warn('⚠️  Stored procedure not available:', procError.message);
+      console.warn('âš ï¸  Stored procedure not available:', procError.message);
     }
 
     await connection.commit();
@@ -1209,7 +1312,7 @@ export const updateAttendanceByDateAndSession = async (req, res) => {
 
   } catch (error) {
     await connection.rollback();
-    console.error('❌ Error updating attendance:', error);
+    console.error('âŒ Error updating attendance:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update attendance',
@@ -1225,15 +1328,6 @@ export const exportAttendanceData = async (req, res) => {
   try {
     const { venueIds, startDate, endDate, timeSlots, year, facultyId } = req.query;
     const userId = req.user.user_id;
-
-    console.log('📊 Export Attendance Request:', {
-      venueIds,
-      startDate,
-      endDate,
-      timeSlots,
-      year,
-      facultyId
-    });
 
     // Validate required parameters
     if (!venueIds || !startDate || !endDate) {
@@ -1264,9 +1358,8 @@ export const exportAttendanceData = async (req, res) => {
     // Build the query with filters  
     let query = `
       SELECT 
-        DATE(a.created_at) as date,
+        DATE(asess.created_at) as date,
         SUBSTRING_INDEX(asess.session_name, '_', 1) as time_slot,
-        asess.session_name as full_session_name,
         u.ID as roll_number,
         u.name as student_name,
         u.email as email,
@@ -1286,41 +1379,18 @@ export const exportAttendanceData = async (req, res) => {
       LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
       LEFT JOIN users fu ON f.user_id = fu.user_id
       WHERE a.venue_id IN (${venueIdArray.map(() => '?').join(',')})
-        AND DATE(a.created_at) >= ?
-        AND DATE(a.created_at) <= ?
+        AND DATE(asess.created_at) BETWEEN ? AND ?
     `;
 
     const queryParams = [...venueIdArray, startDate, endDate];
 
-    // Debug: Check what sessions exist for this date range and venues
-    const debugQuery = `
-      SELECT DISTINCT
-        DATE(a.created_at) as date,
-        SUBSTRING_INDEX(asess.session_name, '_', 1) as time_slot,
-        asess.session_name,
-        COUNT(*) as record_count
-      FROM attendance a
-      INNER JOIN attendance_session asess ON a.session_id = asess.session_id
-      WHERE a.venue_id IN (${venueIdArray.map(() => '?').join(',')})
-        AND DATE(a.created_at) >= ?
-        AND DATE(a.created_at) <= ?
-      GROUP BY date, time_slot, asess.session_name
-      ORDER BY date DESC, time_slot
-    `;
-    
-    const [debugResults] = await db.query(debugQuery, queryParams);
-    console.log('🔍 Available sessions in database:', debugResults);
-
     // Add time slots filter if specified (multiple time slots)
-    if (timeSlots && timeSlots !== 'all') {
+    if (timeSlots) {
       const timeSlotArray = timeSlots.split(',').map(slot => slot.trim().toUpperCase()).filter(slot => slot);
       if (timeSlotArray.length > 0) {
         query += ` AND SUBSTRING_INDEX(asess.session_name, '_', 1) IN (${timeSlotArray.map(() => '?').join(',')})`;
         queryParams.push(...timeSlotArray);
-        console.log('🔍 Filtering by time slots:', timeSlotArray);
       }
-    } else {
-      console.log('📅 No time slot filter - returning ALL sessions');
     }
 
     // Add year filter if specified
@@ -1336,24 +1406,18 @@ export const exportAttendanceData = async (req, res) => {
     }
 
     // Order by date and time slot
-    query += ` ORDER BY DATE(a.created_at) DESC, time_slot, u.ID`;
-
-    console.log('📝 Executing query with params:', queryParams);
+    query += ` ORDER BY DATE(asess.created_at) DESC, time_slot, u.ID`;
 
     const [attendanceRecords] = await db.query(query, queryParams);
 
-    // Log unique sessions found
-    const uniqueSessions = [...new Set(attendanceRecords.map(r => r.time_slot))];
-    console.log(`✅ Found ${attendanceRecords.length} records across ${uniqueSessions.length} sessions:`, uniqueSessions);
-
     res.status(200).json({
       success: true,
-      message: `Retrieved ${attendanceRecords.length} attendance records from ${venueIdArray.length} venue(s) - Sessions: ${uniqueSessions.join(', ')}`,
+      message: `Retrieved ${attendanceRecords.length} attendance records from ${venueIdArray.length} venue(s)`,
       data: attendanceRecords
     });
 
   } catch (error) {
-    console.error('❌ Error exporting attendance data:', error);
+    console.error('Error exporting attendance data:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to export attendance data',

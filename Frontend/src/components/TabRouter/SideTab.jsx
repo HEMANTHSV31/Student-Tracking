@@ -53,7 +53,9 @@ const SideTab = () => {
     dashboard: { title: "Dashboard" },
     faculty: { title: "Faculty & Accounts" },
     classes: { title: "My Classes / Groups" },
+    "all-classes": { title: "All Classes & Groups" },
     "admin-tools": { title: "Admin Tools" },
+    "admin-tasks": { title: "Tasks & Assignments" },
 
     students: { title: "Students" },
     attendance: { title: "Attendance" },
