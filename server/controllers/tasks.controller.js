@@ -860,9 +860,9 @@ export const getTaskSubmissions = async (req, res) => {
       return matchingKeywords.length >= Math.ceil(taskKeywords.length * 0.5) && matchingKeywords.length > 0;
     };
 
-    // First, get the venue_id, skill_filter, and title for this task
+    // First, get the venue_id, skill_filter, title, task_type, and question_type for this task
     const [taskInfo] = await db.query(`
-      SELECT venue_id, skill_filter, title FROM tasks WHERE task_id = ?
+      SELECT venue_id, skill_filter, title, task_type, question_type FROM tasks WHERE task_id = ?
     `, [task_id]);
 
     if (taskInfo.length === 0) {
@@ -875,6 +875,24 @@ export const getTaskSubmissions = async (req, res) => {
     const venue_id = taskInfo[0].venue_id;
     const skill_filter = taskInfo[0].skill_filter;
     const task_title = taskInfo[0].title;
+    const task_type = taskInfo[0].task_type;
+    const question_type = taskInfo[0].question_type;
+
+    // Web workspace coding tasks should NOT appear in Reports page
+    // They should only appear in Code Evaluation page
+    if (task_type === 'code_practice' && question_type === 'coding') {
+      return res.status(200).json({
+        success: true,
+        message: 'This is a web coding task. Please view submissions in Code Evaluation page.',
+        data: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0
+        }
+      });
+    }
 
     // Get students who have CLEARED the skill (if skill_filter exists)
     let clearedStudentIds = new Set();
@@ -1594,9 +1612,18 @@ export const getStudentTasks = async (req, res) => {
     const [tasks] = await db.query(tasksQuery, tasksParams);
 
     // Filter tasks based on skill_filter, skill_order, and completion status
-    // LOGIC: Show tasks for skills student has NOT completed yet
-    // HIDE tasks for skills student has already CLEARED
+    // LOGIC: 
+    // 1. Show tasks ONLY if student hasn't completed the required skill yet
+    // 2. Check skill_order prerequisites - student must complete prerequisite skills first
+    // 3. Hide tasks for skills student has already CLEARED
+    // 4. Venue-specific tasks should only show for students in that specific venue
     const filteredTasks = tasks.filter(task => {
+      // VENUE CHECK: Only show tasks for the student's current venue
+      // Don't automatically assign tasks from other venues
+      if (task.task_venue_id !== currentVenueId) {
+        return false;
+      }
+
       // Debug logging for this specific task
       if (task.task_id === 18) {
         console.log('Task 18 filtering check:', {
@@ -1604,7 +1631,9 @@ export const getStudentTasks = async (req, res) => {
           task_type: task.task_type,
           question_type: task.question_type,
           submission_status: task.submission_status,
-          grade: task.grade
+          grade: task.grade,
+          task_venue_id: task.task_venue_id,
+          current_venue_id: currentVenueId
         });
       }
 
@@ -1681,17 +1710,36 @@ export const getStudentTasks = async (req, res) => {
         return true;
       }
       
-      // Check if this skill exists in the skill_order table
-      const skillExistsInOrder = orderedSkills.some(s => 
-        normalizeSkillName(s.skill_name) === normalizedSkillFilter
+      // Find this skill in the skill_order to check prerequisites
+      const currentSkillInOrder = orderedSkills.find(s => 
+        skillMatches(s.skill_name, effectiveSkillFilter)
       );
       
       // If skill is not in skill_order table, show the task (don't block on unknown skills)
-      if (!skillExistsInOrder) {
+      if (!currentSkillInOrder) {
         return true;
       }
       
-      // Check if the skill is unlocked for this student
+      // Check prerequisites: Get all skills that must be completed before this one
+      const prerequisiteSkills = orderedSkills.filter(s => 
+        s.display_order < currentSkillInOrder.display_order &&
+        s.course_type === currentSkillInOrder.course_type
+      );
+      
+      // Check if all prerequisites are cleared
+      const allPrerequisitesCleared = prerequisiteSkills.every(prereq => {
+        const isPrereqCleared = Array.from(clearedSkillsMap.keys()).some(clearedSkillName => {
+          return skillMatches(prereq.skill_name, clearedSkillName);
+        });
+        return isPrereqCleared;
+      });
+      
+      // If prerequisites are not met, don't show the task
+      if (!allPrerequisitesCleared) {
+        return false;
+      }
+      
+      // Check if the skill is unlocked for this student (not locked by incomplete prerequisites)
       const isSkillUnlocked = unlockedSkills.has(normalizedSkillFilter);
       
       // If skill is locked, don't show the task
@@ -1699,7 +1747,7 @@ export const getStudentTasks = async (req, res) => {
         return false;
       }
       
-      // Show task - skill is unlocked and not yet cleared
+      // Show task - skill is unlocked, prerequisites met, and not yet cleared
       return true;
     });
 
@@ -3855,12 +3903,38 @@ export const gradeWebCodeSubmission = async (req, res) => {
 
     if (submission.length > 0) {
       const maxScore = submission[0].max_score;
+      const taskId = submission[0].task_id;
+      const studentId = submission[0].student_id;
       const percentage = (grade / maxScore) * 100;
       
+      // Determine final status based on grade
+      let finalStatus = 'Graded';
       if (percentage < 50) {
+        finalStatus = 'Needs Revision';
         await connection.execute(
           'UPDATE web_code_submissions SET is_reassigned = 1 WHERE submission_id = ?',
           [submission_id]
+        );
+      }
+
+      // Update or create task_submissions record
+      const [existingTaskSubmission] = await connection.execute(
+        'SELECT submission_id FROM task_submissions WHERE task_id = ? AND student_id = ? LIMIT 1',
+        [taskId, studentId]
+      );
+
+      if (existingTaskSubmission.length > 0) {
+        await connection.execute(
+          `UPDATE task_submissions 
+           SET status = ?, grade = ?, feedback = ?
+           WHERE task_id = ? AND student_id = ?`,
+          [finalStatus, grade, feedback || null, taskId, studentId]
+        );
+      } else {
+        await connection.execute(
+          `INSERT INTO task_submissions (task_id, student_id, status, grade, feedback, submitted_at) 
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [taskId, studentId, finalStatus, grade, feedback || null]
         );
       }
     }

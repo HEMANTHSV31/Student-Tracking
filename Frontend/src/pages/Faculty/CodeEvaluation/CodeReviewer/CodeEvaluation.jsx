@@ -9,7 +9,7 @@ import {
   StarBorder,
   ArrowBack,
 } from "@mui/icons-material";
-import { getSubmissionDetails, gradeSubmission } from "../../../../services/questionBankApi";
+import { apiGet, apiPut } from "../../../../utils/api";
 import Editor from '@monaco-editor/react';
 import "./CodeEvaluation.css";
 
@@ -49,46 +49,36 @@ const CodeEvaluation = () => {
   const loadSubmission = async () => {
     try {
       setLoading(true);
-      const response = await getSubmissionDetails(submissionId);
+      // Use web submissions endpoint
+      const response = await apiGet(`/tasks/web-submissions/${submissionId}`);
+      const jsonData = await response.json();
       
-      if (response.success) {
-        const data = response.data;
+      if (jsonData.success) {
+        const data = jsonData.data;
         
-        // Parse code - check if it's combined or separate
+        // Parse files from web_submission_files
         let html = '', css = '', js = '';
         
-        if (data.html_code || data.css_code || data.js_code) {
-          // Separate code files
-          html = data.html_code || '';
-          css = data.css_code || '';
-          js = data.js_code || '';
-        } else if (data.combined_code || data.code_solution) {
-          // Combined code - extract HTML, CSS, JS
-          const combined = data.combined_code || data.code_solution || '';
-          
-          // Extract CSS from <style> tags
-          const cssMatch = combined.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-          css = cssMatch ? cssMatch[1].trim() : '';
-          
-          // Extract JS from <script> tags
-          const jsMatch = combined.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
-          js = jsMatch ? jsMatch[1].trim() : '';
-          
-          // Get HTML (remove style and script tags)
-          html = combined
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-            .trim();
+        if (data.files && data.files.length > 0) {
+          data.files.forEach(file => {
+            if (file.file_type === 'html') {
+              html = file.file_content || '';
+            } else if (file.file_type === 'css') {
+              css = file.file_content || '';
+            } else if (file.file_type === 'javascript' || file.file_type === 'js') {
+              js = file.file_content || '';
+            }
+          });
         }
         
         // Transform API data to match component structure
         const transformedSubmission = {
           id: data.submission_id,
           studentName: data.student_name,
-          studentId: data.roll_number || 'N/A',
-          title: data.skill_name || data.question_text?.substring(0, 50) || 'Code Practice',
+          studentId: data.student_email || 'N/A',
+          title: data.task_title || 'Web Code Practice',
           submittedAt: new Date(data.submitted_at).toLocaleString(),
-          status: data.score >= 50 ? 'PASSED' : 'PENDING',
+          status: data.status === 'Graded' ? (data.grade >= 50 ? 'PASSED' : 'FAILED') : 'PENDING',
           autoTestOutcome: 'N/A',
           code: {
             html: html || '<!-- No HTML code submitted -->',
@@ -96,15 +86,15 @@ const CodeEvaluation = () => {
             js: js || '// No JavaScript code submitted',
           },
           rubric: {
-            codeQuality: { max: 40, current: data.score ? Math.round(data.score * 0.4) : 0 },
-            requirements: { max: 25, current: data.score ? Math.round(data.score * 0.25) : 0 },
-            expectedOutput: { max: 35, current: data.score ? Math.round(data.score * 0.35) : 0 },
+            codeQuality: { max: 40, current: data.grade ? Math.round(data.grade * 0.4) : 0 },
+            requirements: { max: 25, current: data.grade ? Math.round(data.grade * 0.25) : 0 },
+            expectedOutput: { max: 35, current: data.grade ? Math.round(data.grade * 0.35) : 0 },
           },
-          totalScore: data.score || 0,
-          maxScore: 100,
-          language: data.language || 'html',
-          questionText: data.question_text,
-          sampleImage: data.sample_image, // Sample image from question_bank
+          totalScore: data.grade || 0,
+          maxScore: data.max_score || 100,
+          language: 'html-css-js',
+          questionText: data.question_description || data.task_description,
+          sampleImage: data.expected_output_image, // Sample image from question_bank
         };
         
         setSubmission(transformedSubmission);
@@ -141,13 +131,25 @@ const CodeEvaluation = () => {
     try {
       setSubmittingGrade(true);
       const totalScore = calculateTotalScore();
-      const feedbackText = `Code Quality: ${scores.codeQuality}/${submission.rubric.codeQuality.max}, Requirements: ${scores.requirements}/${submission.rubric.requirements.max}, Output: ${scores.expectedOutput}/${submission.rubric.expectedOutput.max}`;
+      const feedbackText = feedback.comment || `Code Quality: ${scores.codeQuality}/${submission.rubric.codeQuality.max}, Requirements: ${scores.requirements}/${submission.rubric.requirements.max}, Output: ${scores.expectedOutput}/${submission.rubric.expectedOutput.max}`;
       
-      const response = await gradeSubmission(submissionId, totalScore, feedbackText);
+      // Determine status based on score
+      const status = totalScore >= 50 ? 'Graded' : 'Needs Revision';
       
-      if (response.success) {
+      // Use web submission grading endpoint
+      const response = await apiPut(`/tasks/web-submissions/${submissionId}/grade`, {
+        grade: totalScore,
+        feedback: feedbackText,
+        status: status
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
         showResult("success", "Success", "Evaluation finalized successfully!");
         setTimeout(() => navigate("/faculty/question-bank/pending"), 1500);
+      } else {
+        throw new Error(data.message || 'Failed to grade submission');
       }
     } catch (error) {
       console.error("Error finalizing evaluation:", error);

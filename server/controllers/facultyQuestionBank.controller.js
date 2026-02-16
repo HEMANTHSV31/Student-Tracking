@@ -40,21 +40,21 @@ export const getPendingSubmissions = async (req, res) => {
 
     const faculty_id = faculty[0].faculty_id;
 
-    // Get pending submissions from faculty's assigned venues
+    // Get pending web code submissions from faculty's assigned venues
     const [submissions] = await db.query(`
       SELECT DISTINCT
-        ss.submission_id,
-        ss.task_id,
-        ss.student_id,
-        ss.question_id,
-        ss.submission_type,
-        ss.coding_content,
-        ss.programming_language,
-        ss.submitted_at,
-        ss.time_taken_minutes,
-        ss.attempt_number,
-        ss.status,
-        ss.max_score,
+        wcs.submission_id,
+        wcs.task_id,
+        wcs.student_id,
+        wcs.question_id,
+        'web_coding' as submission_type,
+        wcs.workspace_mode,
+        wcs.submitted_at,
+        wcs.time_taken_minutes,
+        wcs.attempt_number,
+        wcs.status,
+        wcs.max_score,
+        wcs.violations,
         u.name as student_name,
         u.ID as roll_no,
         t.title as task_title,
@@ -64,24 +64,23 @@ export const getPendingSubmissions = async (req, res) => {
         qb.question_type,
         qb.difficulty_level,
         qb.coding_expected_output,
-        sc.course_name,
-        sc.skill_category,
+        qb.sample_image,
+        sc.course_name as skill_name,
         v.venue_name,
         v.venue_id
-      FROM student_submissions ss
-      INNER JOIN students s ON ss.student_id = s.student_id
+      FROM web_code_submissions wcs
+      INNER JOIN students s ON wcs.student_id = s.student_id
       INNER JOIN users u ON s.user_id = u.user_id
-      INNER JOIN tasks t ON ss.task_id = t.task_id
-      INNER JOIN question_bank qb ON ss.question_id = qb.question_id
-      INNER JOIN skill_courses sc ON qb.course_id = sc.course_id
+      INNER JOIN tasks t ON wcs.task_id = t.task_id
+      LEFT JOIN question_bank qb ON wcs.question_id = qb.question_id
+      LEFT JOIN skill_courses sc ON qb.course_id = sc.course_id
       INNER JOIN group_students gs ON s.student_id = gs.student_id
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       INNER JOIN venue v ON g.venue_id = v.venue_id
       WHERE v.assigned_faculty_id = ?
         AND gs.status = 'Active'
-        AND ss.status = 'Pending Review'
-        AND ss.submission_type = 'coding'
-      ORDER BY ss.submitted_at ASC
+        AND wcs.status = 'Pending Review'
+      ORDER BY wcs.submitted_at ASC
     `, [faculty_id]);
 
     // Group by venue
@@ -709,56 +708,55 @@ export const getGradedSubmissions = async (req, res) => {
     const faculty_id = faculty[0].faculty_id;
 
     // Build filters
-    let filters = 'AND v.assigned_faculty_id = ? AND ss.status IN ("Graded", "Auto-Graded")';
+    let additionalFilters = '';
     let params = [faculty_id];
 
     if (venue_id) {
-      filters += ' AND v.venue_id = ?';
+      additionalFilters += ' AND v.venue_id = ?';
       params.push(venue_id);
     }
 
-    if (submission_type) {
-      filters += ' AND ss.submission_type = ?';
-      params.push(submission_type);
-    }
+    // submission_type filter not applicable for web_code_submissions (all are web_coding)
 
-    // Get graded submissions
+    // Get graded web code submissions
     const [submissions] = await db.query(`
       SELECT 
-        ss.submission_id,
-        ss.task_id,
-        ss.student_id,
-        ss.submission_type,
-        ss.submitted_at,
-        ss.graded_at,
-        ss.status,
-        ss.grade,
-        ss.max_score,
-        ss.feedback,
-        ss.mcq_is_correct,
-        ss.is_reassigned,
+        wcs.submission_id,
+        wcs.task_id,
+        wcs.student_id,
+        'web_coding' as submission_type,
+        wcs.submitted_at,
+        wcs.graded_at,
+        wcs.status,
+        wcs.grade,
+        wcs.max_score,
+        wcs.feedback,
+        NULL as mcq_is_correct,
+        wcs.is_reassigned,
         u.name as student_name,
         u.ID as roll_no,
         t.title as task_title,
         qb.title as question_title,
         qb.difficulty_level,
-        sc.course_name,
+        sc.course_name as skill_name,
         v.venue_name,
         grader_user.name as graded_by_name
-      FROM student_submissions ss
-      INNER JOIN students s ON ss.student_id = s.student_id
+      FROM web_code_submissions wcs
+      INNER JOIN students s ON wcs.student_id = s.student_id
       INNER JOIN users u ON s.user_id = u.user_id
-      INNER JOIN tasks t ON ss.task_id = t.task_id
-      INNER JOIN question_bank qb ON ss.question_id = qb.question_id
-      INNER JOIN skill_courses sc ON qb.course_id = sc.course_id
+      INNER JOIN tasks t ON wcs.task_id = t.task_id
+      LEFT JOIN question_bank qb ON wcs.question_id = qb.question_id
+      LEFT JOIN skill_courses sc ON qb.course_id = sc.course_id
       INNER JOIN group_students gs ON s.student_id = gs.student_id
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       INNER JOIN venue v ON g.venue_id = v.venue_id
-      LEFT JOIN faculties grader ON ss.graded_by = grader.faculty_id
+      LEFT JOIN faculties grader ON wcs.graded_by = grader.faculty_id
       LEFT JOIN users grader_user ON grader.user_id = grader_user.user_id
       WHERE gs.status = 'Active'
-        ${filters}
-      ORDER BY ss.graded_at DESC
+        AND wcs.status IN ('Graded', 'Needs Revision')
+        AND v.assigned_faculty_id = ?
+        ${additionalFilters}
+      ORDER BY wcs.graded_at DESC
     `, params);
 
     res.status(200).json({
