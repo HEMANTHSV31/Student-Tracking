@@ -186,3 +186,131 @@ export const verifyFacultyOwnership = async (req, res, next) => {
     });
   }
 };
+
+/**
+ * Check if user has specific permission
+ * Allows access if user is admin OR has the specific permission
+ * @param {string} permissionKey - Permission key to check (questionBank, tasks, classes)
+ */
+export const checkPermission = (permissionKey) => {
+  // Map permission keys to database columns
+  const permissionColumns = {
+    questionBank: 'can_access_question_bank',
+    tasks: 'can_manage_tasks',
+    classes: 'can_access_classes_groups'
+  };
+
+  return async (req, res, next) => {
+    try {
+      const user_id = req.user.user_id;
+      const role = req.userRole || req.user.role;
+
+      // Admins always have all permissions
+      if (role === 'admin') {
+        return next();
+      }
+
+      // Check if permission column exists
+      const columnName = permissionColumns[permissionKey];
+      if (!columnName) {
+        console.error(`[PERMISSION] Invalid permission key: ${permissionKey}`);
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied' 
+        });
+      }
+
+      // Check user's permission from database
+      const [permissionRows] = await db.query(
+        `SELECT ${columnName} FROM user_permissions WHERE user_id = ?`,
+        [user_id]
+      );
+
+      // If no permission record, deny access
+      if (permissionRows.length === 0) {
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied - no permissions configured' 
+        });
+      }
+
+      // Check if permission is granted
+      const hasPermission = permissionRows[0][columnName] === 1;
+      if (!hasPermission) {
+        return res.status(403).json({ 
+          success: false,
+          message: `Access denied - ${permissionKey} permission required` 
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('[PERMISSION] Error checking permission:', error);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Permission check failed' 
+      });
+    }
+  };
+};
+
+/**
+ * Allow access if user is admin, faculty, or has specific permission
+ * @param {string} permissionKey - Permission key to check
+ */
+export const facultyOrPermission = (permissionKey) => {
+  const permissionColumns = {
+    questionBank: 'can_access_question_bank',
+    tasks: 'can_manage_tasks',
+    classes: 'can_access_classes_groups'
+  };
+
+  return async (req, res, next) => {
+    try {
+      const user_id = req.user.user_id;
+      const role = req.userRole || req.user.role;
+
+      console.log(`[PERMISSION] Checking ${permissionKey} for user ${user_id}, role: ${role}`);
+
+      // Admins and faculty always have access
+      if (role === 'admin' || role === 'faculty') {
+        console.log(`[PERMISSION] Access granted (admin/faculty)`);
+        return next();
+      }
+
+      // For students and others, check permission
+      const columnName = permissionColumns[permissionKey];
+      if (!columnName) {
+        console.log(`[PERMISSION] Invalid permission key: ${permissionKey}`);
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied' 
+        });
+      }
+
+      const [permissionRows] = await db.query(
+        `SELECT ${columnName} FROM user_permissions WHERE user_id = ?`,
+        [user_id]
+      );
+
+      console.log(`[PERMISSION] Permission rows:`, permissionRows);
+
+      if (permissionRows.length === 0 || permissionRows[0][columnName] !== 1) {
+        console.log(`[PERMISSION] Access denied - no permission found or not granted`);
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied - insufficient permissions' 
+        });
+      }
+
+      console.log(`[PERMISSION] Access granted via permission`);
+      next();
+    } catch (error) {
+      console.error('[PERMISSION] Error:', error);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Permission check failed' 
+      });
+    }
+  };
+};

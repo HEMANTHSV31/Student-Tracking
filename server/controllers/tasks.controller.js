@@ -209,14 +209,14 @@ export const getVenuesForFaculty = async (req, res) => {
     const [adminCheck] = await db.query(`
       SELECT r.role 
       FROM users u 
-      JOIN role r ON u.role_id = r. role_id
+      JOIN role r ON u.role_id = r.role_id
       WHERE u.user_id = ?  
     `, [userId]);
 
     let query;
     let params;
 
-    if (adminCheck. length > 0 && adminCheck[0].role === 'admin') {
+    if (adminCheck.length > 0 && adminCheck[0].role === 'admin') {
       
       query = `
         SELECT 
@@ -255,10 +255,10 @@ export const getVenuesForFaculty = async (req, res) => {
           COUNT(DISTINCT gs.student_id) as student_count
         FROM venue v
         LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
-        LEFT JOIN group_students gs ON g.group_id = gs. group_id AND gs.status = 'Active'
-        WHERE v.assigned_faculty_id = ?  AND v.status = 'Active'
+        LEFT JOIN group_students gs ON g.group_id = gs.group_id AND gs.status = 'Active'
+        WHERE v.assigned_faculty_id = ? AND v.status = 'Active'
         GROUP BY v.venue_id
-        ORDER BY v. venue_name
+        ORDER BY v.venue_name
       `;
       params = [faculty[0].faculty_id];
       // console.log(`[GET VENUES] Querying venues for faculty_id: ${faculty[0].faculty_id}`);
@@ -273,7 +273,7 @@ export const getVenuesForFaculty = async (req, res) => {
     });
     
   } catch (error) {
-    console.error(' Error fetching venues:', error);
+    console.error('Error fetching venues:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch venues'

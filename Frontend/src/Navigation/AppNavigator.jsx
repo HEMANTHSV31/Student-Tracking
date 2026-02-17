@@ -36,6 +36,7 @@ import AdminSkillReport from "../pages/SuperAdmin/AdminTools/SkillReports/AdminS
 //Super Admin -> Admin Tools
 import AdminTools from "../pages/SuperAdmin/AdminTools/AdminTools";
 import AttendanceExport from "../pages/SuperAdmin/AdminTools/AttendanceExport/AttendanceExport";
+import RoleChanger from "../pages/SuperAdmin/AdminTools/RoleChanger/RoleChager";
 
 // Faculty Pages
 //Faculty -> Dashboard / Class & Group
@@ -120,6 +121,7 @@ const AppNavigator = () => {
             <Route path="admin-tools" element={<AdminTools />} />
             <Route path="admin-tools/attendance-export" element={<AttendanceExport />} />
             <Route path="admin-tools/progress-import" element={<AdminSkillReport />} />
+            <Route path="admin-tools/role-changer" element={<RoleChanger />} />
           </Route>
         )}
 
@@ -139,6 +141,11 @@ const AppNavigator = () => {
             <Route path="reports" element={<FacultyReports />} />
             <Route path="submissions" element={<SubmissionsList />} />
             <Route path="submissions/:submissionId" element={<CodeEvaluation />} />
+            {/* Permission-based routes */}
+            <Route path="courses" element={<CourseList />} />
+            <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            <Route path="admin-tasks" element={<TaskHeader />} />
+            <Route path="all-classes" element={<GroupsClasses />} />
           </Route>
         )}
 
@@ -153,6 +160,11 @@ const AppNavigator = () => {
             {/* P Skills Workspace - HTML+CSS and HTML+CSS+JS */}
             <Route path="code-practice" element={<CodePracticePage />} />
             <Route path="code-practice/:taskId" element={<CodePracticePage />} />
+            {/* Permission-based routes */}
+            <Route path="courses" element={<CourseList />} />
+            <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            <Route path="admin-tasks" element={<TaskHeader />} />
+            <Route path="all-classes" element={<GroupsClasses />} />
           </Route>
         )}
 

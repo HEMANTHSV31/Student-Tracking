@@ -20,6 +20,7 @@ import {
   lookupStudentByRollNumber
 } from '../controllers/groups.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { facultyOrPermission } from '../middleware/role.middleware.enhanced.js';
 
 const router = express.Router();
 
@@ -38,28 +39,28 @@ const upload = multer({
 });
 
 // Student lookup for auto-fill (MUST be before parameterized venue routes)
-router.get('/student-lookup/:rollNumber', authenticate, lookupStudentByRollNumber);
+router.get('/student-lookup/:rollNumber', authenticate, facultyOrPermission('classes'), lookupStudentByRollNumber);
 
 // Venue routes
-router.get('/venues', authenticate, getAllVenues);
-router.get('/venues/group-specifications', authenticate, getGroupSpecifications);
-router.get('/venues/search', authenticate, searchVenues);
-router.get('/venues/:venueId/details', authenticate, getVenueDetails);
-router.post('/venues', authenticate, createVenue);
-router.put('/venues/:venueId', authenticate, updateVenue);
-router.delete('/venues/:venueId', authenticate, deleteVenue);
-router.put('/venues/:venueId/assign-faculty', authenticate, assignFacultyToVenue);
+router.get('/venues', authenticate, facultyOrPermission('classes'), getAllVenues);
+router.get('/venues/group-specifications', authenticate, facultyOrPermission('classes'), getGroupSpecifications);
+router.get('/venues/search', authenticate, facultyOrPermission('classes'), searchVenues);
+router.get('/venues/:venueId/details', authenticate, facultyOrPermission('classes'), getVenueDetails);
+router.post('/venues', authenticate, facultyOrPermission('classes'), createVenue);
+router.put('/venues/:venueId', authenticate, facultyOrPermission('classes'), updateVenue);
+router.delete('/venues/:venueId', authenticate, facultyOrPermission('classes'), deleteVenue);
+router.put('/venues/:venueId/assign-faculty', authenticate, facultyOrPermission('classes'), assignFacultyToVenue);
 
 // Student allocation routes
-router.post('/venues/:venueId/bulk-upload', authenticate, upload.single('file'), bulkUploadStudentsToVenue);
-router.post('/venues/:venueId/allocate-range', authenticate, allocateStudentsByRollRange);
-router.post('/venues/:venueId/add-student', authenticate, addIndividualStudentToVenue);
-router.get('/venues/:venueId/students', authenticate, getVenueStudents);
-router.delete('/venues/:venueId/students/:studentId', authenticate, removeStudentFromVenue);
-router.post('/venues/:venueId/bulk-remove-students', authenticate, bulkRemoveStudentsFromVenue);
+router.post('/venues/:venueId/bulk-upload', authenticate, facultyOrPermission('classes'), upload.single('file'), bulkUploadStudentsToVenue);
+router.post('/venues/:venueId/allocate-range', authenticate, facultyOrPermission('classes'), allocateStudentsByRollRange);
+router.post('/venues/:venueId/add-student', authenticate, facultyOrPermission('classes'), addIndividualStudentToVenue);
+router.get('/venues/:venueId/students', authenticate, facultyOrPermission('classes'), getVenueStudents);
+router.delete('/venues/:venueId/students/:studentId', authenticate, facultyOrPermission('classes'), removeStudentFromVenue);
+router.post('/venues/:venueId/bulk-remove-students', authenticate, facultyOrPermission('classes'), bulkRemoveStudentsFromVenue);
 
 // Faculty routes
-router.get('/faculties', authenticate, getAllFacultiesForGroups);
-router.get('/faculties/available', authenticate, getAvailableFaculties);
+router.get('/faculties', authenticate, facultyOrPermission('classes'), getAllFacultiesForGroups);
+router.get('/faculties/available', authenticate, facultyOrPermission('classes'), getAvailableFaculties);
 
 export default router;

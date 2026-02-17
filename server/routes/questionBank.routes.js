@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import * as questionBankController from '../controllers/questionBank.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorizeRoles, adminOnly, facultyOrAdmin } from '../middleware/role.middleware.enhanced.js';
+import { authorizeRoles, adminOnly, facultyOrAdmin, facultyOrPermission } from '../middleware/role.middleware.enhanced.js';
 
 const router = express.Router();
 
@@ -74,24 +74,24 @@ const resourceUpload = multer({
 /**
  * @route   GET /api/question-bank/courses
  * @desc    Get all skill courses
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  */
 router.get(
   '/courses',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getAllCourses
 );
 
 /**
  * @route   GET /api/question-bank/courses/:id
  * @desc    Get single course by ID
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  */
 router.get(
   '/courses/:id',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getCourseById
 );
 
@@ -138,25 +138,25 @@ router.delete(
 /**
  * @route   GET /api/question-bank/questions
  * @desc    Get all questions with filters
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  * @query   course_id, question_type, difficulty_level, status, search
  */
 router.get(
   '/questions',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getAllQuestions
 );
 
 /**
  * @route   GET /api/question-bank/questions/:id
  * @desc    Get single question by ID with full details
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  */
 router.get(
   '/questions/:id',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getQuestionById
 );
 
@@ -201,25 +201,25 @@ router.delete(
 /**
  * @route   GET /api/question-bank/questions/by-course/:courseId
  * @desc    Get questions by course
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  * @query   question_type (optional)
  */
 router.get(
   '/questions/by-course/:courseId',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getQuestionsByCourse
 );
 
 /**
  * @route   GET /api/question-bank/statistics
  * @desc    Get question bank statistics for dashboard
- * @access  Admin, Faculty
+ * @access  Admin, Faculty, or Users with questionBank permission
  */
 router.get(
   '/statistics',
   authenticate,
-  facultyOrAdmin,
+  facultyOrPermission('questionBank'),
   questionBankController.getStatistics
 );
 

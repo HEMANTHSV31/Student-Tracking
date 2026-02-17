@@ -5,7 +5,6 @@ import {
     UserCog,
     CheckSquare,
     ArrowRight,
-    Briefcase,
     ClipboardList,
     Database,
     TrendingUp
@@ -47,8 +46,7 @@ const AdminTools = () => {
                     description: 'Manage user roles and permissions',
                     icon: UserCog,
                     color: '#8B5CF6', // Purple
-                    route: '/admin-tools/role-changer',
-                    disabled: true // Coming soon
+                    route: '/admin-tools/role-changer'
                 }
             ]
         },

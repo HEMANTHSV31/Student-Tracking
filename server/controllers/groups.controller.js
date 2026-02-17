@@ -544,6 +544,44 @@ export const getAllVenues = async (req, res) => {
       return res.status(200).json({ success: true, data: venues });
     }
     
+    // Check if user has classes permission (non-admin, non-faculty users with permission)
+    // If user has classes permission, show all active venues (like admin but only Active)
+    const [permissionCheck] = await db.query(
+      'SELECT can_access_classes_groups FROM user_permissions WHERE user_id = ?',
+      [req.user.user_id]
+    );
+    
+    if (permissionCheck.length > 0 && permissionCheck[0].can_access_classes_groups === 1) {
+      // User has classes permission - show all active venues
+      const [venues] = await db.query(`
+        SELECT 
+          v.venue_id,
+          v.venue_name,
+          v.capacity,
+          v.location,
+          v.year as venue_year,
+          v.group_specification,
+          v.status,
+          v.created_at,
+          f.faculty_id,
+          u.name as faculty_name,
+          u.email as faculty_email,
+          u.department as faculty_department,
+          COUNT(DISTINCT CASE WHEN gs.status = 'Active' THEN gs.student_id END) as current_students
+        FROM venue v
+        LEFT JOIN faculties f ON v.assigned_faculty_id = f.faculty_id
+        LEFT JOIN users u ON f.user_id = u.user_id
+        LEFT JOIN \`groups\` g ON v.venue_id = g.venue_id
+        LEFT JOIN group_students gs ON g.group_id = gs.group_id
+        WHERE v.status = 'Active'${yearCondition}${specificationCondition}
+        GROUP BY v.venue_id
+        ORDER BY v.venue_name
+      `, params);
+      
+      console.log(`[GET ALL VENUES] User with classes permission - found ${venues.length} venue(s)`);
+      return res.status(200).json({ success: true, data: venues });
+    }
+    
     // Faculty sees only their assigned venues
     const [faculty] = await db.query(
       'SELECT faculty_id FROM faculties WHERE user_id = ?',
@@ -555,7 +593,7 @@ export const getAllVenues = async (req, res) => {
     if (faculty.length === 0) {
       return res.status(403).json({
         success: false,
-        message: 'Faculty record not found'
+        message: 'No access to venues - please contact admin'
       });
     }
     
