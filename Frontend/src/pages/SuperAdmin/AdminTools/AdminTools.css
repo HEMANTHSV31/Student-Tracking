@@ -1,0 +1,75 @@
+/* Responsive AdminTools - vanilla CSS (no CSS variables)
+   Converted to explicit values for standalone use
+*/
+
+.at-container {
+  min-height: 100vh;
+  background: #f8fafc;
+  padding: 18px 12px;
+}
+
+.at-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 12px;
+}
+
+.at-category { margin-bottom: 32px; }
+
+.at-category-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.at-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.at-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+  transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 180ms;
+  border-left: 4px solid transparent;
+}
+
+.at-card--active { cursor: pointer; }
+.at-card--hover { transform: translateY(-6px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
+.at-card--disabled { opacity: 0.66; cursor: not-allowed; }
+
+.at-card-content { display:flex; align-items:center; gap:14px; min-width:0 }
+.at-icon-circle { width:52px; height:52px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0 }
+.at-card-text { min-width:0 }
+.at-card-title { font-size:15px; margin:0 0 4px 0; font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.at-card-description { margin:0; color:#64748b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.at-arrow-icon { margin-left:12px; flex-shrink:0 }
+
+/* Responsive breakpoints */
+@media (max-width: 1100px) {
+  .at-cards-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+@media (max-width: 640px) {
+  .at-container { padding: 12px 8px; }
+  .at-content { padding: 6px; }
+  .at-cards-grid { grid-template-columns: 1fr; gap: 12px; }
+  .at-card { padding: 12px; }
+  .at-card-title { font-size:14px }
+  .at-card-description { font-size:13px; white-space:normal }
+  .at-icon-circle { width:44px; height:44px }
+}
+
+/* Focus styles */
+.at-card:focus { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }

@@ -10,6 +10,7 @@ import {
     Database,
     TrendingUp
 } from 'lucide-react';
+import './AdminTools.css';
 
 const AdminTools = () => {
     const navigate = useNavigate();
@@ -74,182 +75,44 @@ const AdminTools = () => {
     };
 
     return (
-        <div style={styles.container}>
-            <div style={styles.header}>
-                <div style={styles.headerContent}>
-                    <div style={styles.iconWrapper}>
-                        <Briefcase size={32} color="#6366F1" />
-                    </div>
-                    <div>
-                        <h1 style={styles.title}>Admin Tools</h1>
-                        <p style={styles.subtitle}>Manage and export data across the platform</p>
-                    </div>
-                </div>
-            </div>
-
-            <div style={styles.content}>
+        <div className="at-container">
+            <div className="at-content">
                 {functionCategories.map((category, index) => (
-                    <div key={index} style={styles.categorySection}>
-                        <h2 style={styles.categoryTitle}>{category.title}</h2>
-                        <div style={styles.cardsGrid}>
+                    <section key={index} className="at-category">
+                        <h2 className="at-category-title">{category.title}</h2>
+                        <div className="at-cards-grid">
                             {category.functions.map((func) => (
-                                <div
+                                <article
                                     key={func.id}
-                                    style={{
-                                        ...styles.card,
-                                        ...(func.disabled ? styles.cardDisabled : styles.cardActive),
-                                        ...(hoveredCard === func.id && !func.disabled ? styles.cardHover : {}),
-                                        borderLeft: `4px solid ${func.color}`
-                                    }}
+                                    className={`at-card ${func.disabled ? 'at-card--disabled' : 'at-card--active'} ${hoveredCard === func.id && !func.disabled ? 'at-card--hover' : ''}`}
                                     onClick={() => handleCardClick(func)}
                                     onMouseEnter={() => setHoveredCard(func.id)}
                                     onMouseLeave={() => setHoveredCard(null)}
+                                    style={{ borderLeft: `4px solid ${func.color}` }}
+                                    tabIndex={func.disabled ? -1 : 0}
                                 >
-                                    <div style={styles.cardContent}>
-                                        <div
-                                            style={{
-                                                ...styles.iconCircle,
-                                                backgroundColor: `${func.color}20`
-                                            }}
-                                        >
-                                            <func.icon size={24} color={func.color} />
+                                    <div className="at-card-content">
+                                        <div className="at-icon-circle" style={{ backgroundColor: `${func.color}20` }}>
+                                            <func.icon size={22} color={func.color} />
                                         </div>
-                                        <div style={styles.cardText}>
-                                            <h3 style={styles.cardTitle}>{func.title}</h3>
-                                            <p style={styles.cardDescription}>
-                                                {func.disabled ? 'Coming soon' : func.description}
-                                            </p>
+                                        <div className="at-card-text">
+                                            <h3 className="at-card-title">{func.title}</h3>
+                                            <p className="at-card-description">{func.disabled ? 'Coming soon' : func.description}</p>
                                         </div>
                                     </div>
                                     {!func.disabled && (
-                                        <div style={styles.arrowIcon}>
-                                            <ArrowRight size={20} color="#9CA3AF" />
+                                        <div className="at-arrow-icon">
+                                            <ArrowRight size={18} color="#9CA3AF" />
                                         </div>
                                     )}
-                                </div>
+                                </article>
                             ))}
                         </div>
-                    </div>
+                    </section>
                 ))}
             </div>
         </div>
     );
-};
-
-const styles = {
-    container: {
-        minHeight: '100vh',
-        backgroundColor: '#F9FAFB',
-        padding: '0'
-    },
-    header: {
-        backgroundColor: '#FFFFFF',
-        borderBottom: '1px solid #E5E7EB',
-        padding: '24px 32px',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-    },
-    headerContent: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        maxWidth: '1400px',
-        margin: '0 auto'
-    },
-    iconWrapper: {
-        width: '56px',
-        height: '56px',
-        borderRadius: '12px',
-        backgroundColor: '#EEF2FF',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    title: {
-        fontSize: '28px',
-        fontWeight: '700',
-        color: '#111827',
-        margin: '0 0 4px 0'
-    },
-    subtitle: {
-        fontSize: '14px',
-        color: '#6B7280',
-        margin: '0'
-    },
-    content: {
-        maxWidth: '1400px',
-        margin: '0 auto',
-        padding: '32px'
-    },
-    categorySection: {
-        marginBottom: '40px'
-    },
-    categoryTitle: {
-        fontSize: '18px',
-        fontWeight: '600',
-        color: '#374151',
-        marginBottom: '16px',
-        paddingBottom: '8px',
-        borderBottom: '2px solid #E5E7EB'
-    },
-    cardsGrid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-        gap: '20px'
-    },
-    card: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: '12px',
-        padding: '20px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
-        transition: 'all 0.2s ease'
-    },
-    cardActive: {
-        cursor: 'pointer'
-    },
-    cardHover: {
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-        transform: 'translateY(-2px)'
-    },
-    cardDisabled: {
-        opacity: 0.6,
-        cursor: 'not-allowed'
-    },
-    cardContent: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        flex: 1
-    },
-    iconCircle: {
-        width: '48px',
-        height: '48px',
-        borderRadius: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0
-    },
-    cardText: {
-        flex: 1
-    },
-    cardTitle: {
-        fontSize: '16px',
-        fontWeight: '600',
-        color: '#111827',
-        margin: '0 0 4px 0'
-    },
-    cardDescription: {
-        fontSize: '13px',
-        color: '#6B7280',
-        margin: '0'
-    },
-    arrowIcon: {
-        flexShrink: 0,
-        marginLeft: '12px'
-    }
 };
 
 export default AdminTools;
