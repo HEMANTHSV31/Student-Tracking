@@ -36,32 +36,23 @@ const StudentAttendance = () => {
     const [error, setError] = useState(null);
 
     const [filter, setFilter] = useState('all');
-    const [selectedDate, setSelectedDate] = useState(''); // Don't auto-select today - show all records
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 5;
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
 
     // Define standard time slots for a day (matching actual session timings)
     const TIME_SLOTS = [
-        { hour: 1, name: 'Hour 1', time: '08:45 - 10:25' },
-        { hour: 2, name: 'Hour 2', time: '10:45 - 12:25' },
+        { hour: 1, name: 'Hour 1', time: '08:45 - 10:30' },
+        { hour: 2, name: 'Hour 2', time: '10:40 - 12:30' },
         { hour: 3, name: 'Hour 3', time: '13:30 - 15:10' },
         { hour: 4, name: 'Hour 4', time: '15:25 - 16:30' }
     ];
 
-    // --- FETCH DATA FROM BACKEND ---
+    // --- FETCH DASHBOARD DATA (once on mount) ---
     useEffect(() => {
-        const fetchAttendanceData = async () => {
+        const fetchDashboard = async () => {
             if (!user?.user_id) return;
-
-            setLoading(true);
-            setError(null);
-
             try {
-                // Fetch dashboard data
                 const dashboardResponse = await apiGet('/attendance/dashboard');
-
                 const dashboardData = await dashboardResponse.json();
-
                 if (dashboardData.success) {
                     const data = dashboardData.data;
                     
@@ -112,125 +103,78 @@ const StudentAttendance = () => {
                     }));
                     setSubjectAttendance(subjects);
                 }
+            } catch (err) {
+                console.error('❌ Error fetching dashboard:', err);
+            }
+        };
+        fetchDashboard();
+    }, [user]);
 
-                // Fetch attendance history
-                const historyResponse = await apiGet('/attendance/history');
-
+    // --- FETCH ATTENDANCE HISTORY (refetches when date changes) ---
+    useEffect(() => {
+        const fetchHistory = async () => {
+            if (!user?.user_id) return;
+            setLoading(true);
+            setError(null);
+            try {
+                const dateParam = selectedDate ? `?date=${selectedDate}` : '';
+                const historyResponse = await apiGet(`/attendance/history${dateParam}`);
                 const historyData = await historyResponse.json();
-
-                console.log('📊 Attendance history response:', historyData);
 
                 if (historyData.success) {
                     const history = historyData.data.map((record, index) => {
-                        console.log('Processing record:', record);
-                        
-                        // Backend now provides session_date and session_number directly
-                        const sessionDate = record.session_date || new Date(record.created_at).toISOString().split('T')[0];
-                        const hour = record.session_number || 1; // Session number 1-4
-                        
-                        // Format time display based on session number
+                        let hour = record.session_number;
+                        let sessionDate = record.session_date;
+
+                        if (record.session_name) {
+                            const hourMatch = record.session_name.match(/^S([1-4])_/);
+                            if (hourMatch) hour = parseInt(hourMatch[1]);
+                            const dateMatch = record.session_name.match(/(\d{4}-\d{2}-\d{2})/);
+                            if (dateMatch) sessionDate = dateMatch[1];
+                        }
+
+                        if (!hour || hour < 1 || hour > 4) hour = 1;
+                        if (!sessionDate) sessionDate = new Date(record.created_at).toISOString().split('T')[0];
+
                         const timeSlotMap = {
                             1: 'Hour 1 (08:45 - 10:30)',
                             2: 'Hour 2 (10:40 - 12:30)',
                             3: 'Hour 3 (13:30 - 15:10)',
                             4: 'Hour 4 (15:25 - 16:30)'
                         };
-                        
-                        const timeDisplay = `Hour ${hour}`;
-                        const fullTimeDisplay = timeSlotMap[hour] || `Hour ${hour}`;
 
-                        // Determine status based on remarks or is_present flag
                         let status = 'absent';
-                        if (record.remarks === 'PS') {
-                            status = 'ps';
-                        } else if (record.remarks === 'MM') {
-                            status = 'mm';
-                        } else if (record.remarks === 'AD') {
-                            status = 'ad';
-                        } else if (record.remarks === 'Other') {
-                            status = 'other';
-                        } else if (record.is_present === 1) {
-                            status = record.is_late === 1 ? 'late' : 'present';
-                        }
-
-                        console.log(`Record ${index}: date=${sessionDate}, hour=${hour}, status=${status}, venue=${record.venue_name}`);
+                        if (record.remarks === 'PS') status = 'ps';
+                        else if (record.remarks === 'MM') status = 'mm';
+                        else if (record.remarks === 'AD') status = 'ad';
+                        else if (record.remarks === 'Other') status = 'other';
+                        else if (record.is_present === 1) status = record.is_late === 1 ? 'late' : 'present';
 
                         return {
                             id: record.attendance_id || index,
                             date: sessionDate,
-                            subject: record.venue_name || record.subject_name || 'Unknown Subject',
-                            time: timeDisplay,
-                            displayTime: fullTimeDisplay,
-                            hour: hour,
-                            status: status,
-                            originalData: record // Keep original data for reference
+                            subject: record.venue_name || 'Unknown Subject',
+                            displayTime: timeSlotMap[hour] || `Hour ${hour}`,
+                            hour,
+                            status,
                         };
                     });
-                    // Data is already sorted by backend: ORDER BY session_date DESC, session_number ASC
-                    
-                    console.log('✅ Processed attendance history:', history);
                     setAttendanceHistory(history);
                 }
-
             } catch (err) {
-                console.error('❌ Error fetching attendance data:', err);
-                setError('Failed to load attendance data. Please try again later.');
+                console.error('❌ Error fetching history:', err);
+                setError('Failed to load attendance data.');
             } finally {
                 setLoading(false);
             }
         };
+        fetchHistory();
+    }, [user, selectedDate]);
 
-        fetchAttendanceData();
-    }, [user, API_URL]);
-
-    // Create a map of dates with attendance records grouped by hour
-    const attendanceByDateAndHour = attendanceHistory.reduce((acc, record) => {
-        if (!acc[record.date]) {
-            acc[record.date] = {};
-        }
-        
-        // Only add records with valid hour numbers (1-4)
-        // Skip records without proper session/hour information
-        if (record.hour && record.hour >= 1 && record.hour <= 4) {
-            acc[record.date][record.hour] = record;
-        } else {
-            console.warn('⚠️ Attendance record missing valid hour/session number:', record);
-        }
-        
-        return acc;
-    }, {});
-
-    // Get unique dates from actual attendance records only
-    const uniqueDates = [...new Set(attendanceHistory.map(record => record.date))].sort((a, b) => new Date(b) - new Date(a));
-
-    // Just use the attendance history as-is without creating fake "No Session" entries
-    // This shows only actual attendance records that were marked by faculty
-    const completeHistory = attendanceHistory;
-
-    // Filter history based on filter and selected date
-    const filteredHistory = completeHistory.filter(record => {
-        const matchesFilter = filter === 'all' || record.status === filter;
-        const matchesDate = !selectedDate || record.date === selectedDate;
-        return matchesFilter && matchesDate;
-    });
-
-    // Group filtered history by date to show daily breakdown
-    const groupedByDate = filteredHistory.reduce((acc, record) => {
-        if (!acc[record.date]) {
-            acc[record.date] = [];
-        }
-        acc[record.date].push(record);
-        return acc;
-    }, {});
-
-    // If a date is selected, show only that date's records
-    const displayHistory = selectedDate ? (groupedByDate[selectedDate] || []) : filteredHistory;
-
-    // Pagination calculations
-    const totalPages = Math.ceil(displayHistory.length / itemsPerPage);
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, displayHistory.length);
-    const currentItems = displayHistory.slice(startIndex, endIndex);
+    // Apply status filter only (date filtering is done by backend)
+    const displayHistory = attendanceHistory.filter(
+        record => filter === 'all' || record.status === filter
+    );
 
     const getStatusStyle = (status) => {
         switch (status) {
@@ -245,36 +189,9 @@ const StudentAttendance = () => {
         }
     };
 
-    // Generate page numbers to display
-    const getPageNumbers = () => {
-        const pages = [];
-        const maxVisiblePages = 3;
-        
-        if (totalPages <= maxVisiblePages) {
-            for (let i = 1; i <= totalPages; i++) {
-                pages.push(i);
-            }
-        } else {
-            if (currentPage <= 2) {
-                pages.push(1, 2, 3);
-            } else if (currentPage >= totalPages - 1) {
-                pages.push(totalPages - 2, totalPages - 1, totalPages);
-            } else {
-                pages.push(currentPage - 1, currentPage, currentPage + 1);
-            }
-        }
-        return pages;
-    };
 
-    // Helper to get time slots display
-    const getTimeSlotsDisplay = () => {
-        return TIME_SLOTS.map(slot => `${slot.name}`).join(' • ');
-    };
-
-    // Handle date change
     const handleDateChange = (date) => {
         setSelectedDate(date);
-        setCurrentPage(1);
     };
 
     return (
@@ -531,7 +448,7 @@ const StudentAttendance = () => {
                                         <select
                                             style={styles.filterSelect}
                                             value={filter}
-                                            onChange={(e) => setFilter(e.target.value)}
+                                            onChange={(e) => { setFilter(e.target.value); setCurrentPage(1); }}
                                         >
                                             <option value="all">All Status</option>
                                             <option value="present">Present</option>
@@ -542,93 +459,19 @@ const StudentAttendance = () => {
                                             <option value="other">Other</option>
                                             <option value="absent">Absent</option>
                                         </select>
-                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <Calendar size={14} style={{ position: 'absolute', left: '10px', color: '#9CA3AF', zIndex: 1 }} />
-                                            <input
-                                                type="date"
-                                                style={{
-                                                    ...styles.filterSelect,
-                                                    paddingLeft: '32px',
-                                                    minWidth: '160px',
-                                                    cursor: 'pointer'
-                                                }}
-                                                value={selectedDate}
-                                                onChange={(e) => handleDateChange(e.target.value)}
-                                                max={new Date().toISOString().split('T')[0]}
-                                                min={uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : ''}
-                                                placeholder="All dates"
-                                            />
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', backgroundColor: '#F3F4F6', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
+                                            <Calendar size={14} color="#6B7280" />
+                                            <span style={{ fontSize: '14px', color: '#374151', fontWeight: '500' }}>
+                                                {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Daily Summary - Show when date is selected */}
-                                {selectedDate && groupedByDate[selectedDate] && (
-                                    <div style={{
-                                        padding: '16px',
-                                        backgroundColor: '#F9FAFB',
-                                        borderBottom: '1px solid #E5E7EB',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        flexWrap: 'wrap',
-                                        gap: '12px'
-                                    }} className="daily-summary">
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <Clock size={18} color="#6366F1" />
-                                                <span style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
-                                                    4 hours per day
-                                                </span>
-                                            </div>
-                                            <div style={{ fontSize: '13px', color: '#6B7280' }} className="time-slots-display">
-                                                {getTimeSlotsDisplay()}
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            {['present', 'late', 'absent'].map(status => {
-                                                const count = groupedByDate[selectedDate].filter(r => r.status === status).length;
-                                                const statusStyle = getStatusStyle(status);
-                                                return count > 0 && (
-                                                    <div key={status} style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        padding: '6px 12px',
-                                                        backgroundColor: statusStyle.bg,
-                                                        borderRadius: '6px',
-                                                        fontSize: '13px',
-                                                        fontWeight: '600',
-                                                        color: statusStyle.color
-                                                    }}>
-                                                        {statusStyle.icon}
-                                                        <span>{count} {status}</span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        {groupedByDate[selectedDate].filter(r => r.status === 'present' || r.status === 'late').length === 4 && (
-                                            <div style={{
-                                                width: '100%',
-                                                marginTop: '8px',
-                                                padding: '8px 12px',
-                                                backgroundColor: '#ECFDF5',
-                                                borderRadius: '6px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                fontSize: '13px',
-                                                color: '#059669'
-                                            }}>
-                                                <Info size={14} />
-                                                <span>Perfect attendance - all 4 hours attended!</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+
 
                                 <div style={styles.historyList}>
-                                    {currentItems.length === 0 ? (
+                                    {displayHistory.length === 0 ? (
                                         <div style={{ 
                                             padding: '60px 40px', 
                                             textAlign: 'center'
@@ -670,7 +513,7 @@ const StudentAttendance = () => {
                                             </p>
                                         </div>
                                     ) : (
-                                        currentItems.map(record => {
+                                        displayHistory.map(record => {
                                             const status = getStatusStyle(record.status);
                                             return (
                                                 <div key={record.id} style={styles.historyItem} className="history-item">
@@ -698,56 +541,7 @@ const StudentAttendance = () => {
                                     )}
                                 </div>
                                 
-                                {/* Pagination Component - Only show if there's data */}
-                                {displayHistory.length > 0 && (
-                                    <div style={styles.paginationContainer} className="pagination-container">
-                                        <div style={styles.paginationInfo} className="pagination-info">
-                                            Showing {startIndex + 1}-{endIndex} of {displayHistory.length} records
-                                        </div>
-                                        <div style={styles.paginationControls} className="pagination-controls">
-                                            <div style={styles.paginationButtons} className="pagination-buttons">
-                                                <button
-                                                    style={{
-                                                        ...styles.paginationButton,
-                                                        ...styles.prevButton,
-                                                        opacity: currentPage === 1 ? 0.5 : 1
-                                                    }}
-                                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                                    disabled={currentPage === 1}
-                                                >
-                                                    <ChevronLeft size={16} /> Prev
-                                                </button>
-                                                
-                                                {getPageNumbers().map(page => (
-                                                    <button
-                                                        key={page}
-                                                        style={{
-                                                            ...styles.paginationButton,
-                                                            ...styles.pageNumber,
-                                                            backgroundColor: currentPage === page ? '#2563EB' : 'transparent',
-                                                            color: currentPage === page ? '#FFFFFF' : '#374151'
-                                                        }}
-                                                        onClick={() => setCurrentPage(page)}
-                                                    >
-                                                        {page}
-                                                    </button>
-                                                ))}
-                                                
-                                                <button
-                                                    style={{
-                                                        ...styles.paginationButton,
-                                                        ...styles.nextButton,
-                                                        opacity: currentPage === totalPages ? 0.5 : 1
-                                                    }}
-                                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                                    disabled={currentPage === totalPages}
-                                                >
-                                                    Next <ChevronRight size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+
                             </div>
                         </div>
                     </div>

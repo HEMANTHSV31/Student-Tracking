@@ -653,11 +653,15 @@ export const getLateStudents = async (req, res) => {
 // Get attendance history for a student - ONLY for their assigned venues
 export const getStudentAttendanceHistory = async (req, res) => {
   try {
-    // Get user ID from JWT token
     const userId = req.user.user_id;
+    const { date } = req.query; // Optional date filter: YYYY-MM-DD
 
-    // Get only the latest attendance record for each session (in case faculty marked multiple times)
-    // Extract session date and number from session_name for proper display
+    // Build optional date filter on the session_name pattern
+    const dateCondition = date ? `AND ats.session_name LIKE ?` : '';
+    const queryParams = date
+      ? [userId, userId, `%_${date}`]
+      : [userId, userId];
+
     const [history] = await db.query(`
       SELECT 
         a.attendance_id,
@@ -668,12 +672,12 @@ export const getStudentAttendanceHistory = async (req, res) => {
         ats.session_name,
         v.venue_name,
         u.name as faculty_name,
-        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 10, 10) as session_date,
+        SUBSTRING(ats.session_name, LOCATE('_20', ats.session_name) + 1, 10) as session_date,
         CASE 
-          WHEN ats.session_name LIKE '%_S1_%' THEN 1
-          WHEN ats.session_name LIKE '%_S2_%' THEN 2
-          WHEN ats.session_name LIKE '%_S3_%' THEN 3
-          WHEN ats.session_name LIKE '%_S4_%' THEN 4
+          WHEN ats.session_name LIKE 'S1_%' THEN 1
+          WHEN ats.session_name LIKE 'S2_%' THEN 2
+          WHEN ats.session_name LIKE 'S3_%' THEN 3
+          WHEN ats.session_name LIKE 'S4_%' THEN 4
           ELSE 1
         END as session_number
       FROM attendance a
@@ -695,9 +699,9 @@ export const getStudentAttendanceHistory = async (req, res) => {
               AND a.attendance_id = latest.max_attendance_id
       WHERE s.user_id = ?
         AND gs.status = 'Active'
+        ${dateCondition}
       ORDER BY session_date DESC, session_number ASC
-      LIMIT 50
-    `, [userId, userId]);
+    `, queryParams);
 
     res.status(200).json({ 
       success: true, 
