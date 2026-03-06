@@ -7,7 +7,8 @@ import {
     ArrowRight,
     ClipboardList,
     Database,
-    TrendingUp
+    TrendingUp,
+    MapPin
 } from 'lucide-react';
 import './AdminTools.css';
 
@@ -61,6 +62,19 @@ const AdminTools = () => {
                     color: '#6366F1', // Indigo
                     route: '/admin-tools/task-completion',
                     disabled: true // Coming soon
+                }
+            ]
+        },
+        {
+            title: 'Assessment Management',
+            functions: [
+                {
+                    id: 'pbl-assessment',
+                    title: 'PBL Assessment Allocation',
+                    description: 'Smart seat allocation for assessments',
+                    icon: MapPin,
+                    color: '#F59E0B', // Amber
+                    route: '/admin-tools/pbl-assessment'
                 }
             ]
         }
