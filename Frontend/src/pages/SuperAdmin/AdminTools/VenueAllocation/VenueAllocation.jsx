@@ -23,7 +23,7 @@ import {
   ViewList,
   Analytics,
 } from "@mui/icons-material";
-import { apiGet, apiPost } from "../../../utils/api";
+import { apiGet, apiPost } from "../../../../utils/api";
 import "./VenueAllocation.css";
 
 const VenueAllocation = () => {

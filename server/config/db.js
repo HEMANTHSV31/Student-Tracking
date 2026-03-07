@@ -10,6 +10,7 @@ const db = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
+  dateStrings: true, // Prevent automatic date conversion to avoid timezone issues
 });
 
 export default db;

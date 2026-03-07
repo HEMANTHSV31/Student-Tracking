@@ -61,3 +61,23 @@ export const deleteClusterYear = async (year) => {
   const res = await apiDelete(`${BASE}/clusters/${year}`);
   return res.json();
 };
+
+// ── Allocations ──────────────────────────────────────────────────────────
+export const saveAllocation = async (slotId, allocationData, overallStats) => {
+  const res = await apiPost(`${BASE}/allocations`, {
+    slot_id: slotId,
+    allocation_data: allocationData,
+    overall_stats: overallStats,
+  });
+  return res.json();
+};
+
+export const fetchAllocation = async (slotId) => {
+  const res = await apiGet(`${BASE}/allocations/${slotId}`);
+  return res.json();
+};
+
+export const deleteAllocation = async (slotId) => {
+  const res = await apiDelete(`${BASE}/allocations/${slotId}`);
+  return res.json();
+};

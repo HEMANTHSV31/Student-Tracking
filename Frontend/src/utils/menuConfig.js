@@ -58,12 +58,6 @@ export const getMenuByRole = (user) => {
         section: "classes",
       },
       {
-        id: "venue-allocation",
-        label: "Venue Allocation",
-        icon: MapPin,
-        section: "classes",
-      },
-      {
         id: "attendance",
         label: "Attendance",
         icon: CalendarCheck,
@@ -155,6 +149,14 @@ export const getMenuByRole = (user) => {
         section: "management",
       });
     }
+
+    // Add Admin Tools for faculty
+    menu.push({
+      id: "admin-tools",
+      label: "Admin Tools",
+      icon: Briefcase,
+      section: "tools",
+    });
 
     return menu;
   }

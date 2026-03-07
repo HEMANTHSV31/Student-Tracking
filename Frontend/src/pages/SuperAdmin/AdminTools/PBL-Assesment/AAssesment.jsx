@@ -12,7 +12,8 @@ import {
 import {
   fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi,
   fetchSlots, createSlot, deleteSlot as deleteSlotApi,
-  fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi
+  fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi,
+  saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi
 } from '../../../../services/assessmentVenueApi';
 import './AAssesment.css';
 
@@ -37,6 +38,13 @@ const AAssesment = () => {
   const [slotForm, setSlotForm] = useState({ slot_date: '', start_time: '', end_time: '', slot_label: '', subject_code: '', year: 1 });
   const [slotWarning, setSlotWarning] = useState('');
   const [slotSearch, setSlotSearch] = useState('');
+  // Initialize date filter to today's date (YYYY-MM-DD)
+  const getTodayDateStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [slotDayFilter, setSlotDayFilter] = useState(getTodayDateStr());
+  const [selectedSlot, setSelectedSlot] = useState(null); // Currently selected slot for allocation
 
   // ── Allocation State ─────────────────────────────────────────────────────
   const [students, setStudents] = useState([]);
@@ -190,11 +198,20 @@ const AAssesment = () => {
     let dateOnly = str;
     if (str.includes('T')) dateOnly = str.split('T')[0];
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
-      const d = new Date(`${dateOnly}T00:00:00`);
-      if (!Number.isNaN(d.getTime()))
-        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      // Parse date parts directly to avoid timezone issues
+      const [year, month, day] = dateOnly.split('-').map(Number);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${String(day).padStart(2, '0')} ${months[month - 1]} ${year}`;
     }
     return dateValue;
+  };
+
+  // Normalize date to YYYY-MM-DD format for comparison
+  const normalizeDateForFilter = (dateValue) => {
+    if (!dateValue) return '';
+    const str = String(dateValue);
+    if (str.includes('T')) return str.split('T')[0];
+    return str;
   };
 
   const formatTime12 = (timeStr) => {
@@ -310,7 +327,7 @@ const AAssesment = () => {
         setSlotWarning('');
         loadSlots();
       } else {
-        if (res.message?.includes('already exists')) {
+        if (res.message?.includes('already exists') || res.message?.includes('conflict')) {
           setSlotWarning(res.message);
         } else {
           alert(res.message || 'Failed to create slot');
@@ -372,12 +389,15 @@ const AAssesment = () => {
       alert('No students to allocate!');
       return null;
     }
-    if (!selectedVenues.length) {
-      alert('Please select at least one venue!');
+    // Use all venues if none specifically selected
+    const venuesToUse = selectedVenues.length ? selectedVenues : venues;
+    if (!venuesToUse.length) {
+      alert('No venues available! Please add venues in the Venues tab first.');
       return null;
     }
-    if (studentList.length > TOTAL_CAPACITY) {
-      alert(`Capacity exceeded!\nMax: ${TOTAL_CAPACITY}  |  Students: ${studentList.length}`);
+    const totalCapacity = venuesToUse.reduce((sum, v) => sum + v.total_capacity, 0);
+    if (studentList.length > totalCapacity) {
+      alert(`Capacity exceeded!\nMax: ${totalCapacity}  |  Students: ${studentList.length}`);
       return null;
     }
 
@@ -414,7 +434,7 @@ const AAssesment = () => {
     let csIdx = 0, coreIdx = 0;
     const newAllocations = {};
 
-    for (const venue of selectedVenues) {
+    for (const venue of venuesToUse) {
       const ROWS = venue.rows_count;
       const COLS = venue.columns_count;
       const map = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
@@ -453,7 +473,7 @@ const AAssesment = () => {
           totalStudents: vs.length,
           csClusterCount: vs.filter((s) => CS_CLUSTER.includes(s.normalizedDept)).length,
           coreClusterCount: vs.filter((s) => CORE_CLUSTER.includes(s.normalizedDept)).length,
-          unknownCount: vs.filter((s) => !CS_CLUSTER.includes(s.normalizedDept) && !CORE_CLUSTER.includes(s.normalizedDept)).length,
+          otherCount: vs.filter((s) => !CS_CLUSTER.includes(s.normalizedDept) && !CORE_CLUSTER.includes(s.normalizedDept)).length,
           departmentBreakdown: deptCounts,
           seatsOccupied: vs.length,
           seatsEmpty: venue.total_capacity - vs.length,
@@ -471,11 +491,11 @@ const AAssesment = () => {
       venueAllocations: newAllocations,
       overallStats: {
         totalStudents: allStudents.length,
-        venuesUsed: selectedVenues.length,
-        venues: selectedVenues.map((v) => v.venue_name),
+        venuesUsed: venuesToUse.length,
+        venues: venuesToUse.map((v) => v.venue_name),
         csClusterCount: allStudents.filter((s) => CS_CLUSTER.includes(s.normalizedDept)).length,
         coreClusterCount: allStudents.filter((s) => CORE_CLUSTER.includes(s.normalizedDept)).length,
-        unknownCount: allStudents.filter((s) => !CS_CLUSTER.includes(s.normalizedDept) && !CORE_CLUSTER.includes(s.normalizedDept)).length,
+        otherCount: allStudents.filter((s) => !CS_CLUSTER.includes(s.normalizedDept) && !CORE_CLUSTER.includes(s.normalizedDept)).length,
         departmentBreakdown: overallDeptCounts,
       },
     };
@@ -535,14 +555,20 @@ const AAssesment = () => {
   };
 
   // ── Generate ─────────────────────────────────────────────────────────────
-  const handleGenerateAllocation = () => {
+  const handleGenerateAllocation = async () => {
     if (!students.length) {
       alert('Please upload student data first!');
       return;
     }
-    if (!selectedVenues.length) {
-      alert('Please select at least one venue from the Venues tab!');
+    // Use all venues if none specifically selected
+    const venuesToUse = selectedVenues.length ? selectedVenues : venues;
+    if (!venuesToUse.length) {
+      alert('No venues available! Please add venues in the Venues tab first.');
       return;
+    }
+    // Auto-select all venues for allocation
+    if (!selectedVenues.length && venues.length) {
+      setSelectedVenueIds(venues.map(v => v.id));
     }
 
     const trimmedTime = slotTime.trim();
@@ -577,7 +603,23 @@ const AAssesment = () => {
       setSlotTime(effTime);
       setVenueAllocations(result.venueAllocations);
       setOverallStats(result.overallStats);
-      setActiveVenue(Object.keys(result.venueAllocations)[0]);
+      // Set active venue to first venue with students
+      const usedVenues = Object.keys(result.venueAllocations).filter(
+        v => result.venueAllocations[v].stats.totalStudents > 0
+      );
+      setActiveVenue(usedVenues[0] || Object.keys(result.venueAllocations)[0]);
+      
+      // Save allocation to backend if slot is selected
+      if (selectedSlot?.id) {
+        try {
+          await saveAllocationApi(selectedSlot.id, result.venueAllocations, result.overallStats);
+          // Refresh slots to update status
+          loadSlots();
+        } catch (err) {
+          console.error('Failed to save allocation:', err);
+        }
+      }
+      
       setActiveTab('results');
     }
   };
@@ -591,42 +633,63 @@ const AAssesment = () => {
     const label = buildSlotLabel(selectedSlotDate, slotTime.trim()) || 'slot';
     const wb = XLSX.utils.book_new();
 
-    Object.entries(venueAllocations).forEach(([venueName, alloc]) => {
-      const rows = [];
-      alloc.seatMap.forEach((row) => row.forEach((seat) => {
-        if (seat) rows.push({
-          Venue: venueName,
-          'Seat Number': seat.seatNumber,
-          Row: seat.row,
-          Column: seat.col,
-          'Column Cluster': seat.columnCluster,
-          'Roll Number': seat.rollNumber,
-          Name: seat.name,
-          Email: seat.email,
-          Year: seat.year,
-          Department: seat.normalizedDept,
-          Gender: seat.gender,
-          Resident: seat.resident,
-          'Exam Date': seat.slotDate || selectedSlotDate,
-          Timing: seat.timing,
-          'Slot Time': slotTime.trim() || seat.timing,
-        });
-      }));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), venueName);
-    });
+    // Collect all students from all venues into a single sheet
+    const allStudentRows = [];
+    Object.entries(venueAllocations)
+      .filter(([, alloc]) => alloc.stats.totalStudents > 0)
+      .forEach(([venueName, alloc]) => {
+        alloc.seatMap.forEach((row) => row.forEach((seat) => {
+          if (seat) allStudentRows.push({
+            'S.No': allStudentRows.length + 1,
+            Venue: venueName,
+            'Seat Number': seat.seatNumber,
+            'Roll Number': seat.rollNumber,
+            Name: seat.name,
+            Department: seat.normalizedDept,
+            Year: seat.year,
+            Email: seat.email || '',
+            Gender: seat.gender || '',
+            'Column Cluster': seat.columnCluster,
+            Row: seat.row,
+            Column: seat.col,
+            'Exam Date': seat.slotDate || selectedSlotDate,
+            'Slot Time': slotTime.trim() || seat.timing,
+          });
+        }));
+      });
+    
+    // Main sheet with all students
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allStudentRows), 'All Students');
 
-    const summary = Object.entries(venueAllocations).map(([n, a]) => ({
-      Venue: n,
-      'Total Students': a.stats.totalStudents,
-      Rows: a.rows,
-      Columns: a.columns,
-      'CS Cluster': a.stats.csClusterCount,
-      'Core Cluster': a.stats.coreClusterCount,
-      'Empty Seats': a.stats.seatsEmpty,
-      'Exam Date': selectedSlotDate,
-      'Slot Time': slotTime.trim(),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+    // Venue summary sheet
+    const summary = Object.entries(venueAllocations)
+      .filter(([, a]) => a.stats.totalStudents > 0)
+      .map(([n, a]) => ({
+        Venue: n,
+        'Total Students': a.stats.totalStudents,
+        Capacity: a.rows * a.columns,
+        'Rows': a.rows,
+        'Columns': a.columns,
+        'CS Cluster': a.stats.csClusterCount,
+        'Core Cluster': a.stats.coreClusterCount,
+        'Other': a.stats.otherCount || 0,
+        'Empty Seats': a.stats.seatsEmpty,
+        'Utilization %': Math.round((a.stats.totalStudents / (a.rows * a.columns)) * 100),
+      }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Venue Summary');
+
+    // Department breakdown sheet
+    if (overallStats?.departmentBreakdown) {
+      const deptData = Object.entries(overallStats.departmentBreakdown)
+        .sort(([, a], [, b]) => b - a)
+        .map(([dept, count]) => ({
+          Department: dept,
+          'Student Count': count,
+          'Percentage': `${Math.round((count / overallStats.totalStudents) * 100)}%`,
+        }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(deptData), 'Department Breakdown');
+    }
+
     XLSX.writeFile(wb, `Assessment_${label.replace(/[^a-zA-Z0-9]+/g, '_')}.xlsx`);
   };
 
@@ -637,8 +700,10 @@ const AAssesment = () => {
       setStudents([]);
       setSelectedSlotDate('');
       setSlotTime('');
+      setSelectedSlot(null);
+      setSelectedVenueIds([]);
       setVenueAllocations({});
-      setActiveTab('allocate');
+      setActiveTab('slots');
       setActiveVenue('');
       setOverallStats(null);
     }
@@ -771,15 +836,6 @@ const AAssesment = () => {
               ))}
             </div>
           </div>
-          <div className="aa-header-right-section">
-            {overallStats && (
-              <>
-                <span className="aa-header-stat"><Users size={14} /> {overallStats.totalStudents} Students</span>
-                <span className="aa-header-stat"><Building2 size={14} /> {overallStats.venuesUsed} Venues</span>
-                <span className="aa-header-stat aa-header-stat-green"><CheckCircle size={14} /> Allocated</span>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
@@ -801,9 +857,6 @@ const AAssesment = () => {
                 />
               </div>
               <div className="aa-topbar-actions">
-                <button className="aa-btn aa-btn-ghost aa-btn-sm" onClick={() => { loadVenues(); }}>
-                  <RefreshCw size={14} /> Refresh
-                </button>
                 <button
                   className="aa-btn aa-btn-primary"
                   onClick={() => {
@@ -993,21 +1046,39 @@ const AAssesment = () => {
         ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'slots' && (
           <div className="aa-slots-tab">
-            <div className="aa-topbar">
-              <div className="aa-search-wrap">
-                <Search size={18} className="aa-search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search slots..."
-                  className="aa-search-input"
-                  value={slotSearch}
-                  onChange={(e) => setSlotSearch(e.target.value)}
-                />
+            {/* Unified Topbar: Date Filter + Search + Schedule Slot */}
+            <div className="aa-topbar aa-topbar-slots">
+              <div className="aa-topbar-left">
+                <div className="aa-date-filter-wrap">
+                  <Calendar size={16} className="aa-date-icon" />
+                  <input
+                    type="date"
+                    className="aa-date-input"
+                    value={slotDayFilter}
+                    onChange={(e) => setSlotDayFilter(e.target.value)}
+                  />
+                  {slotDayFilter && (
+                    <button
+                      className="aa-date-clear-btn"
+                      onClick={() => setSlotDayFilter('')}
+                      title="Clear date filter"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="aa-search-wrap">
+                  <Search size={18} className="aa-search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search slots..."
+                    className="aa-search-input"
+                    value={slotSearch}
+                    onChange={(e) => setSlotSearch(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="aa-topbar-actions">
-                <button className="aa-btn aa-btn-ghost aa-btn-sm" onClick={loadSlots}>
-                  <RefreshCw size={14} /> Refresh
-                </button>
                 <button
                   className="aa-btn aa-btn-primary"
                   onClick={() => {
@@ -1045,24 +1116,108 @@ const AAssesment = () => {
                 </div>
               </div>
             ) : !slotLoading && (
-              <div className="aa-sl-card-grid">
-                {slots
-                  .filter(sl => !slotSearch ||
+              (() => {
+                const filteredSlots = slots.filter(sl =>
+                  (!slotDayFilter || normalizeDateForFilter(sl.slot_date) === slotDayFilter) &&
+                  (!slotSearch ||
                     sl.slot_label?.toLowerCase().includes(slotSearch.toLowerCase()) ||
                     sl.subject_code?.toLowerCase().includes(slotSearch.toLowerCase()) ||
                     formatDateLabel(sl.slot_date).toLowerCase().includes(slotSearch.toLowerCase()))
-                  .map((sl) => (
-                    <div key={sl.id} className="aa-sl-card">
+                );
+                
+                if (filteredSlots.length === 0) {
+                  return (
+                    <div className="aa-empty-state aa-empty-filtered">
+                      <Calendar size={40} strokeWidth={1.5} />
+                      <p>No slots found for {slotDayFilter ? formatDateLabel(slotDayFilter) : 'this filter'}</p>
+                      <p className="aa-empty-sub">Try selecting a different date or clear the filter</p>
+                      <button className="aa-btn aa-btn-ghost" onClick={() => setSlotDayFilter('')}>
+                        Clear Date Filter
+                      </button>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="aa-sl-card-grid">
+                    {filteredSlots.map((sl) => (
+                      <div
+                        key={sl.id}
+                        className="aa-sl-card aa-sl-card-clickable"
+                        onClick={async () => {
+                          // Check if allocation already exists
+                          try {
+                            const res = await fetchAllocation(sl.id);
+                            if (res.success && res.hasAllocation && res.data) {
+                              // Load stored allocation and go to results
+                              setSelectedSlot(sl);
+                              setSelectedSlotDate(normalizeDateForFilter(sl.slot_date));
+                              setSlotTime(`${formatTime12(sl.start_time)} - ${formatTime12(sl.end_time)}`);
+                              setVenueAllocations(res.data.allocation_data);
+                              setOverallStats(res.data.overall_stats);
+                              // Set active venue to first venue with students
+                              const usedVenues = Object.keys(res.data.allocation_data).filter(
+                                v => res.data.allocation_data[v].stats.totalStudents > 0
+                              );
+                              setActiveVenue(usedVenues[0] || Object.keys(res.data.allocation_data)[0]);
+                              setActiveTab('results');
+                              return;
+                            }
+                          } catch (err) {
+                            console.log('No existing allocation, proceeding to allocate tab');
+                          }
+                          
+                          // No allocation found - go to allocate tab
+                          setSelectedSlot(sl);
+                          const dateStr = normalizeDateForFilter(sl.slot_date);
+                        setSelectedSlotDate(dateStr);
+                        setSlotTime(`${formatTime12(sl.start_time)} - ${formatTime12(sl.end_time)}`);
+                        // Auto-select ALL available venues for allocation
+                        setSelectedVenueIds(venues.map(v => v.id));
+                        // Set year for cluster lookup
+                        setAllocYear(sl.year || 1);
+                        // Load cluster config for this year
+                        const csCluster = clusterData.find(c => c.year === (sl.year || 1) && c.cluster_type === 'CS');
+                        const coreCluster = clusterData.find(c => c.year === (sl.year || 1) && c.cluster_type === 'Core');
+                        if (csCluster) {
+                          setCsOrder(csCluster.departments || ['CSE', 'IT', 'AIDS', 'AIML', 'CSBS']);
+                          setColumnPattern(csCluster.column_pattern || 'CS_FIRST');
+                        }
+                        if (coreCluster) {
+                          setCoreOrder(coreCluster.departments || ['ECE', 'EEE', 'E&I', 'MECH', 'MECTRONIC', 'AGRI', 'BIOTECH']);
+                        }
+                        setActiveTab('allocate');
+                      }}
+                    >
                       <div className="aa-sl-card-header">
                         <div className="aa-sl-card-date">
                           <Calendar size={15} />
                           <span>{formatDateLabel(sl.slot_date)}</span>
                         </div>
                         <div className="aa-sl-card-actions">
-                          <span className={`aa-status-badge ${(sl.status || 'Active') === 'Active' ? 'aa-status-active' : 'aa-status-inactive'}`}>
-                            {sl.status || 'Active'}
-                          </span>
-                          <button className="aa-icon-btn aa-icon-danger" onClick={() => handleDeleteSlot(sl.id)} title="Delete slot">
+                          {(() => {
+                            const now = new Date();
+                            // Parse date string directly to avoid timezone issues
+                            const dateStr = String(sl.slot_date).includes('T') ? String(sl.slot_date).split('T')[0] : String(sl.slot_date);
+                            const [year, month, day] = dateStr.split('-').map(Number);
+                            const [endH, endM] = (sl.end_time || '23:59').split(':').map(Number);
+                            const slotEndDate = new Date(year, month - 1, day, endH, endM, 0, 0);
+                            const isCompleted = now > slotEndDate;
+                            const isAllocated = sl.status === 'Allocated';
+                            return (
+                              <span className={`aa-status-badge ${isAllocated ? 'aa-status-allocated' : isCompleted ? 'aa-status-completed' : 'aa-status-active'}`}>
+                                {isAllocated ? 'Allocated' : isCompleted ? 'Completed' : 'Pending'}
+                              </span>
+                            );
+                          })()}
+                          <button
+                            className="aa-icon-btn aa-icon-danger"
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent card click
+                              handleDeleteSlot(sl.id);
+                            }}
+                            title="Delete slot"
+                          >
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1076,23 +1231,36 @@ const AAssesment = () => {
                           </span>
                         </div>
 
+                        <div className="aa-sl-card-year">
+                          <BookOpen size={14} />
+                          <span>{sl.year === 1 ? '1st' : sl.year === 2 ? '2nd' : sl.year === 3 ? '3rd' : '4th'} Year</span>
+                        </div>
+
                         {sl.subject_code && (
                           <div className="aa-sl-card-subject">
-                            <BookOpen size={14} />
+                            <Hash size={14} />
                             <span>{sl.subject_code}</span>
                           </div>
                         )}
 
                         {sl.slot_label && (
                           <div className="aa-sl-card-label">
-                            <Hash size={13} />
-                            <span>{sl.slot_label}</span>
+                            <span className="aa-sl-card-label-text">{sl.slot_label}</span>
+                          </div>
+                        )}
+
+                        {sl.venues && sl.venues.length > 0 && (
+                          <div className="aa-sl-card-venues">
+                            <Building2 size={14} />
+                            <span>{sl.venues.map(v => v.venue_name).join(', ')}</span>
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
-              </div>
+                  </div>
+                );
+              })()
             )}
 
             {showSlotForm && (
@@ -1244,9 +1412,6 @@ const AAssesment = () => {
                     Core First
                   </button>
                 </div>
-                <button className="aa-btn aa-btn-ghost aa-btn-sm" onClick={loadClusters}>
-                  <RefreshCw size={14} /> Refresh
-                </button>
                 <button
                   className="aa-btn aa-btn-primary aa-btn-sm"
                   onClick={handleClusterSave}
@@ -1514,60 +1679,46 @@ const AAssesment = () => {
         ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'allocate' && (
           <div className="aa-allocate-tab">
-            <div className="aa-year-selector">
-              <span className="aa-year-label"><BookOpen size={14} /> Year:</span>
-              {[1, 2, 3, 4].map(yr => (
-                <button
-                  key={yr}
-                  className={`aa-year-btn ${allocYear === yr ? 'aa-year-active' : ''}`}
-                  onClick={() => setAllocYear(yr)}
-                >
-                  {yr === 1 ? '1st' : yr === 2 ? '2nd' : yr === 3 ? '3rd' : '4th'} Year
-                </button>
-              ))}
-            </div>
-
-            <div className="aa-alloc-grid">
-              <div className="aa-alloc-main">
-                <div className="aa-card">
-                  <div className="aa-card-title"><Building2 size={15} /> Select Venues for this Slot</div>
-                  {venues.length === 0 ? (
-                    <div className="aa-empty-inline">
-                      <AlertTriangle size={15} />
-                      <span>No venues available. <button className="aa-link-btn" onClick={() => setActiveTab('venues')}>Create venues</button> first.</span>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="aa-venue-select-grid">
-                        {venues.map((v) => {
-                          const isSelected = selectedVenueIds.includes(v.id);
-                          return (
-                            <div
-                              key={v.id}
-                              className={`aa-venue-select-item ${isSelected ? 'aa-venue-sel-active' : ''}`}
-                              onClick={() => toggleVenueSelection(v.id)}
-                            >
-                              <div className={`aa-checkbox ${isSelected ? 'aa-checked' : ''}`}>
-                                {isSelected && <CheckCircle size={14} />}
-                              </div>
-                              <div className="aa-vsi-info">
-                                <span className="aa-vsi-name">{v.venue_name}</span>
-                                <span className="aa-vsi-detail">{v.rows_count}R × {v.columns_count}C · {v.total_capacity} seats</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {selectedVenues.length > 0 && (
-                        <div className="aa-sv-total" style={{ marginTop: 10 }}>
-                          <Shield size={14} />
-                          Total Capacity: <strong>{TOTAL_CAPACITY}</strong> seats across {selectedVenues.length} venue{selectedVenues.length > 1 ? 's' : ''}
-                        </div>
-                      )}
+            {/* Slot Info Header */}
+            {selectedSlot ? (
+              <div className="aa-slot-info-header">
+                <div className="aa-slot-info-main">
+                  <div className="aa-slot-info-item">
+                    <Calendar size={16} />
+                    <span className="aa-slot-info-label">Date:</span>
+                    <span className="aa-slot-info-value">{formatDateLabel(selectedSlot.slot_date)}</span>
+                  </div>
+                  <div className="aa-slot-info-item">
+                    <Clock size={16} />
+                    <span className="aa-slot-info-label">Time:</span>
+                    <span className="aa-slot-info-value">{formatTime12(selectedSlot.start_time)} – {formatTime12(selectedSlot.end_time)}</span>
+                  </div>
+                  <div className="aa-slot-info-item">
+                    <BookOpen size={16} />
+                    <span className="aa-slot-info-label">Year:</span>
+                    <span className="aa-slot-info-value">{selectedSlot.year === 1 ? '1st' : selectedSlot.year === 2 ? '2nd' : selectedSlot.year === 3 ? '3rd' : '4th'} Year</span>
+                  </div>
+                  {selectedSlot.subject_code && (
+                    <div className="aa-slot-info-item">
+                      <Hash size={16} />
+                      <span className="aa-slot-info-label">Subject:</span>
+                      <span className="aa-slot-info-value">{selectedSlot.subject_code}</span>
                     </div>
                   )}
                 </div>
+                <button className="aa-btn aa-btn-ghost aa-btn-sm" onClick={() => { setSelectedSlot(null); setActiveTab('slots'); }}>
+                  <ArrowLeft size={14} /> Change Slot
+                </button>
+              </div>
+            ) : (
+              <div className="aa-no-slot-selected">
+                <AlertTriangle size={20} />
+                <span>No slot selected. Please <button className="aa-link-btn" onClick={() => setActiveTab('slots')}>select a slot</button> from Manage Slots tab.</span>
+              </div>
+            )}
 
+            <div className="aa-alloc-grid">
+              <div className="aa-alloc-main">
                 <div className="aa-card">
                   <div className="aa-card-title"><FileSpreadsheet size={15} /> Upload Student Data</div>
                   <label className="aa-upload-zone">
@@ -1578,52 +1729,8 @@ const AAssesment = () => {
                       <p className="aa-upload-secondary">Excel (.xlsx, .xls) or CSV</p>
                     </div>
                   </label>
-                  <p className="aa-hint"><Info size={12} /> Required: Roll Number, Name, Department. Optional: Email, Year, Gender, Date, Timing.</p>
+                  <p className="aa-hint"><Info size={12} /> Required: Roll Number, Name, Department. Optional: Email, Year, Gender.</p>
                 </div>
-
-                {students.length > 0 && (
-                  <div className="aa-card">
-                    <div className="aa-card-title"><Calendar size={15} /> Filter by Date &amp; Time</div>
-                    <div className="aa-filter-grid">
-                      <div className="aa-filter-field">
-                        <label className="aa-filter-label">Exam Date</label>
-                        <select
-                          value={selectedSlotDate}
-                          onChange={handleSlotDateChange}
-                          className="aa-select-input"
-                          disabled={slotDateOptions.length === 0}
-                        >
-                          <option value="">{slotDateOptions.length === 0 ? 'No date found' : 'Select date'}</option>
-                          {slotDateOptions.map((d) => <option key={d} value={d}>{formatDateLabel(d)}</option>)}
-                        </select>
-                      </div>
-                      <div className="aa-filter-field">
-                        <label className="aa-filter-label">Exam Time</label>
-                        <select
-                          value={slotTime}
-                          onChange={(e) => setSlotTime(e.target.value)}
-                          className="aa-select-input"
-                          disabled={slotTimeOptions.length === 0}
-                        >
-                          <option value="">{slotTimeOptions.length === 0 ? 'No time found' : 'Select time'}</option>
-                          {slotTimeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      {slotTimeOptions.length === 0 && (
-                        <div className="aa-filter-field aa-filter-field-full">
-                          <label className="aa-filter-label">Manual Slot Time</label>
-                          <input
-                            type="text"
-                            value={slotTime}
-                            onChange={(e) => setSlotTime(e.target.value)}
-                            placeholder="e.g. 9:00 AM - 11:00 AM"
-                            className="aa-text-input"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
 
                 {students.length > 0 && TOTAL_CAPACITY > 0 && (
                   <div className="aa-capacity-card">
@@ -1654,7 +1761,7 @@ const AAssesment = () => {
                   <button
                     className="aa-btn aa-btn-primary"
                     onClick={handleGenerateAllocation}
-                    disabled={!students.length || !selectedVenues.length}
+                    disabled={!students.length || !venues.length}
                   >
                     <Zap size={16} /> Generate Allocation
                   </button>
@@ -1665,114 +1772,32 @@ const AAssesment = () => {
               </div>
 
               <div className="aa-alloc-aside">
+                {/* Configuration Summary (Read-only from Dept Clusters) */}
                 <div className="aa-card">
-                  <div className="aa-card-title"><Grid3X3 size={15} /> Column Pattern</div>
-                  <div className="aa-pattern-btns">
-                    <button
-                      className={`aa-pat-btn ${columnPattern === 'CS_FIRST' ? 'aa-pat-active' : ''}`}
-                      onClick={() => setColumnPattern('CS_FIRST')}
-                    >
-                      <CircleDot size={14} /> CS First
-                    </button>
-                    <button
-                      className={`aa-pat-btn ${columnPattern === 'CORE_FIRST' ? 'aa-pat-active' : ''}`}
-                      onClick={() => setColumnPattern('CORE_FIRST')}
-                    >
-                      <CircleDot size={14} /> Core First
-                    </button>
-                  </div>
-                </div>
-
-                <div className="aa-card">
-                  <div className="aa-card-title"><Layers size={15} /> Department Clusters</div>
-
-                  <div className="aa-cluster-section">
-                    <div className="aa-cluster-label aa-cs-label">CS Cluster</div>
-                    <div className="aa-dept-order-list">
-                      {csOrder.map((dept, i) => {
-                        const cnt = byDeptCount(dept);
-                        return (
-                          <div key={dept} className="aa-dept-order-item">
-                            <span className="aa-doi-num">{i + 1}</span>
-                            <span className="aa-doi-chip" style={{ background: getDepartmentColor(dept) + '30', borderColor: getDepartmentColor(dept) }}>
-                              {dept} {cnt > 0 && <span className="aa-doi-cnt">({cnt})</span>}
-                            </span>
-                            <div className="aa-doi-btns">
-                              <button className="aa-icon-btn" onClick={() => moveDeptInOrder(csOrder, setCsOrder, i, 'up')} disabled={i === 0}>
-                                <ChevronUp size={11} />
-                              </button>
-                              <button className="aa-icon-btn" onClick={() => moveDeptInOrder(csOrder, setCsOrder, i, 'down')} disabled={i === csOrder.length - 1}>
-                                <ChevronDown size={11} />
-                              </button>
-                              <button className="aa-icon-btn aa-icon-danger" onClick={() => removeDeptFromCluster(csOrder, setCsOrder, i)}>
-                                <X size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div className="aa-dept-add-row">
-                        <input
-                          type="text"
-                          value={newCsDept}
-                          onChange={(e) => setNewCsDept(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => e.key === 'Enter' && addDeptToCluster(csOrder, setCsOrder, newCsDept, setNewCsDept)}
-                          className="aa-dept-add-input"
-                          placeholder="Add dept"
-                        />
-                        <button
-                          className="aa-icon-btn aa-icon-primary"
-                          onClick={() => addDeptToCluster(csOrder, setCsOrder, newCsDept, setNewCsDept)}
-                        >
-                          <Plus size={13} />
-                        </button>
+                  <div className="aa-card-title"><Grid3X3 size={15} /> Configuration</div>
+                  <div className="aa-config-summary">
+                    <div className="aa-config-row">
+                      <span className="aa-config-label">Pattern:</span>
+                      <span className="aa-badge aa-badge-blue">{columnPattern === 'CORE_FIRST' ? 'Core First' : 'CS First'}</span>
+                    </div>
+                    <div className="aa-config-row">
+                      <span className="aa-config-label">CS Cluster:</span>
+                      <div className="aa-config-chips">
+                        {csOrder.slice(0, 4).map(d => <span key={d} className="aa-mini-chip">{d}</span>)}
+                        {csOrder.length > 4 && <span className="aa-mini-chip aa-mini-more">+{csOrder.length - 4}</span>}
+                      </div>
+                    </div>
+                    <div className="aa-config-row">
+                      <span className="aa-config-label">Core Cluster:</span>
+                      <div className="aa-config-chips">
+                        {coreOrder.slice(0, 4).map(d => <span key={d} className="aa-mini-chip aa-mini-core">{d}</span>)}
+                        {coreOrder.length > 4 && <span className="aa-mini-chip aa-mini-more">+{coreOrder.length - 4}</span>}
                       </div>
                     </div>
                   </div>
-
-                  <div className="aa-cluster-section" style={{ marginTop: 16 }}>
-                    <div className="aa-cluster-label aa-core-label">Core Cluster</div>
-                    <div className="aa-dept-order-list">
-                      {coreOrder.map((dept, i) => {
-                        const cnt = byDeptCount(dept);
-                        return (
-                          <div key={dept} className="aa-dept-order-item">
-                            <span className="aa-doi-num">{i + 1}</span>
-                            <span className="aa-doi-chip" style={{ background: getDepartmentColor(dept) + '30', borderColor: getDepartmentColor(dept) }}>
-                              {dept} {cnt > 0 && <span className="aa-doi-cnt">({cnt})</span>}
-                            </span>
-                            <div className="aa-doi-btns">
-                              <button className="aa-icon-btn" onClick={() => moveDeptInOrder(coreOrder, setCoreOrder, i, 'up')} disabled={i === 0}>
-                                <ChevronUp size={11} />
-                              </button>
-                              <button className="aa-icon-btn" onClick={() => moveDeptInOrder(coreOrder, setCoreOrder, i, 'down')} disabled={i === coreOrder.length - 1}>
-                                <ChevronDown size={11} />
-                              </button>
-                              <button className="aa-icon-btn aa-icon-danger" onClick={() => removeDeptFromCluster(coreOrder, setCoreOrder, i)}>
-                                <X size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div className="aa-dept-add-row">
-                        <input
-                          type="text"
-                          value={newCoreDept}
-                          onChange={(e) => setNewCoreDept(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => e.key === 'Enter' && addDeptToCluster(coreOrder, setCoreOrder, newCoreDept, setNewCoreDept)}
-                          className="aa-dept-add-input"
-                          placeholder="Add dept"
-                        />
-                        <button
-                          className="aa-icon-btn aa-icon-primary"
-                          onClick={() => addDeptToCluster(coreOrder, setCoreOrder, newCoreDept, setNewCoreDept)}
-                        >
-                          <Plus size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <button className="aa-link-btn aa-link-edit" onClick={() => setActiveTab('clusters')}>
+                    Edit in Dept Clusters
+                  </button>
                 </div>
 
                 {students.length > 0 && (
@@ -1869,64 +1894,17 @@ const AAssesment = () => {
                     <div className="aa-stat-label">Core Cluster</div>
                   </div>
                 </div>
+                {overallStats.otherCount > 0 && (
+                  <div className="aa-stat-card aa-stat-gray">
+                    <div className="aa-stat-icon"><AlertTriangle size={22} /></div>
+                    <div>
+                      <div className="aa-stat-num">{overallStats.otherCount}</div>
+                      <div className="aa-stat-label">Other</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-
-            <div className="aa-info-row">
-              <div className="aa-card aa-venue-summary-card">
-                <div className="aa-card-title"><Building2 size={15} /> Venue Summary</div>
-                {Object.entries(venueAllocations).map(([venueName, alloc], i) => {
-                  const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#10b981'];
-                  const cap = alloc.rows * alloc.columns;
-                  const pct = Math.round((alloc.stats.totalStudents / cap) * 100);
-                  return (
-                    <div key={venueName} className="aa-venue-summary-row">
-                      <div className="aa-vsrow-header">
-                        <span className="aa-vsrow-name" style={{ color: colors[i % colors.length] }}>
-                          <MapPin size={13} /> {venueName}
-                        </span>
-                        <span className="aa-vsrow-count">
-                          {alloc.stats.totalStudents}/{cap} <span className="aa-vsrow-dim">({alloc.rows}R×{alloc.columns}C)</span>
-                        </span>
-                      </div>
-                      <div className="aa-progress-track">
-                        <div className="aa-progress-fill" style={{ width: `${pct}%`, background: colors[i % colors.length] }} />
-                      </div>
-                      <div className="aa-vsrow-stats">
-                        <span>CS: {alloc.stats.csClusterCount}</span>
-                        <span>Core: {alloc.stats.coreClusterCount}</span>
-                        <span className="aa-vsrow-empty">Empty: {alloc.stats.seatsEmpty}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="aa-card aa-dept-breakdown-card">
-                <div className="aa-card-title"><Hash size={15} /> Department Breakdown</div>
-                <div className="aa-dept-grid">
-                  {overallStats && Object.entries(overallStats.departmentBreakdown)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([dept, count]) => (
-                      <div key={dept} className="aa-dept-row">
-                        <span className="aa-dept-pill" style={{ background: getDepartmentColor(dept) + '28', borderColor: getDepartmentColor(dept) }}>
-                          {dept}
-                        </span>
-                        <div className="aa-dept-bar-wrap">
-                          <div
-                            className="aa-dept-bar-fill"
-                            style={{
-                              width: `${Math.max(8, (count / overallStats.totalStudents) * 100)}%`,
-                              background: getDepartmentColor(dept)
-                            }}
-                          />
-                        </div>
-                        <span className="aa-dept-count-num">{count}</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            </div>
 
             <div className="aa-card aa-seat-section">
               <div className="aa-seat-section-header">
@@ -1935,7 +1913,9 @@ const AAssesment = () => {
                   <span className="aa-seat-subtitle">— {selectedSlotLabel || slotTime}</span>
                 </div>
                 <div className="aa-venue-tabs">
-                  {Object.keys(venueAllocations).map((venueName, i) => {
+                  {Object.keys(venueAllocations)
+                    .filter(venueName => venueAllocations[venueName].stats.totalStudents > 0)
+                    .map((venueName, i) => {
                     const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#10b981'];
                     return (
                       <button
@@ -1959,54 +1939,22 @@ const AAssesment = () => {
 
                 return (
                   <>
-                    <div className="aa-seatmap-legend">
-                      <span className="aa-legend-item" style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 11 }}>CS →</span>
-                      {CS_CLUSTER.map((dept) => (
-                        <span key={dept} className="aa-legend-item">
-                          <span className="aa-legend-dot" style={{ background: getDepartmentColor(dept) }} />
-                          {dept}
-                        </span>
-                      ))}
-                      <span style={{ width: 1, background: '#e2e8f0', height: 14, display: 'inline-block', margin: '0 6px' }} />
-                      <span className="aa-legend-item" style={{ fontWeight: 700, color: '#b45309', fontSize: 11 }}>Core →</span>
-                      {CORE_CLUSTER.map((dept) => (
-                        <span key={dept} className="aa-legend-item">
-                          <span className="aa-legend-dot" style={{ background: getDepartmentColor(dept) }} />
-                          {dept}
-                        </span>
-                      ))}
-                      <span className="aa-legend-item">
-                        <span className="aa-legend-dot aa-legend-empty" />Empty
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', marginLeft: 32, gap: 2, marginBottom: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>
-                      {Array.from({ length: COLS }, (_, i) => {
-                        const cl = getColumnCluster(i);
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              flex: '0 0 54px',
-                              width: 54,
-                              padding: '2px 0',
-                              borderRadius: '4px 4px 0 0',
-                              textAlign: 'center',
-                              fontSize: 9,
-                              fontWeight: 700,
-                              background: cl === 'CS' ? '#dbeafe' : '#fef3c7',
-                              color: cl === 'CS' ? '#1d4ed8' : '#92400e',
-                              border: `1px solid ${cl === 'CS' ? '#93c5fd' : '#fcd34d'}`
-                            }}
-                          >
-                            {cl}
-                          </div>
-                        );
-                      })}
-                    </div>
-
                     <div className="aa-seatmap-scroll">
                       <div className="aa-seatmap">
+                        <div className="aa-cluster-header-row">
+                          <div className="aa-rh-spacer" />
+                          {Array.from({ length: COLS }, (_, i) => {
+                            const cl = getColumnCluster(i);
+                            return (
+                              <div
+                                key={i}
+                                className={`aa-cluster-header ${cl === 'CS' ? 'aa-cluster-cs' : 'aa-cluster-core'}`}
+                              >
+                                {cl}
+                              </div>
+                            );
+                          })}
+                        </div>
                         <div className="aa-col-headers">
                           <div className="aa-rh-spacer" />
                           {Array.from({ length: COLS }, (_, i) => <div key={i} className="aa-col-header">{i + 1}</div>)}

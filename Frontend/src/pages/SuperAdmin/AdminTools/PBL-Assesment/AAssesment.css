@@ -398,6 +398,7 @@
 .aa-action-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 24px;
@@ -670,10 +671,11 @@
   color: #fff;
 }
 
-.aa-stat-blue   { background: var(--aa-primary); }
-.aa-stat-purple { background: #7c3aed; }
-.aa-stat-indigo { background: #2563eb; }
-.aa-stat-amber  { background: #d97706; }
+.aa-stat-blue   { background: #3b82f6; }
+.aa-stat-purple { background: #8b5cf6; }
+.aa-stat-indigo { background: #4f46e5; }
+.aa-stat-amber  { background: #f59e0b; }
+.aa-stat-gray   { background: #6b7280; }
 
 .aa-stat-icon {
   width: 44px;
@@ -926,6 +928,39 @@
   margin-bottom: 4px;
 }
 
+/* Cluster header row (CS/CORE above columns) */
+.aa-cluster-header-row {
+  display: flex;
+  margin-bottom: 2px;
+}
+
+.aa-cluster-header {
+  width: 72px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  border-radius: 4px 4px 0 0;
+  margin: 0 2px;
+}
+
+.aa-cluster-cs {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+  border-bottom: none;
+}
+
+.aa-cluster-core {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-bottom: none;
+}
+
 .aa-rh-spacer {
   width: 38px;
   flex-shrink: 0;
@@ -941,6 +976,7 @@
   font-weight: 700;
   color: var(--aa-muted);
   flex-shrink: 0;
+  margin: 0 2px;
 }
 
 .aa-seat-row {
@@ -1145,6 +1181,12 @@
 
 .aa-empty-error {
   color: var(--aa-red);
+}
+
+.aa-empty-filtered {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
 }
 
 .aa-empty-inline {
@@ -1762,6 +1804,85 @@
 .aa-status-active  { background: #d1fae5; color: #065f46; }
 .aa-status-pending { background: #fef3c7; color: #92400e; }
 .aa-status-closed  { background: #fee2e2; color: #991b1b; }
+.aa-status-completed { background: #e0e7ff; color: #3730a3; }
+.aa-status-allocated { background: #dcfce7; color: #166534; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SLOTS TOPBAR (Unified)
+════════════════════════════════════════════════════════════════ */
+.aa-topbar-slots {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.aa-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.aa-date-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  min-width: 180px;
+}
+
+.aa-date-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.aa-date-input {
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  color: #334155;
+  outline: none;
+  width: 140px;
+  cursor: pointer;
+}
+
+.aa-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.aa-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.aa-date-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: #e2e8f0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.15s ease;
+}
+
+.aa-date-clear-btn:hover {
+  background: #cbd5e1;
+  color: #334155;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MODAL
@@ -2007,6 +2128,113 @@
   gap: 18px;
 }
 
+/* ── Slot Info Header ── */
+.aa-slot-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.aa-slot-info-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.aa-slot-info-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+.aa-slot-info-item svg {
+  color: var(--aa-primary, #3b82f6);
+}
+.aa-slot-info-label {
+  color: #64748b;
+}
+.aa-slot-info-value {
+  font-weight: 600;
+}
+
+.aa-no-slot-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  color: #92400e;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+/* ── Venue Readonly Grid ── */
+.aa-venue-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.aa-venue-readonly-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+}
+
+/* ── Configuration Summary ── */
+.aa-config-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.aa-config-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.aa-config-label {
+  font-size: 0.82rem;
+  color: #64748b;
+  min-width: 80px;
+}
+.aa-config-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.aa-mini-chip {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.aa-mini-chip.aa-mini-core {
+  background: #fce7f3;
+  color: #9d174d;
+}
+.aa-mini-chip.aa-mini-more {
+  background: #e2e8f0;
+  color: #475569;
+}
+.aa-link-edit {
+  font-size: 0.8rem;
+  color: var(--aa-primary);
+  text-decoration: underline;
+}
+
 /* ── Selected Venues List ── */
 .aa-selected-venues-list {
   display: flex;
@@ -2052,6 +2280,16 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
+}
+
+.aa-venue-select-grid.aa-venue-select-compact {
+  grid-template-columns: 1fr;
+  max-height: 200px;
+  overflow-y: auto;
+  gap: 6px;
+}
+.aa-venue-select-compact .aa-venue-select-item {
+  padding: 8px 12px;
 }
 
 .aa-venue-select-item {
@@ -2298,11 +2536,24 @@
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   overflow: hidden;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
 }
 .aa-sl-card:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
   border-color: #cbd5e1;
+}
+
+/* Clickable slot card */
+.aa-sl-card-clickable {
+  cursor: pointer;
+}
+.aa-sl-card-clickable:hover {
+  border-color: var(--aa-primary, #3b82f6);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.15);
+}
+.aa-sl-card-clickable:active {
+  transform: translateY(0);
 }
 
 .aa-sl-card-header {
@@ -2377,6 +2628,40 @@
 }
 .aa-sl-card-label svg {
   color: #94a3b8;
+}
+.aa-sl-card-label-text {
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-style: italic;
+}
+
+.aa-sl-card-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #059669;
+  font-weight: 500;
+}
+.aa-sl-card-year svg {
+  color: #10b981;
+}
+
+.aa-sl-card-venues {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 4px;
+}
+.aa-sl-card-venues svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .aa-sl-date-cell {

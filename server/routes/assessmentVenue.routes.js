@@ -4,6 +4,7 @@ import {
   getAllVenues, createVenue, updateVenue, deleteVenue,
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
+  saveAllocation, getAllocation, deleteAllocation,
 } from '../controllers/assessmentVenue.controller.js';
 
 const router = Router();
@@ -24,5 +25,10 @@ router.put('/slots/:id/status', authenticate, updateSlotStatus);
 router.get('/clusters',            authenticate, getClusters);
 router.put('/clusters/:year',      authenticate, updateCluster);
 router.delete('/clusters/:year',   authenticate, deleteClusterYear);
+
+// Allocations
+router.post('/allocations',           authenticate, saveAllocation);
+router.get('/allocations/:slotId',    authenticate, getAllocation);
+router.delete('/allocations/:slotId', authenticate, deleteAllocation);
 
 export default router;

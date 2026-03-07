@@ -30,7 +30,7 @@ import AdminGroupInsights from "../pages/SuperAdmin/GroupInsights/GroupInsights"
 import CourseList from "../pages/SuperAdmin/QuestionBank/CourseList/CourseList";
 import QuestionBank from "../pages/SuperAdmin/QuestionBank/QuestionBank/QuestionBank";
 //Super Admin -> Venue Allocation
-import VenueAllocation from "../pages/SuperAdmin/VenueAllocation/VenueAllocation";
+import VenueAllocation from "../pages/SuperAdmin/AdminTools/VenueAllocation/VenueAllocation";
 //Super Admin -> Skill Reports
 import AdminSkillReport from "../pages/SuperAdmin/AdminTools/SkillReports/AdminSkillReport";
 //Super Admin -> Admin Tools
@@ -111,18 +111,18 @@ const AppNavigator = () => {
             <Route path="attendance" element={<Attendance />} />
             <Route path="tasks" element={<TaskHeader />} />
             <Route path="skill-reports" element={<Navigate to="/admin-tools/progress-import" replace />} />
+            <Route path="venue-allocation" element={<Navigate to="/admin-tools/venue-allocation" replace />} />
             <Route path="group-insights" element={<AdminGroupInsights />} />
             <Route path="reports" element={<ReportsAnalytics />} />
             {/* Question Bank / Practice Courses */}
             <Route path="courses" element={<CourseList />} />
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
-            {/* Venue Allocation */}
-            <Route path="venue-allocation" element={<VenueAllocation />} />
             {/* Admin Tools */}
             <Route path="admin-tools" element={<AdminTools />} />
             <Route path="admin-tools/attendance-export" element={<AttendanceExport />} />
             <Route path="admin-tools/progress-import" element={<AdminSkillReport />} />
             <Route path="admin-tools/role-changer" element={<RoleChanger />} />
+            <Route path="admin-tools/venue-allocation" element={<VenueAllocation />} />
             <Route path="admin-tools/pbl-assessment" element={<AAssesment />} />
           </Route>
         )}
@@ -148,6 +148,10 @@ const AppNavigator = () => {
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
             <Route path="admin-tasks" element={<TaskHeader />} />
             <Route path="all-classes" element={<GroupsClasses />} />
+            {/* Admin Tools for Faculty */}
+            <Route path="admin-tools" element={<AdminTools />} />
+            <Route path="admin-tools/venue-allocation" element={<VenueAllocation />} />
+            <Route path="admin-tools/pbl-assessment" element={<AAssesment />} />
           </Route>
         )}
 

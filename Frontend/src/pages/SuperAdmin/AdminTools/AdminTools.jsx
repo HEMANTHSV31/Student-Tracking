@@ -8,7 +8,8 @@ import {
     ClipboardList,
     Database,
     TrendingUp,
-    MapPin
+    MapPin,
+    Building2
 } from 'lucide-react';
 import './AdminTools.css';
 
@@ -68,6 +69,14 @@ const AdminTools = () => {
         {
             title: 'Assessment Management',
             functions: [
+                {
+                    id: 'venue-allocation',
+                    title: 'Venue Allocation',
+                    description: 'Allocate venues for classes and groups',
+                    icon: Building2,
+                    color: '#06B6D4', // Cyan
+                    route: '/admin-tools/venue-allocation'
+                },
                 {
                     id: 'pbl-assessment',
                     title: 'PBL Assessment Allocation',

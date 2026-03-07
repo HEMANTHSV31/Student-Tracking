@@ -122,20 +122,52 @@ export const getSlots = async (req, res) => {
   try {
     const { venue_id, date } = req.query;
     let sql = `
-      SELECT s.*, v.venue_name
+      SELECT s.*
       FROM assessment_slots s
-      LEFT JOIN assessment_venues v ON s.venue_id = v.id
-      WHERE (v.deleted_at IS NULL OR s.venue_id IS NULL)
+      WHERE 1=1
     `;
     const params = [];
 
-    if (venue_id) { sql += ' AND s.venue_id = ?'; params.push(venue_id); }
-    if (date)     { sql += ' AND s.slot_date = ?'; params.push(date); }
+    if (venue_id) { 
+      sql += ' AND s.id IN (SELECT slot_id FROM assessment_slot_venues WHERE venue_id = ?)'; 
+      params.push(venue_id); 
+    }
+    if (date) { sql += ' AND s.slot_date = ?'; params.push(date); }
 
     sql += ' ORDER BY s.slot_date DESC, s.start_time ASC';
 
     const [slots] = await db.query(sql, params);
-    res.json({ success: true, data: slots });
+
+    // Fetch venues for each slot
+    const slotIds = slots.map(s => s.id);
+    let venueMap = {};
+    if (slotIds.length > 0) {
+      const [venueRows] = await db.query(
+        `SELECT sv.slot_id, v.id as venue_id, v.venue_name, v.rows_count, v.columns_count, v.total_capacity
+         FROM assessment_slot_venues sv
+         JOIN assessment_venues v ON sv.venue_id = v.id
+         WHERE sv.slot_id IN (?) AND v.deleted_at IS NULL`,
+        [slotIds]
+      );
+      venueRows.forEach(row => {
+        if (!venueMap[row.slot_id]) venueMap[row.slot_id] = [];
+        venueMap[row.slot_id].push({
+          id: row.venue_id,
+          venue_name: row.venue_name,
+          rows_count: row.rows_count,
+          columns_count: row.columns_count,
+          total_capacity: row.total_capacity
+        });
+      });
+    }
+
+    const slotsWithVenues = slots.map(s => ({
+      ...s,
+      venues: venueMap[s.id] || [],
+      venue_ids: (venueMap[s.id] || []).map(v => v.id)
+    }));
+
+    res.json({ success: true, data: slotsWithVenues });
   } catch (error) {
     console.error('Error fetching slots:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch slots' });
@@ -145,7 +177,7 @@ export const getSlots = async (req, res) => {
 /** POST /api/assessment-venues/slots */
 export const createSlot = async (req, res) => {
   try {
-    const { venue_id, slot_date, start_time, end_time, slot_label, subject_code } = req.body;
+    const { slot_date, start_time, end_time, slot_label, subject_code, year } = req.body;
 
     if (!slot_date || !start_time || !end_time) {
       return res.status(400).json({
@@ -154,38 +186,30 @@ export const createSlot = async (req, res) => {
       });
     }
 
-    // Check for duplicate slot (same date + time range)
+    // Check for duplicate slot (same date + time range + year)
     const [dup] = await db.query(
       `SELECT id FROM assessment_slots
-       WHERE slot_date = ? AND start_time = ? AND end_time = ?`,
-      [slot_date, start_time, end_time]
+       WHERE slot_date = ? AND start_time = ? AND end_time = ? AND year = ?`,
+      [slot_date, start_time, end_time, year || 1]
     );
     if (dup.length > 0) {
       return res.status(409).json({
         success: false,
-        message: `A slot already exists on ${slot_date} at ${start_time} - ${end_time}. Please choose a different time.`,
+        message: `A slot already exists on ${slot_date} at ${start_time} - ${end_time} for Year ${year || 1}. Please choose a different time.`,
       });
     }
 
-    // Also warn if any overlapping slot exists on same date
-    const [overlap] = await db.query(
-      `SELECT id, start_time, end_time FROM assessment_slots
-       WHERE slot_date = ? AND status = 'Active'
-       ORDER BY start_time`,
-      [slot_date]
-    );
-
+    // Create the slot
     const [result] = await db.query(
-      `INSERT INTO assessment_slots (venue_id, slot_date, start_time, end_time, slot_label, subject_code)
+      `INSERT INTO assessment_slots (slot_date, start_time, end_time, slot_label, subject_code, year)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [venue_id || null, slot_date, start_time, end_time, slot_label || null, subject_code || null]
+      [slot_date, start_time, end_time, slot_label || null, subject_code || null, year || 1]
     );
 
     res.status(201).json({
       success: true,
       message: 'Slot created successfully',
-      data: { id: result.insertId, slot_date, start_time, end_time, slot_label, subject_code },
-      existingSlotsForDay: overlap,
+      data: { id: result.insertId, slot_date, start_time, end_time, slot_label, subject_code, year },
     });
   } catch (error) {
     console.error('Error creating slot:', error);
@@ -292,5 +316,104 @@ export const deleteClusterYear = async (req, res) => {
   } catch (error) {
     console.error('Error deleting clusters:', error);
     res.status(500).json({ success: false, message: 'Failed to delete clusters' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────
+//  Assessment Allocations
+// ─────────────────────────────────────────────────────────────────────
+
+/** POST /api/assessment-venues/allocations */
+export const saveAllocation = async (req, res) => {
+  try {
+    const { slot_id, allocation_data, overall_stats } = req.body;
+
+    if (!slot_id || !allocation_data) {
+      return res.status(400).json({ success: false, message: 'Slot ID and allocation data are required' });
+    }
+
+    // Check if slot exists
+    const [slotCheck] = await db.query('SELECT id FROM assessment_slots WHERE id = ?', [slot_id]);
+    if (slotCheck.length === 0) {
+      return res.status(404).json({ success: false, message: 'Slot not found' });
+    }
+
+    // Upsert allocation (insert or update)
+    await db.query(`
+      INSERT INTO assessment_allocations (slot_id, allocation_data, overall_stats)
+      VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        allocation_data = VALUES(allocation_data),
+        overall_stats = VALUES(overall_stats),
+        updated_at = CURRENT_TIMESTAMP
+    `, [slot_id, JSON.stringify(allocation_data), JSON.stringify(overall_stats)]);
+
+    // Update slot status to allocated
+    await db.query('UPDATE assessment_slots SET status = ? WHERE id = ?', ['Allocated', slot_id]);
+
+    res.json({ success: true, message: 'Allocation saved successfully' });
+  } catch (error) {
+    console.error('Error saving allocation:', error);
+    res.status(500).json({ success: false, message: 'Failed to save allocation' });
+  }
+};
+
+/** GET /api/assessment-venues/allocations/:slotId */
+export const getAllocation = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+
+    const [rows] = await db.query(`
+      SELECT aa.*, s.slot_label, s.slot_date, s.start_time, s.end_time, s.year, s.subject_code
+      FROM assessment_allocations aa
+      JOIN assessment_slots s ON s.id = aa.slot_id
+      WHERE aa.slot_id = ?
+    `, [slotId]);
+
+    if (rows.length === 0) {
+      return res.json({ success: true, data: null, hasAllocation: false });
+    }
+
+    const allocation = rows[0];
+    res.json({
+      success: true,
+      hasAllocation: true,
+      data: {
+        id: allocation.id,
+        slot_id: allocation.slot_id,
+        allocation_data: typeof allocation.allocation_data === 'string' 
+          ? JSON.parse(allocation.allocation_data) 
+          : allocation.allocation_data,
+        overall_stats: typeof allocation.overall_stats === 'string'
+          ? JSON.parse(allocation.overall_stats)
+          : allocation.overall_stats,
+        slot_label: allocation.slot_label,
+        slot_date: allocation.slot_date,
+        start_time: allocation.start_time,
+        end_time: allocation.end_time,
+        year: allocation.year,
+        subject_code: allocation.subject_code,
+        created_at: allocation.created_at,
+        updated_at: allocation.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching allocation:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch allocation' });
+  }
+};
+
+/** DELETE /api/assessment-venues/allocations/:slotId */
+export const deleteAllocation = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+
+    await db.query('DELETE FROM assessment_allocations WHERE slot_id = ?', [slotId]);
+    await db.query('UPDATE assessment_slots SET status = ? WHERE id = ?', ['Pending', slotId]);
+
+    res.json({ success: true, message: 'Allocation deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting allocation:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete allocation' });
   }
 };
