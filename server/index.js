@@ -27,6 +27,7 @@ import leaderboardRoutes from "./routes/leaderboard.routes.js";
 import venueAllocationRoutes from "./routes/venueAllocation.routes.js";
 import venueBulkUploadRoutes from "./routes/venueBulkUpload.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import assessmentVenueRoutes from "./routes/assessmentVenue.routes.js";
 // import facultyDashboardRoutes from './routes/facultyDashboardRoutes.js';
 dotenv.config();
 
@@ -120,6 +121,7 @@ app.use(`${API_PREFIX}/api/leaderboard`, leaderboardRoutes);
 app.use(`${API_PREFIX}/api/venue-allocation`, venueAllocationRoutes);
 app.use(`${API_PREFIX}/api/venue-bulk-upload`, venueBulkUploadRoutes);
 app.use(`${API_PREFIX}/api/admin`, adminRoutes);
+app.use(`${API_PREFIX}/api/assessment-venues`, assessmentVenueRoutes);
 // app.use('/api/faculty/dashboard', facultyDashboardRoutes); 
 // Cron job to update schedule daily at 8 PM
 cron.schedule('0 20 * * *', () => {
