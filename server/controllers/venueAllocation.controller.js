@@ -286,7 +286,7 @@ export const getStudents = async (req, res) => {
           LIMIT 1
         ) as current_group_name,
         (
-          SELECT COALESCE(gs.joined_at, gs.created_at) FROM group_students gs
+          SELECT gs.allocation_date FROM group_students gs
           INNER JOIN \`groups\` g ON gs.group_id = g.group_id
           WHERE gs.student_id = s.student_id AND gs.status = 'Active'
           LIMIT 1
@@ -368,7 +368,7 @@ export const previewAllocation = async (req, res) => {
   try {
     const { 
       year, 
-      venueIds, 
+      venueIds: rawVenueIds, 
       departments,
       studentIds,
       reservedSlots = 2, 
@@ -376,12 +376,19 @@ export const previewAllocation = async (req, res) => {
       allocationMode = 'department_wise'
     } = req.body;
 
-    if (!year || !venueIds || venueIds.length === 0) {
+    // Parse venueIds properly
+    const venueIds = Array.isArray(rawVenueIds) 
+      ? rawVenueIds.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0)
+      : [];
+
+    if (!year || venueIds.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Year and venue selection are required'
       });
     }
+
+    console.log('Preview allocation request:', { year, venueIds, departments, reservedSlots });
 
     // Get selected venues from database
     const [venues] = await db.query(`
@@ -597,7 +604,6 @@ export const previewAllocation = async (req, res) => {
  *   groupSpecification: "Regular Lab",
  *   scheduleStartDate: "2026-02-07",  // NEW
  *   scheduleEndDate: "2026-05-31",     // NEW
- *   batchName: "Spring 2026 Batch"     // NEW
  * }
  */
 export const executeAllocation = async (req, res) => {
@@ -606,46 +612,31 @@ export const executeAllocation = async (req, res) => {
   try {
     const { 
       year, 
-      venueIds, 
+      venueIds: rawVenueIds, 
       departments,
       reservedSlots = 2, 
       groupDepartments = [],
       allocationMode = 'department_wise',
-      groupSpecification = '',
-      scheduleStartDate,
-      scheduleEndDate,
-      batchName
+      groupSpecification = ''
     } = req.body;
 
-    if (!year || !venueIds || venueIds.length === 0) {
+    // Parse venueIds properly
+    const venueIds = Array.isArray(rawVenueIds) 
+      ? rawVenueIds.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0)
+      : [];
+
+    if (!year || venueIds.length === 0) {
+      connection.release();
       return res.status(400).json({
         success: false,
         message: 'Year and venue selection are required'
       });
     }
 
-    // Check if schedule columns exist
-    const [columns] = await db.query(`
-      SELECT COLUMN_NAME 
-      FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = 'groups' 
-        AND COLUMN_NAME IN ('schedule_start_date', 'schedule_end_date', 'allocation_batch')
-    `);
-    const hasScheduleColumns = columns.length >= 3;
-
-    // Validate schedule dates if provided
-    let startDate = scheduleStartDate ? new Date(scheduleStartDate) : new Date();
-    let endDate = scheduleEndDate ? new Date(scheduleEndDate) : null;
-    
-    if (endDate && startDate > endDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Start date cannot be after end date'
-      });
-    }
+    console.log('Execute allocation request:', { year, venueIds, departments, reservedSlots });
 
     // Get selected venues from database
+    console.log('Step 1: Fetching venues...');
     const [venues] = await db.query(`
       SELECT 
         v.venue_id,
@@ -664,6 +655,7 @@ export const executeAllocation = async (req, res) => {
     `, venueIds);
 
     if (venues.length === 0) {
+      connection.release();
       return res.status(400).json({
         success: false,
         message: 'No valid venues found'
@@ -671,6 +663,7 @@ export const executeAllocation = async (req, res) => {
     }
 
     // Calculate capacities
+    console.log('Step 2: Calculating capacities, found', venues.length, 'venues');
     const venueCapacities = venues.map(v => ({
       ...v,
       current_students: parseInt(v.current_students) || 0,
@@ -678,6 +671,7 @@ export const executeAllocation = async (req, res) => {
     }));
 
     const totalAvailableCapacity = venueCapacities.reduce((sum, v) => sum + v.effectiveCapacity, 0);
+    console.log('Step 3: Total available capacity:', totalAvailableCapacity);
 
     // Build student query
     let whereConditions = ['s.year = ?', 'u.role_id = 3', 'u.is_active = 1'];
@@ -700,6 +694,7 @@ export const executeAllocation = async (req, res) => {
       ? 'ORDER BY u.ID' 
       : 'ORDER BY u.department, u.ID';
 
+    console.log('Step 4: Fetching students...');
     const [students] = await db.query(`
       SELECT 
         s.student_id,
@@ -713,8 +708,10 @@ export const executeAllocation = async (req, res) => {
       WHERE ${whereConditions.join(' AND ')}
       ${orderBy}
     `, params);
+    console.log('Step 5: Found', students.length, 'students');
 
     if (students.length === 0) {
+      connection.release();
       return res.status(400).json({
         success: false,
         message: 'No students found matching the criteria'
@@ -722,6 +719,7 @@ export const executeAllocation = async (req, res) => {
     }
 
     if (students.length > totalAvailableCapacity) {
+      connection.release();
       return res.status(400).json({
         success: false,
         message: `Insufficient capacity. Need ${students.length} seats, but only ${totalAvailableCapacity} available`
@@ -741,25 +739,8 @@ export const executeAllocation = async (req, res) => {
       orderedStudents = [...otherStudents, ...groupedStudents];
     }
 
+    console.log('Step 6: Starting transaction');
     await connection.beginTransaction();
-
-    // Create allocation batch/schedule record
-    const batchCode = `BATCH-${year}-${Date.now()}`;
-    const finalBatchName = batchName || `Year ${year} Allocation - ${new Date().toLocaleDateString()}`;
-    
-    let scheduleId = null;
-    
-    // Try to insert into allocation_schedules if table exists
-    try {
-      const [scheduleResult] = await connection.query(`
-        INSERT INTO allocation_schedules (batch_code, batch_name, year, start_date, end_date, status, created_at)
-        VALUES (?, ?, ?, ?, ?, 'Active', NOW())
-      `, [batchCode, finalBatchName, year, startDate, endDate]);
-      scheduleId = scheduleResult.insertId;
-    } catch (scheduleErr) {
-      // Table might not exist yet, continue without it
-      console.log('allocation_schedules table not found, continuing without schedule tracking');
-    }
 
     const allocationResults = [];
     let studentIndex = 0;
@@ -767,6 +748,8 @@ export const executeAllocation = async (req, res) => {
     for (const venue of venueCapacities) {
       if (studentIndex >= orderedStudents.length) break;
       if (venue.effectiveCapacity <= 0) continue;
+
+      console.log('Step 7: Processing venue', venue.venue_id, venue.venue_name);
 
       // Check if venue already has an active group, or create new one
       const [existingGroups] = await connection.query(`
@@ -781,54 +764,53 @@ export const executeAllocation = async (req, res) => {
       if (existingGroups.length > 0) {
         groupId = existingGroups[0].group_id;
         groupName = existingGroups[0].group_name;
-        
-        // Update schedule dates on existing group if columns exist
-        if (hasScheduleColumns && (scheduleStartDate || scheduleEndDate)) {
-          await connection.query(`
-            UPDATE \`groups\` 
-            SET schedule_start_date = ?, schedule_end_date = ?, allocation_batch = ?
-            WHERE group_id = ?
-          `, [startDate, endDate, batchCode, groupId]);
-        }
+        console.log('Step 8: Using existing group', groupId);
       } else {
-        // Create new group for this venue with schedule dates
+        // Create new group for this venue
         const groupCode = `V${venue.venue_id}-${Date.now()}`;
         groupName = groupSpecification 
           ? `${venue.venue_name} - ${groupSpecification}`
           : `${venue.venue_name} - Group`;
 
-        if (hasScheduleColumns) {
-          const [groupResult] = await connection.query(`
-            INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, schedule_start_date, schedule_end_date, allocation_batch, max_students, department, status, created_at)
-            VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, ?, ?, ?, 'Multiple', 'Active', NOW())
-          `, [groupCode, groupName, venue.venue_id, startDate, endDate, batchCode, venue.capacity]);
-          groupId = groupResult.insertId;
-        } else {
-          const [groupResult] = await connection.query(`
-            INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, max_students, department, status, created_at)
-            VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, 'Multiple', 'Active', NOW())
-          `, [groupCode, groupName, venue.venue_id, venue.capacity]);
-          groupId = groupResult.insertId;
-        }
+        console.log('Step 8: Creating new group for venue', venue.venue_id);
+        const [groupResult] = await connection.query(`
+          INSERT INTO \`groups\` (group_code, group_name, venue_id, faculty_id, schedule_days, schedule_time, max_students, department, status, created_at)
+          VALUES (?, ?, ?, NULL, 'Mon-Fri', '09:00-17:00', ?, 'Multiple', 'Active', NOW())
+        `, [groupCode, groupName, venue.venue_id, venue.capacity]);
+        groupId = groupResult.insertId;
+        console.log('Step 9: Created group', groupId);
       }
 
       const venueStudents = [];
       const studentsToAllocate = Math.min(venue.effectiveCapacity, orderedStudents.length - studentIndex);
+      console.log('Step 10: Allocating', studentsToAllocate, 'students to venue', venue.venue_id);
 
       for (let i = 0; i < studentsToAllocate; i++) {
         const student = orderedStudents[studentIndex];
 
-        await connection.query(`
-          INSERT INTO group_students (group_id, student_id, status, created_at)
-          VALUES (?, ?, 'Active', NOW())
-        `, [groupId, student.student_id]);
+        try {
+          // Use INSERT ... ON DUPLICATE KEY UPDATE to handle any existing records safely
+          const [result] = await connection.query(`
+            INSERT INTO group_students (group_id, student_id, status, allocation_date)
+            VALUES (?, ?, 'Active', NOW())
+            ON DUPLICATE KEY UPDATE 
+              group_id = VALUES(group_id),
+              status = 'Active',
+              allocation_date = NOW()
+          `, [groupId, student.student_id]);
 
-        venueStudents.push({
-          student_id: student.student_id,
-          name: student.name,
-          roll_number: student.roll_number,
-          department: student.department
-        });
+          // Check if it was an insert (affectedRows=1) or update (affectedRows=2)
+          if (result.affectedRows > 0) {
+            venueStudents.push({
+              student_id: student.student_id,
+              name: student.name,
+              roll_number: student.roll_number,
+              department: student.department
+            });
+          }
+        } catch (insertErr) {
+          console.error('Error allocating student', student.student_id, ':', insertErr.message);
+        }
 
         studentIndex++;
       }
@@ -841,9 +823,7 @@ export const executeAllocation = async (req, res) => {
         existing_students: venue.current_students,
         newly_allocated: venueStudents.length,
         total_students: venue.current_students + venueStudents.length,
-        capacity: venue.capacity,
-        schedule_start_date: hasScheduleColumns && startDate ? startDate.toISOString().split('T')[0] : null,
-        schedule_end_date: hasScheduleColumns && endDate ? endDate.toISOString().split('T')[0] : null
+        capacity: venue.capacity
       });
     }
 
@@ -855,17 +835,17 @@ export const executeAllocation = async (req, res) => {
       data: {
         totalAllocated: studentIndex,
         venuesUsed: allocationResults.length,
-        batchCode: hasScheduleColumns ? batchCode : `BATCH-${year}-${Date.now()}`,
-        batchName: finalBatchName,
-        scheduleId,
-        scheduleStartDate: hasScheduleColumns && startDate ? startDate.toISOString().split('T')[0] : null,
-        scheduleEndDate: hasScheduleColumns && endDate ? endDate.toISOString().split('T')[0] : null,
         allocation: allocationResults
       }
     });
   } catch (error) {
-    await connection.rollback();
+    try {
+      await connection.rollback();
+    } catch (rollbackErr) {
+      // Ignore rollback errors (happens if transaction wasn't started)
+    }
     console.error('Error executing allocation:', error);
+    console.error('Error SQL:', error.sql || 'N/A');
     res.status(500).json({
       success: false,
       message: 'Failed to execute allocation: ' + error.message
@@ -1320,9 +1300,8 @@ export const getStudentVenueMapping = async (req, res) => {
         g.group_name,
         g.schedule_start_date,
         g.schedule_end_date,
-        g.allocation_batch,
-        COALESCE(gs.joined_at, gs.created_at) as allocation_date,
-        DATEDIFF(g.schedule_end_date, CURDATE()) as days_until_expiry
+        gs.allocation_date,
+        NULL as days_until_expiry
       FROM group_students gs
       INNER JOIN \`groups\` g ON gs.group_id = g.group_id
       INNER JOIN venue v ON g.venue_id = v.venue_id
