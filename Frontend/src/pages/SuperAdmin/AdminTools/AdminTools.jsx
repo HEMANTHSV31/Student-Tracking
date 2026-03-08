@@ -109,7 +109,6 @@ const AdminTools = () => {
                                     onClick={() => handleCardClick(func)}
                                     onMouseEnter={() => setHoveredCard(func.id)}
                                     onMouseLeave={() => setHoveredCard(null)}
-                                    style={{ borderLeft: `4px solid ${func.color}` }}
                                     tabIndex={func.disabled ? -1 : 0}
                                 >
                                     <div className="at-card-content">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   Upload, FileSpreadsheet, MapPin, Users, Building2, Download,
@@ -18,8 +19,9 @@ import {
 import './AAssesment.css';
 
 const AAssesment = () => {
+  const navigate = useNavigate();
   // ── Navigation State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('allocate'); // 'venues' | 'allocate' | 'results'
+  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'clusters' | 'venues' | 'allocate' | 'results'
 
   // ── Venue State (from backend) ───────────────────────────────────────────
   const [venues, setVenues] = useState([]);
@@ -54,6 +56,8 @@ const AAssesment = () => {
   const [venueAllocations, setVenueAllocations] = useState({});
   const [activeVenue, setActiveVenue] = useState('');
   const [overallStats, setOverallStats] = useState(null);
+  const [previewPage, setPreviewPage] = useState(1);
+  const PREVIEW_PAGE_SIZE = 10;
 
   // ── Cluster Config ───────────────────────────────────────────────────────
   const [columnPattern, setColumnPattern] = useState('CS_FIRST');
@@ -537,6 +541,7 @@ const AAssesment = () => {
         }
 
         setStudents(mapped);
+        setPreviewPage(1);
         const dates = getAvailableSlotDates(mapped);
         const defDate = dates.length === 1 ? dates[0] : '';
         const times = getAvailableSlotTimes(mapped, defDate);
@@ -698,6 +703,7 @@ const AAssesment = () => {
   const handleReset = () => {
     if (window.confirm('Reset all data? This will clear students and allocations.')) {
       setStudents([]);
+      setPreviewPage(1);
       setSelectedSlotDate('');
       setSlotTime('');
       setSelectedSlot(null);
@@ -805,10 +811,10 @@ const AAssesment = () => {
   const removeClusterDept = (list, setList, idx) => setList(list.filter((_, i) => i !== idx));
 
   const tabItems = [
-    { key: 'allocate', icon: Zap, label: 'Slot Allocation' },
     { key: 'slots', icon: Clock, label: 'Manage Slots' },
     { key: 'clusters', icon: Layers, label: 'Dept Clusters' },
     { key: 'venues', icon: Building2, label: 'Manage Venues' },
+    { key: 'allocate', icon: Zap, label: 'Slot Allocation' },
     { key: 'results', icon: Eye, label: 'Results', disabled: !Object.keys(venueAllocations).length },
   ];
 
@@ -823,6 +829,10 @@ const AAssesment = () => {
       <div className="aa-sticky-header">
         <div className="aa-header-container">
           <div className="aa-header-left-section">
+            <button className="aa-back-btn" onClick={() => navigate('/admin-tools')}>
+              <ArrowLeft size={18} />
+              <span>Back</span>
+            </button>
             <div className="aa-toggle-container">
               {tabItems.map((t) => (
                 <button
@@ -1717,9 +1727,9 @@ const AAssesment = () => {
               </div>
             )}
 
-            <div className="aa-alloc-grid">
-              <div className="aa-alloc-main">
-                <div className="aa-card">
+            <div className={`aa-alloc-content ${students.length > 0 ? 'aa-alloc-has-data' : ''}`}>
+              <div className="aa-upload-section">
+                <div className="aa-card aa-upload-card">
                   <div className="aa-card-title"><FileSpreadsheet size={15} /> Upload Student Data</div>
                   <label className="aa-upload-zone">
                     <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="aa-file-hidden" />
@@ -1730,40 +1740,40 @@ const AAssesment = () => {
                     </div>
                   </label>
                   <p className="aa-hint"><Info size={12} /> Required: Roll Number, Name, Department. Optional: Email, Year, Gender.</p>
+
+                  {students.length > 0 && TOTAL_CAPACITY > 0 && (
+                    <div className="aa-capacity-inline">
+                      <div className="aa-capacity-top">
+                        <div className="aa-capacity-label">
+                          <CheckCircle size={15} className="aa-icon-green" />
+                          <strong>{students.length}</strong> students loaded
+                        </div>
+                        <span className={students.length > TOTAL_CAPACITY ? 'aa-cap-over' : 'aa-cap-ok'}>
+                          {students.length <= TOTAL_CAPACITY
+                            ? `${TOTAL_CAPACITY - students.length} seats remaining`
+                            : `Exceeded by ${students.length - TOTAL_CAPACITY}!`}
+                        </span>
+                      </div>
+                      <div className="aa-progress-track">
+                        <div
+                          className="aa-progress-fill"
+                          style={{
+                            width: `${Math.min((students.length / TOTAL_CAPACITY) * 100, 100)}%`,
+                            background: students.length > TOTAL_CAPACITY ? '#ef4444' : 'var(--aa-primary)'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {students.length > 0 && TOTAL_CAPACITY > 0 && (
-                  <div className="aa-capacity-card">
-                    <div className="aa-capacity-top">
-                      <div className="aa-capacity-label">
-                        <CheckCircle size={15} className="aa-icon-green" />
-                        <strong>{students.length}</strong> students loaded
-                      </div>
-                      <span className={students.length > TOTAL_CAPACITY ? 'aa-cap-over' : 'aa-cap-ok'}>
-                        {students.length <= TOTAL_CAPACITY
-                          ? `${TOTAL_CAPACITY - students.length} seats remaining`
-                          : `Exceeded by ${students.length - TOTAL_CAPACITY}!`}
-                      </span>
-                    </div>
-                    <div className="aa-progress-track">
-                      <div
-                        className="aa-progress-fill"
-                        style={{
-                          width: `${Math.min((students.length / TOTAL_CAPACITY) * 100, 100)}%`,
-                          background: students.length > TOTAL_CAPACITY ? '#ef4444' : 'var(--aa-primary)'
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="aa-action-row">
+                <div className="aa-action-row-centered">
                   <button
-                    className="aa-btn aa-btn-primary"
+                    className="aa-btn aa-btn-primary aa-btn-lg"
                     onClick={handleGenerateAllocation}
                     disabled={!students.length || !venues.length}
                   >
-                    <Zap size={16} /> Generate Allocation
+                    <Zap size={18} /> Generate Allocation
                   </button>
                   <button className="aa-btn aa-btn-ghost" onClick={handleReset}>
                     <RotateCcw size={15} /> Reset
@@ -1771,38 +1781,10 @@ const AAssesment = () => {
                 </div>
               </div>
 
-              <div className="aa-alloc-aside">
-                {/* Configuration Summary (Read-only from Dept Clusters) */}
-                <div className="aa-card">
-                  <div className="aa-card-title"><Grid3X3 size={15} /> Configuration</div>
-                  <div className="aa-config-summary">
-                    <div className="aa-config-row">
-                      <span className="aa-config-label">Pattern:</span>
-                      <span className="aa-badge aa-badge-blue">{columnPattern === 'CORE_FIRST' ? 'Core First' : 'CS First'}</span>
-                    </div>
-                    <div className="aa-config-row">
-                      <span className="aa-config-label">CS Cluster:</span>
-                      <div className="aa-config-chips">
-                        {csOrder.slice(0, 4).map(d => <span key={d} className="aa-mini-chip">{d}</span>)}
-                        {csOrder.length > 4 && <span className="aa-mini-chip aa-mini-more">+{csOrder.length - 4}</span>}
-                      </div>
-                    </div>
-                    <div className="aa-config-row">
-                      <span className="aa-config-label">Core Cluster:</span>
-                      <div className="aa-config-chips">
-                        {coreOrder.slice(0, 4).map(d => <span key={d} className="aa-mini-chip aa-mini-core">{d}</span>)}
-                        {coreOrder.length > 4 && <span className="aa-mini-chip aa-mini-more">+{coreOrder.length - 4}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <button className="aa-link-btn aa-link-edit" onClick={() => setActiveTab('clusters')}>
-                    Edit in Dept Clusters
-                  </button>
-                </div>
-
-                {students.length > 0 && (
+              {students.length > 0 && (
+                <div className="aa-preview-section">
                   <div className="aa-card">
-                    <div className="aa-card-title"><BookOpen size={15} /> Preview <span className="aa-title-muted">(first 5)</span></div>
+                    <div className="aa-card-title"><BookOpen size={15} /> Student Preview <span className="aa-title-muted">({students.length} total)</span></div>
                     <div className="aa-preview-scroll">
                       <table className="aa-preview-table">
                         <thead>
@@ -1814,7 +1796,7 @@ const AAssesment = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {students.slice(0, 5).map((s, i) => (
+                          {students.slice((previewPage - 1) * PREVIEW_PAGE_SIZE, previewPage * PREVIEW_PAGE_SIZE).map((s, i) => (
                             <tr key={i}>
                               <td>{s.rollNumber}</td>
                               <td>{s.name}</td>
@@ -1835,9 +1817,31 @@ const AAssesment = () => {
                         </tbody>
                       </table>
                     </div>
+                    {/* Pagination */}
+                    {students.length > PREVIEW_PAGE_SIZE && (
+                      <div className="aa-pagination">
+                        <button
+                          className="aa-pagination-btn"
+                          onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
+                          disabled={previewPage === 1}
+                        >
+                          Previous
+                        </button>
+                        <div className="aa-pagination-info">
+                          Page {previewPage} of {Math.ceil(students.length / PREVIEW_PAGE_SIZE)}
+                        </div>
+                        <button
+                          className="aa-pagination-btn"
+                          onClick={() => setPreviewPage(p => Math.min(Math.ceil(students.length / PREVIEW_PAGE_SIZE), p + 1))}
+                          disabled={previewPage >= Math.ceil(students.length / PREVIEW_PAGE_SIZE)}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}

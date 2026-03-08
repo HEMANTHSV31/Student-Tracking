@@ -42,7 +42,6 @@
   gap: 12px;
   box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
   transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 180ms;
-  border-left: 4px solid transparent;
 }
 
 .at-card--active { cursor: pointer; }
