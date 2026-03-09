@@ -125,6 +125,60 @@
 }
 .ma-search-clear:hover { background: #cbd5e1; }
 
+/* ── Inline Slot Tabs (in toolbar) ───────────────────────────────────── */
+.ma-slot-tabs-inline {
+  display: flex;
+  gap: 8px;
+}
+.ma-slot-tab-sm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 2px solid #e2e8f0;
+  cursor: pointer;
+  transition: all .2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.ma-slot-tab-sm:hover {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border-color: #c7d2fe;
+}
+.ma-slot-tab-sm-active {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border-color: #6366f1;
+  box-shadow: 0 2px 8px rgba(99,102,241,.2);
+}
+.ma-tab-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.ma-slot-tab-sm-active .ma-tab-icon {
+  color: #6366f1;
+}
+.ma-tab-title-sm {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+.ma-slot-tab-sm-active .ma-tab-title-sm {
+  color: #4338ca;
+}
+.ma-tab-time-sm {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  padding-left: 8px;
+  border-left: 1px solid #cbd5e1;
+}
+.ma-slot-tab-sm-active .ma-tab-time-sm {
+  color: #6366f1;
+  border-left-color: #a5b4fc;
+}
+
 .ma-legend {
   display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: #64748b;
 }
@@ -319,6 +373,8 @@
 
   .ma-toolbar { flex-direction: column; align-items: stretch; }
   .ma-search-bar { max-width: 100%; }
+  .ma-slot-tabs-inline { justify-content: center; flex-wrap: wrap; }
+  .ma-slot-tab-sm { padding: 8px 14px; }
 
   .ma-seatmap { --ma-seat-min-size: 60px; --ma-row-header-size: 30px; padding: 12px; border-radius: 14px; }
   .ma-seat { border-radius: 10px; }
@@ -334,6 +390,10 @@
   .ma-info-val  { font-size: 13px; }
 
   .ma-legend { gap: 8px; font-size: 11px; }
+  .ma-slot-tab-sm { padding: 6px 12px; gap: 6px; }
+  .ma-tab-title-sm { font-size: 12px; }
+  .ma-tab-time-sm { font-size: 11px; padding-left: 6px; }
+  .ma-tab-icon { display: none; }
 
   .ma-seatmap { --ma-seat-min-size: 50px; --ma-row-header-size: 26px; padding: 8px; border-radius: 10px; }
   .ma-seat-no  { font-size: 0.58rem; }

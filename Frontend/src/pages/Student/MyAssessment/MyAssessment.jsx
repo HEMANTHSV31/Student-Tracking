@@ -29,8 +29,27 @@ const getSeatLabel = (row, col) => `${getColumnLabel(col)}${row + 1}`;
 
 const shortDept = (d) => {
   if (!d) return "";
-  return d.replace(/[^A-Za-z&]/g, "").replace(/computer\s*science/i, "CSE")
-    .replace(/information\s*technology/i, "IT").toUpperCase();
+  const n = d.toUpperCase().trim();
+  const mapping = {
+    'COMPUTER SCIENCE': 'CSE', 'CS': 'CSE', 'CSE': 'CSE',
+    'COMPUTER SCIENCE AND ENGINEERING': 'CSE',
+    'INFORMATION TECHNOLOGY': 'IT', 'IT': 'IT',
+    'COMPUTER SCIENCE AND BUSINESS SYSTEMS': 'CSBS', 'CSBS': 'CSBS',
+    'ARTIFICIAL INTELLIGENCE AND DATA SCIENCE': 'AIDS', 'AIDS': 'AIDS', 'AD': 'AIDS',
+    'AIML': 'AIML', 'AL': 'AIML',
+    'ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING': 'AIML',
+    'ELECTRICAL': 'EEE', 'EEE': 'EEE',
+    'ELECTRICAL AND ELECTRONICS': 'EEE', 'ELECTRICAL AND ELECTRONICS ENGINEERING': 'EEE',
+    'ELECTRONICS AND COMMUNICATION': 'ECE', 'EC': 'ECE', 'ECE': 'ECE',
+    'ELECTRONICS AND COMMUNICATION ENGINEERING': 'ECE',
+    'ELECTRONICS AND INSTRUMENTATION': 'E&I', 'E&I': 'E&I', 'ENDI': 'E&I', 'EI': 'E&I',
+    'ELECTRONICS AND INSTRUMENTATION ENGINEERING': 'E&I', 'EIE': 'E&I',
+    'MECHANICAL': 'MECH', 'MECHANICAL ENGINEERING': 'MECH', 'MECH': 'MECH',
+    'MECHATRONICS': 'MECTRONIC', 'MECHATRONICS ENGINEERING': 'MECTRONIC', 'MECTRONIC': 'MECTRONIC',
+    'AGRICULTURE': 'AGRI', 'AGRICULTURAL ENGINEERING': 'AGRI', 'AGRI': 'AGRI',
+    'BIOTECHNOLOGY': 'BIOTECH', 'BIO TECHNOLOGY': 'BIOTECH', 'BIOTECH': 'BIOTECH',
+  };
+  return mapping[n] || n.replace(/[^A-Za-z&]/g, "").substring(0, 8);
 };
 
 const formatDate = (d) => {
@@ -49,7 +68,8 @@ const getDepartmentColor = (dept) => {
   const map = {
     CSE: "#dbeafe", IT: "#dcfce7", ECE: "#fef9c3", EEE: "#fce7f3",
     MECH: "#ffedd5", CIVIL: "#e0e7ff", AIDS: "#f3e8ff", AIML: "#ccfbf1",
-    CSBS: "#fae8ff", CSD: "#cffafe",
+    CSBS: "#fae8ff", CSD: "#cffafe", "E&I": "#fef3c7", MECTRONIC: "#d1fae5",
+    AGRI: "#d9f99d", BIOTECH: "#a7f3d0",
   };
   return map[d] || "#f1f5f9";
 };
@@ -136,22 +156,6 @@ const MyAssessment = () => {
 
   return (
     <div className="ma-container">
-      {/* ── Slot Tabs (when 2+ slots) ───── */}
-      {allocations.length > 1 && (
-        <div className="ma-slot-tabs">
-          {allocations.map((s, i) => (
-            <button
-              key={i}
-              className={`ma-slot-tab ${activeSlot === i ? "ma-slot-tab-active" : ""}`}
-              onClick={() => { setActiveSlot(i); setSearchQuery(""); setHighlightedSeat(null); }}
-            >
-              <span className="ma-tab-title">{s.slot_label || `Slot ${i + 1}`}</span>
-              <span className="ma-tab-time">{formatTime(s.start_time)}{s.end_time ? ` – ${formatTime(s.end_time)}` : ""}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* ── Info Card ───────────────────── */}
       <div className="ma-info-card">
         <div className="ma-info-grid">
@@ -192,7 +196,7 @@ const MyAssessment = () => {
         </div>
       </div>
 
-      {/* ── Search + Legend ──────────────── */}
+      {/* ── Search + Slot Tabs + Legend ──────────────── */}
       <div className="ma-toolbar">
         <div className="ma-search-bar">
           <Search size={16} className="ma-search-icon" />
@@ -209,6 +213,21 @@ const MyAssessment = () => {
             </button>
           )}
         </div>
+        {allocations.length > 1 && (
+          <div className="ma-slot-tabs-inline">
+            {allocations.map((s, i) => (
+              <button
+                key={i}
+                className={`ma-slot-tab-sm ${activeSlot === i ? "ma-slot-tab-sm-active" : ""}`}
+                onClick={() => { setActiveSlot(i); setSearchQuery(""); setHighlightedSeat(null); }}
+              >
+                <Clock size={13} className="ma-tab-icon" />
+                <span className="ma-tab-title-sm">{s.slot_label || `Slot ${i + 1}`}</span>
+                <span className="ma-tab-time-sm">{formatTime(s.start_time)}{s.end_time ? ` – ${formatTime(s.end_time)}` : ""}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="ma-legend">
           <span className="ma-legend-item"><span className="ma-legend-dot ma-legend-you" />You</span>
           <span className="ma-legend-item"><span className="ma-legend-dot ma-legend-search" />Search</span>

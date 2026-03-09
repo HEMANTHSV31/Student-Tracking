@@ -262,6 +262,7 @@ const AAssesment = () => {
       'ELECTRONICS AND COMMUNICATION': 'ECE', 'EC': 'ECE', 'ECE': 'ECE',
       'ELECTRONICS AND COMMUNICATION ENGINEERING': 'ECE',
       'ELECTRONICS AND INSTRUMENTATION': 'E&I', 'E&I': 'E&I', 'ENDI': 'E&I', 'INDUSTRIAL': 'E&I', 'EI': 'E&I',
+      'ELECTRONICS AND INSTRUMENTATION ENGINEERING': 'E&I', 'EIE': 'E&I',
       'MECHANICAL': 'MECH', 'MECHANICAL ENGINEERING': 'MECH', 'MECH': 'MECH',
       'MECHATRONICS': 'MECTRONIC', 'MECHATRONICS ENGINEERING': 'MECTRONIC', 'MECTRONIC': 'MECTRONIC',
       'AGRICULTURE': 'AGRI', 'AGRICULTURAL ENGINEERING': 'AGRI', 'AGRI': 'AGRI',
@@ -286,6 +287,24 @@ const AAssesment = () => {
   };
 
   const byDeptCount = (dept) => students.filter((s) => normalizeDepartment(s.department) === dept).length;
+
+  // Helper to compute department summary from a seatMap
+  const getDeptSummary = (seatMap) => {
+    const counts = {};
+    if (!seatMap) return [];
+    seatMap.forEach(row => {
+      row.forEach(seat => {
+        if (seat && (seat.normalizedDept || seat.department)) {
+          // Re-normalize in case data was saved with old names
+          const dept = normalizeDepartment(seat.normalizedDept || seat.department);
+          counts[dept] = (counts[dept] || 0) + 1;
+        }
+      });
+    });
+    return Object.entries(counts)
+      .map(([dept, count]) => ({ dept, count }))
+      .sort((a, b) => b.count - a.count);
+  };
 
   // ── Venue CRUD Handlers ──────────────────────────────────────────────────
   const handleSaveVenue = async () => {
@@ -713,7 +732,174 @@ const AAssesment = () => {
     XLSX.writeFile(wb, `Assessment_${label.replace(/[^a-zA-Z0-9]+/g, '_')}.xlsx`);
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    const alloc = venueAllocations[activeVenue];
+    if (!alloc) return;
+
+    const venueInfo = venues.find(v => v.id === parseInt(activeVenue));
+    const venueName = venueInfo?.venue_name || `Venue ${activeVenue}`;
+    const COLS = alloc.columns;
+
+    // Build seat map HTML
+    let seatMapHTML = '';
+    
+    // Column headers
+    seatMapHTML += '<div class="col-headers"><div class="rh-spacer"></div>';
+    for (let i = 0; i < COLS; i++) {
+      seatMapHTML += `<div class="col-header">${getColumnLabel(i)}</div>`;
+    }
+    seatMapHTML += '</div>';
+
+    // Seat rows
+    alloc.seatMap.forEach((row, rowIdx) => {
+      seatMapHTML += `<div class="seat-row"><div class="row-header">${rowIdx + 1}</div>`;
+      row.forEach((seat, colIdx) => {
+        const seatLabel = getSeatLabel(rowIdx, colIdx);
+        if (seat) {
+          const dept = normalizeDepartment(seat.normalizedDept || seat.department);
+          const bgColor = getDepartmentColor(dept);
+          seatMapHTML += `
+            <div class="seat seat-occ" style="background:${bgColor}">
+              <span class="seat-no">${seatLabel}</span>
+              <span class="seat-dept">${dept}</span>
+              <span class="seat-reg">${seat.rollNumber}</span>
+            </div>`;
+        } else {
+          seatMapHTML += `<div class="seat seat-empty"><span class="seat-dash">—</span></div>`;
+        }
+      });
+      seatMapHTML += '</div>';
+    });
+
+    // Department Summary
+    const deptSummary = getDeptSummary(alloc.seatMap);
+    const totalStudents = deptSummary.reduce((sum, d) => sum + d.count, 0);
+    let deptSummaryHTML = `
+      <div class="dept-summary">
+        <h3>Department Summary</h3>
+        <table>
+          <thead><tr><th>Department</th><th>Count</th><th>%</th></tr></thead>
+          <tbody>
+    `;
+    deptSummary.forEach(({ dept, count }) => {
+      const pct = totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : 0;
+      deptSummaryHTML += `<tr><td><span class="dept-badge" style="background:${getDepartmentColor(dept)}">${dept}</span></td><td>${count}</td><td>${pct}%</td></tr>`;
+    });
+    deptSummaryHTML += `
+          </tbody>
+          <tfoot><tr><th>Total</th><th>${totalStudents}</th><th>100%</th></tr></tfoot>
+        </table>
+      </div>
+    `;
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Seat Map - ${venueName}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+          .header h1 { font-size: 22px; font-weight: 700; color: #1e293b; margin-bottom: 5px; }
+          .header .info { font-size: 13px; color: #64748b; }
+          .header .info span { margin: 0 10px; }
+          
+          .seatmap { 
+            display: inline-block; 
+            border: 1px solid #d7e1ec; 
+            border-radius: 10px; 
+            padding: 15px; 
+            background: #f8fafc; 
+          }
+          
+          .col-headers, .seat-row { 
+            display: grid; 
+            grid-template-columns: 30px repeat(${COLS}, minmax(58px, 1fr)); 
+            gap: 3px; 
+            margin-bottom: 3px; 
+          }
+          .rh-spacer { min-height: 1px; }
+          .col-header { 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; color: #475569; height: 20px;
+          }
+          .row-header { 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; color: #475569; min-height: 58px;
+          }
+          
+          .seat { 
+            min-height: 58px; 
+            border-radius: 8px; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            text-align: center;
+            padding: 4px;
+          }
+          .seat-empty { background: #fff; border: 1px dashed #cbd5e1; }
+          .seat-occ { border: 1px solid rgba(15,23,42,.1); }
+          
+          .seat-no { font-size: 8px; font-weight: 700; color: #1e293b; opacity: 0.7; }
+          .seat-dept { font-size: 9px; font-weight: 800; color: #1e293b; }
+          .seat-reg { font-size: 8px; font-weight: 600; color: #334155; }
+          .seat-dash { font-size: 12px; color: #cbd5e1; }
+          
+          .legend { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+          .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #64748b; }
+          .legend-dot { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.1); }
+          
+          .dept-summary { margin-top: 25px; }
+          .dept-summary h3 { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 10px; text-align: center; }
+          .dept-summary table { width: 100%; max-width: 400px; margin: 0 auto; border-collapse: collapse; font-size: 12px; }
+          .dept-summary th, .dept-summary td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+          .dept-summary th { background: #f8fafc; font-weight: 600; color: #475569; }
+          .dept-summary tfoot th { background: #f1f5f9; font-weight: 700; }
+          .dept-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #1e293b; }
+          
+          @media print {
+            body { padding: 10px; }
+            .seatmap { border: 1px solid #ccc; box-shadow: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${venueName} - Seat Allocation</h1>
+          <div class="info">
+            <span><strong>Date:</strong> ${selectedSlotDate || '—'}</span>
+            <span><strong>Time:</strong> ${slotTime || '—'}</span>
+            <span><strong>Capacity:</strong> ${alloc.rows} × ${COLS} = ${alloc.rows * COLS} seats</span>
+          </div>
+        </div>
+        <div class="seatmap">
+          ${seatMapHTML}
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#dbeafe"></div>CSE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#dcfce7"></div>IT</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#fef9c3"></div>ECE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#fce7f3"></div>EEE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffedd5"></div>MECH</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#e0e7ff"></div>CIVIL</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f3e8ff"></div>AIDS</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ccfbf1"></div>AIML</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#fff;border:1px dashed #cbd5e1"></div>Empty</div>
+        </div>
+        ${deptSummaryHTML}
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
 
   const handleReset = () => {
     if (window.confirm('Reset all data? This will clear students and allocations.')) {
@@ -1985,23 +2171,24 @@ const AAssesment = () => {
                             <div className="aa-row-header">{rowIdx + 1}</div>
                             {row.map((seat, colIdx) => {
                               const seatLabel = getSeatLabel(rowIdx, colIdx);
+                              const dept = seat ? normalizeDepartment(seat.normalizedDept || seat.department) : null;
 
                               return (
                                 <div
                                   key={colIdx}
                                   className={`aa-seat ${seat ? 'aa-seat-occ' : 'aa-seat-empty'}`}
                                   style={{
-                                    background: seat ? getDepartmentColor(seat.normalizedDept) : '',
+                                    background: seat ? getDepartmentColor(dept) : '',
                                   }}
                                   title={seat
-                                    ? `${seatLabel}  •  ${seat.name}\n${seat.rollNumber}  •  ${seat.normalizedDept}  •  Year ${seat.year}`
+                                    ? `${seatLabel}  •  ${seat.name}\n${seat.rollNumber}  •  ${dept}  •  Year ${seat.year}`
                                     : 'Empty Seat'}
                                 >
                                   {seat ? (
                                     <div className="aa-seat-inner">
                                       <span className="aa-seat-no">{seatLabel}</span>
-                                      <span className="aa-seat-dept">{seat.normalizedDept}</span>
-                                      <span className="aa-seat-name">{seat.name.split(' ')[0]}</span>
+                                      <span className="aa-seat-dept">{dept}</span>
+                                      <span className="aa-seat-name">{seat.rollNumber}</span>
                                     </div>
                                   ) : (
                                     <span className="aa-seat-dash">—</span>
@@ -2013,6 +2200,29 @@ const AAssesment = () => {
                         ))}
                       </div>
                     </div>
+
+                    {/* Department Summary */}
+                    {(() => {
+                      const deptSummary = getDeptSummary(alloc.seatMap);
+                      const totalStudents = deptSummary.reduce((sum, d) => sum + d.count, 0);
+                      return (
+                        <div className="aa-dept-summary">
+                          <div className="aa-dept-summary-title">
+                            <BarChart3 size={16} /> Department Summary
+                          </div>
+                          <div className="aa-dept-summary-grid">
+                            {deptSummary.map(({ dept, count }) => (
+                              <div key={dept} className="aa-dept-summary-item">
+                                <span className="aa-dept-badge" style={{ background: getDepartmentColor(dept) }}>{dept}</span>
+                                <span className="aa-dept-count">{count}</span>
+                                <span className="aa-dept-pct">{totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : 0}%</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="aa-dept-total">Total: <strong>{totalStudents}</strong> students</div>
+                        </div>
+                      );
+                    })()}
                   </>
                 );
               })()}
