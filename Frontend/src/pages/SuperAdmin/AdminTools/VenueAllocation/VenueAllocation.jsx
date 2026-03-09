@@ -1,64 +1,107 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Building2, Users, Calendar, 
+  ArrowLeft, Building2, Users, Calendar, 
   CheckCircle, AlertTriangle, X, RefreshCw, MapPin, Zap, 
-  RotateCcw, Info, ChevronRight
+  Clock, LayoutDashboard, ChevronRight, Check
 } from 'lucide-react';
 import { apiGet, apiPost } from '../../../../utils/api';
 import './VenueAllocation.css';
+
+const DEFAULT_RESERVED_SLOTS = 2;
+
+const TIME_SLOT_OPTIONS = [
+  {
+    value: 'forenoon',
+    title: 'Forenoon',
+    description: '09:00 AM - 12:00 PM',
+  },
+  {
+    value: 'afternoon',
+    title: 'Afternoon',
+    description: '01:00 PM - 04:00 PM',
+  },
+  {
+    value: 'full_day',
+    title: 'Full Day',
+    description: '09:00 AM - 04:00 PM',
+  },
+];
+
+const getTimeSlotDetails = (slotValue) => {
+  return TIME_SLOT_OPTIONS.find((slot) => slot.value === slotValue) || null;
+};
+
+const getApiMessage = async (response, fallbackMessage) => {
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch (error) {
+    return { success: false, data: null, message: fallbackMessage };
+  }
+
+  if (!response.ok || !data.success) {
+    return {
+      success: false,
+      data: data?.data ?? null,
+      message: data?.message || fallbackMessage,
+    };
+  }
+
+  return {
+    success: true,
+    data: data.data,
+    message: data.message || '',
+  };
+};
 
 const VenueAllocation = () => {
   const navigate = useNavigate();
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP STATE - Simple 4-step wizard
+  // STATE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════════════
   const [currentStep, setCurrentStep] = useState(1);
-  // Step 1: Select Year
-  // Step 2: Select Departments to Merge
-  // Step 3: Select Venues
-  // Step 4: Preview & Execute
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DATA STATE
-  // ═══════════════════════════════════════════════════════════════════════════
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Step 1: Years
+  // Step 1: Schedule
+  const [allocationDate, setAllocationDate] = useState('');
+  const [timeSlot, setTimeSlot] = useState('');
+
+  // Step 2: Students
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
-
-  // Step 2: Departments
   const [departments, setDepartments] = useState([]);
   const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [mergeDepartments, setMergeDepartments] = useState(true);
 
   // Step 3: Venues
   const [venues, setVenues] = useState([]);
   const [selectedVenueIds, setSelectedVenueIds] = useState([]);
+  const [reservedSlots, setReservedSlots] = useState(DEFAULT_RESERVED_SLOTS);
 
   // Step 4: Preview & Results
   const [previewData, setPreviewData] = useState(null);
   const [allocationResult, setAllocationResult] = useState(null);
-  const [reservedSlots, setReservedSlots] = useState(2);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DATA LOADING
+  // DATA LOADING (Unchanged logic, driving the new UI)
   // ═══════════════════════════════════════════════════════════════════════════
   const loadYears = useCallback(async () => {
     setLoading(true);
     try {
       const response = await apiGet('/venue-allocation/years');
-      if (response.status === 401) {
-        setError('Session expired. Please log in again.');
+      const result = await getApiMessage(response, 'Failed to load years');
+
+      if (!result.success) {
+        setError(result.message);
         return;
       }
-      const data = await response.json();
-      if (data.success) setYears(data.data || []);
-      else setError(data.message || 'Failed to load years');
+
+      setYears(result.data || []);
     } catch (err) {
-      console.error('Load years error:', err);
       setError('Failed to load years');
     } finally {
       setLoading(false);
@@ -70,15 +113,15 @@ const VenueAllocation = () => {
     setLoading(true);
     try {
       const response = await apiGet(`/venue-allocation/departments?year=${selectedYear}`);
-      if (response.status === 401) {
-        setError('Session expired. Please log in again.');
+      const result = await getApiMessage(response, 'Failed to load departments');
+
+      if (!result.success) {
+        setError(result.message);
         return;
       }
-      const data = await response.json();
-      if (data.success) setDepartments(data.data || []);
-      else setError(data.message || 'Failed to load departments');
+
+      setDepartments(result.data || []);
     } catch (err) {
-      console.error('Load departments error:', err);
       setError('Failed to load departments');
     } finally {
       setLoading(false);
@@ -86,39 +129,59 @@ const VenueAllocation = () => {
   }, [selectedYear]);
 
   const loadVenues = useCallback(async () => {
+    if (!allocationDate || !timeSlot) return;
     setLoading(true);
     try {
-      const response = await apiGet('/venue-allocation/venues');
-      if (response.status === 401) {
-        setError('Session expired. Please log in again.');
+      const response = await apiGet(`/venue-allocation/venues?date=${allocationDate}&slot=${timeSlot}`);
+      const result = await getApiMessage(response, 'Failed to load venues');
+
+      if (!result.success) {
+        setError(result.message);
         return;
       }
-      const data = await response.json();
-      if (data.success) setVenues(data.data || []);
-      else setError(data.message || 'Failed to load venues');
+
+      setVenues(result.data || []);
     } catch (err) {
-      console.error('Load venues error:', err);
       setError('Failed to load venues');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allocationDate, timeSlot]);
 
   useEffect(() => {
-    loadYears();
-  }, [loadYears]);
+    if (currentStep === 2 && years.length === 0) loadYears();
+    if (currentStep === 2 && selectedYear) loadDepartments();
+    if (currentStep === 3) loadVenues();
+  }, [currentStep, selectedYear, loadYears, loadDepartments, loadVenues]);
 
   useEffect(() => {
-    if (selectedYear && currentStep === 2) {
-      loadDepartments();
-    }
-  }, [selectedYear, currentStep, loadDepartments]);
+    setSelectedYear(null);
+    setDepartments([]);
+    setSelectedDepartments([]);
+    setVenues([]);
+    setSelectedVenueIds([]);
+    setPreviewData(null);
+    setAllocationResult(null);
+  }, [allocationDate, timeSlot]);
 
   useEffect(() => {
-    if (currentStep === 3) {
-      loadVenues();
-    }
-  }, [currentStep, loadVenues]);
+    setSelectedDepartments([]);
+    setVenues([]);
+    setSelectedVenueIds([]);
+    setPreviewData(null);
+    setAllocationResult(null);
+  }, [selectedYear]);
+
+  useEffect(() => {
+    setSelectedVenueIds([]);
+    setPreviewData(null);
+    setAllocationResult(null);
+  }, [selectedDepartments]);
+
+  useEffect(() => {
+    setPreviewData(null);
+    setAllocationResult(null);
+  }, [mergeDepartments, reservedSlots, selectedVenueIds]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // COMPUTED VALUES
@@ -135,614 +198,555 @@ const VenueAllocation = () => {
   const getTotalCapacity = () => {
     return venues
       .filter(v => selectedVenueIds.includes(v.venue_id))
-      .reduce((sum, v) => sum + Math.max(0, (v.available_seats || v.capacity) - reservedSlots), 0);
+      .reduce((sum, v) => {
+        const availableSeats = Number.isFinite(Number(v.available_seats))
+          ? Number(v.available_seats)
+          : (Number(v.capacity) || 0) - (Number(v.current_students) || 0);
+
+        return sum + Math.max(0, availableSeats - reservedSlots);
+      }, 0);
   };
 
-  const getSelectedVenueCount = () => selectedVenueIds.length;
+  const isCapacitySufficient = getTotalCapacity() >= getStudentCount() && getStudentCount() > 0;
+  const selectedVenues = venues.filter((venue) => selectedVenueIds.includes(venue.venue_id));
+  const targetDepartments = selectedDepartments.length > 0
+    ? selectedDepartments
+    : departments.map((department) => department.department);
+  const shouldGroupDepartments = mergeDepartments && targetDepartments.length > 1;
+  const canExecute = Boolean(previewData) && !loading && !allocationResult;
+  const selectedTimeSlot = getTimeSlotDetails(timeSlot);
+
+  const buildPayload = () => ({
+    date: allocationDate,
+    timeSlot,
+    year: parseInt(selectedYear, 10),
+    departments: selectedDepartments.length > 0 ? selectedDepartments : null,
+    venueIds: selectedVenueIds.map((id) => parseInt(id, 10)),
+    reservedSlots: parseInt(reservedSlots, 10) || 0,
+    allocationMode: 'department_wise',
+    groupDepartments: shouldGroupDepartments ? targetDepartments : [],
+  });
+
+  const resetWizard = () => {
+    setCurrentStep(1);
+    setError('');
+    setAllocationDate('');
+    setTimeSlot('');
+    setYears([]);
+    setSelectedYear(null);
+    setDepartments([]);
+    setSelectedDepartments([]);
+    setMergeDepartments(true);
+    setVenues([]);
+    setSelectedVenueIds([]);
+    setReservedSlots(DEFAULT_RESERVED_SLOTS);
+    setPreviewData(null);
+    setAllocationResult(null);
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // HANDLERS
   // ═══════════════════════════════════════════════════════════════════════════
-  const selectYear = (year) => {
-    setSelectedYear(year);
-    setSelectedDepartments([]);
-    setSelectedVenueIds([]);
-    setPreviewData(null);
-  };
-
-  const toggleDepartment = (dept) => {
-    setSelectedDepartments(prev =>
-      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
-    );
-  };
-
-  const toggleVenue = (venueId) => {
-    setSelectedVenueIds(prev =>
-      prev.includes(venueId) ? prev.filter(id => id !== venueId) : [...prev, venueId]
-    );
-  };
-
-  const selectAllVenues = () => {
-    const availableVenueIds = venues
-      .filter(v => v.available_seats > reservedSlots)
-      .map(v => v.venue_id);
-    setSelectedVenueIds(availableVenueIds);
-  };
-
-  const clearVenues = () => {
-    setSelectedVenueIds([]);
+  const canProceedToStep = (step) => {
+    if (step === 2) return !!allocationDate && !!timeSlot;
+    if (step === 3) return !!selectedYear;
+    if (step === 4) return !!previewData;
+    return true;
   };
 
   const goToStep = (step) => {
     if (step < currentStep || canProceedToStep(step)) {
       setCurrentStep(step);
+      setError('');
     }
   };
 
-  const canProceedToStep = (step) => {
-    if (step === 2) return !!selectedYear;
-    if (step === 3) return !!selectedYear;
-    if (step === 4) return !!selectedYear && selectedVenueIds.length > 0;
-    return true;
-  };
-
-  const nextStep = () => {
-    if (currentStep < 4 && canProceedToStep(currentStep + 1)) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
+  const toggleVenue = (venueId) => {
+    setSelectedVenueIds(prev => prev.includes(venueId) ? prev.filter(id => id !== venueId) : [...prev, venueId]);
   };
 
   const handlePreview = async () => {
-    // Validate before making request
-    if (!selectedYear) {
-      setError('Please select a year first');
-      return;
-    }
-    if (!selectedVenueIds || selectedVenueIds.length === 0) {
-      setError('Please select at least one venue');
-      return;
-    }
-
-    setLoading(true);
     setError('');
+    setLoading(true);
     try {
-      const payload = {
-        year: parseInt(selectedYear),
-        venueIds: selectedVenueIds.map(id => parseInt(id)),
-        departments: selectedDepartments.length > 0 ? selectedDepartments : null,
-        reservedSlots: parseInt(reservedSlots) || 2,
-        allocationMode: 'department_wise',
-      };
-      console.log('Preview payload:', payload);
+      const payload = buildPayload();
       const response = await apiPost('/venue-allocation/preview', payload);
-      if (response.status === 401) {
-        setError('Session expired. Please log in again.');
+      const result = await getApiMessage(response, 'Failed to generate preview.');
+
+      if (!result.success) {
+        setPreviewData(null);
+        setError(result.message);
         return;
       }
-      const data = await response.json();
-      console.log('Preview response:', data);
-      if (data.success) {
-        setPreviewData(data.data);
-      } else {
-        setError(data.message || 'Failed to generate preview');
-      }
+
+      setAllocationResult(null);
+      setPreviewData(result.data);
+      setCurrentStep(4);
     } catch (err) {
-      console.error('Preview error:', err);
-      setError('Failed to generate preview: ' + (err.message || 'Unknown error'));
+      setError('Failed to generate preview.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleExecute = async () => {
-    // Validate before making request
-    if (!selectedYear) {
-      setError('Please select a year first');
-      return;
-    }
-    if (!selectedVenueIds || selectedVenueIds.length === 0) {
-      setError('Please select at least one venue');
-      return;
-    }
-
-    setLoading(true);
     setError('');
+    setLoading(true);
+
     try {
-      const payload = {
-        year: parseInt(selectedYear),
-        venueIds: selectedVenueIds.map(id => parseInt(id)),
-        departments: selectedDepartments.length > 0 ? selectedDepartments : null,
-        reservedSlots: parseInt(reservedSlots) || 2,
-        allocationMode: 'department_wise',
-      };
-      console.log('Execute payload:', payload);
+      const payload = buildPayload();
       const response = await apiPost('/venue-allocation/execute', payload);
-      if (response.status === 401) {
-        setError('Session expired. Please log in again.');
+      const result = await getApiMessage(response, 'Failed to execute allocation.');
+
+      if (!result.success) {
+        setError(result.message);
         return;
       }
-      const data = await response.json();
-      console.log('Execute response:', data);
-      if (data.success) {
-        setAllocationResult(data.data);
-      } else {
-        setError(data.message || 'Failed to execute allocation');
-      }
+
+      setAllocationResult(result.data);
+      await loadVenues();
     } catch (err) {
-      console.error('Execute error:', err);
-      setError('Failed to execute allocation: ' + (err.message || 'Unknown error'));
+      setError('Failed to execute allocation.');
     } finally {
       setLoading(false);
     }
   };
 
-  const resetAll = () => {
-    setCurrentStep(1);
-    setSelectedYear(null);
-    setSelectedDepartments([]);
-    setSelectedVenueIds([]);
-    setPreviewData(null);
-    setAllocationResult(null);
-    setError('');
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP PROGRESS COMPONENT
-  // ═══════════════════════════════════════════════════════════════════════════
-  const steps = [
-    { num: 1, title: 'Select Year', desc: 'Choose student year' },
-    { num: 2, title: 'Select Departments', desc: 'Choose departments to merge' },
-    { num: 3, title: 'Select Venues', desc: 'Choose venues for allocation' },
-    { num: 4, title: 'Preview & Execute', desc: 'Review and confirm' },
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
+  const steps = [
+    { num: 1, title: 'Schedule', icon: <Clock size={18} /> },
+    { num: 2, title: 'Students', icon: <Users size={18} /> },
+    { num: 3, title: 'Venues', icon: <Building2 size={18} /> },
+    { num: 4, title: 'Review', icon: <LayoutDashboard size={18} /> },
+  ];
+
   return (
-    <div className="va-root">
-      {/* ═══ STICKY HEADER ═══════════════════════════════════════════════════ */}
-      <div className="va-sticky-header">
-        <div className="va-header-container">
-          <div className="va-header-left-section">
-            <button className="va-back-btn" onClick={() => navigate('/admin-tools')}>
-              <ArrowLeft size={18} />
-              <span>Back</span>
-            </button>
-            <h1 className="va-page-title">Venue Allocation</h1>
-          </div>
-          {selectedYear && (
-            <div className="va-header-right-section">
-              <div className="va-header-stat">
-                <Calendar size={14} />
-                <span>Year {selectedYear}</span>
-              </div>
-              <div className="va-header-stat">
-                <Users size={14} />
-                <span>{getStudentCount()} students</span>
-              </div>
-              <div className="va-header-stat va-header-stat-green">
-                <Building2 size={14} />
-                <span>{getTotalCapacity()} capacity</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="admin-layout-root">
+      {/* HEADER */}
+      <header className="admin-header">
+        <button className="btn-back" onClick={() => navigate('/admin-tools')}>
+          <ArrowLeft size={18} /> Back to Dashboard
+        </button>
+        <h1>Smart Venue Allocation</h1>
+      </header>
 
-      {/* ═══ STEP PROGRESS BAR ═══════════════════════════════════════════════ */}
-      <div className="va-progress-bar">
-        {steps.map((step, idx) => (
-          <React.Fragment key={step.num}>
-            <div 
-              className={`va-progress-step ${currentStep === step.num ? 'va-step-active' : ''} ${currentStep > step.num ? 'va-step-completed' : ''}`}
-              onClick={() => goToStep(step.num)}
-            >
-              <div className="va-step-circle">
-                {currentStep > step.num ? <CheckCircle size={18} /> : step.num}
-              </div>
-              <div className="va-step-text">
-                <span className="va-step-title">{step.title}</span>
-                <span className="va-step-desc">{step.desc}</span>
-              </div>
-            </div>
-            {idx < steps.length - 1 && (
-              <div className={`va-step-line ${currentStep > step.num ? 'va-line-completed' : ''}`} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-
-      {/* ═══ ERROR BANNER ════════════════════════════════════════════════════ */}
       {error && (
-        <div className="va-error-banner">
-          <AlertTriangle size={18} />
-          <span>{error}</span>
+        <div className="alert-banner error">
+          <AlertTriangle size={18} /> <span>{error}</span>
           <button onClick={() => setError('')}><X size={16} /></button>
         </div>
       )}
 
-      {/* ═══ MAIN CONTENT ════════════════════════════════════════════════════ */}
-      <div className="va-content-area">
-        
-        {/* ─────────────────────────────────────────────────────────────────────
-            STEP 1: SELECT YEAR
-        ────────────────────────────────────────────────────────────────────── */}
-        {currentStep === 1 && (
-          <div className="va-step-content">
-            <div className="va-step-header">
-              <Calendar size={24} className="va-step-icon" />
-              <div>
-                <h2>Select Academic Year</h2>
-                <p>Choose which year's students you want to allocate to venues</p>
-              </div>
-            </div>
+      <div className="admin-workspace">
+        {/* LEFT SIDEBAR: Vertical Navigation */}
+        <aside className="step-navigation">
+          {steps.map((step) => {
+            const isActive = currentStep === step.num;
+            const isCompleted = currentStep > step.num;
+            const isLocked = !canProceedToStep(step.num) && currentStep < step.num;
 
-            {loading ? (
-              <div className="va-loading">
-                <RefreshCw size={20} className="va-spin" />
-                <span>Loading years...</span>
+            return (
+              <div 
+                key={step.num} 
+                className={`nav-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${isLocked ? 'locked' : ''}`}
+                onClick={() => !isLocked && goToStep(step.num)}
+              >
+                <div className="nav-icon-box">
+                  {isCompleted ? <Check size={16} /> : step.icon}
+                </div>
+                <span className="nav-label">{step.title}</span>
               </div>
-            ) : (
-              <div className="va-year-grid">
-                {years.map((year) => (
-                  <div
-                    key={year.year}
-                    className={`va-year-card ${selectedYear === year.year ? 'va-selected' : ''}`}
-                    onClick={() => selectYear(year.year)}
-                  >
-                    <div className="va-year-header">
-                      <span className="va-year-badge">Year {year.year}</span>
-                      {selectedYear === year.year && <CheckCircle size={20} className="va-check" />}
-                    </div>
-                    <div className="va-year-body">
-                      <div className="va-year-stat">
-                        <span className="va-stat-value">{year.totalStudents}</span>
-                        <span className="va-stat-label">Total Students</span>
-                      </div>
-                      <div className="va-year-stat va-stat-highlight">
-                        <span className="va-stat-value">{year.unallocatedStudents}</span>
-                        <span className="va-stat-label">Unallocated</span>
-                      </div>
+            );
+          })}
+        </aside>
+
+        {/* CENTER: Main Configuration Area */}
+        <main className="main-config-area">
+          <div className="config-card">
+            
+            {/* STEP 1: SCHEDULE */}
+            {currentStep === 1 && (
+              <div className="fade-in">
+                <div className="section-title">
+                  <h2>When is the event?</h2>
+                  <p>Select the date and time to accurately check venue availability.</p>
+                </div>
+                
+                <div className="form-grid">
+                  <div className="input-group">
+                    <label>Allocation Date</label>
+                    <div className="input-wrapper">
+                      <Calendar className="input-icon" size={18} />
+                      <input 
+                        type="date" 
+                        value={allocationDate} 
+                        onChange={(e) => setAllocationDate(e.target.value)}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-
-            <div className="va-step-actions">
-              <div></div>
-              <button 
-                className="va-btn va-btn-primary" 
-                onClick={nextStep}
-                disabled={!selectedYear}
-              >
-                Continue <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────────────────
-            STEP 2: SELECT DEPARTMENTS
-        ────────────────────────────────────────────────────────────────────── */}
-        {currentStep === 2 && (
-          <div className="va-step-content">
-            <div className="va-step-header">
-              <Users size={24} className="va-step-icon" />
-              <div>
-                <h2>Select Departments to Merge</h2>
-                <p>Choose departments to combine in the same venues for collaboration. Leave empty to include all.</p>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="va-loading">
-                <RefreshCw size={20} className="va-spin" />
-                <span>Loading departments...</span>
-              </div>
-            ) : (
-              <>
-                <div className="va-dept-info">
-                  <Info size={16} />
-                  <span>
-                    {selectedDepartments.length === 0 
-                      ? `All ${departments.length} departments will be included (${getStudentCount()} students)` 
-                      : `${selectedDepartments.length} department(s) selected (${getStudentCount()} students)`}
-                  </span>
-                </div>
-
-                <div className="va-dept-grid">
-                  {departments.map((dept) => (
-                    <div
-                      key={dept.department}
-                      className={`va-dept-card ${selectedDepartments.includes(dept.department) ? 'va-selected' : ''}`}
-                      onClick={() => toggleDepartment(dept.department)}
-                    >
-                      <div className="va-dept-check">
-                        {selectedDepartments.includes(dept.department) && <CheckCircle size={18} />}
-                      </div>
-                      <div className="va-dept-info-text">
-                        <span className="va-dept-name">{dept.department}</span>
-                        <span className="va-dept-count">{dept.unallocated_students} students</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {selectedDepartments.length > 0 && (
-                  <div className="va-merge-preview">
-                    <h4>Merge Preview</h4>
-                    <p>These departments will be placed together in venues:</p>
-                    <div className="va-merge-chips">
-                      {selectedDepartments.map(dept => (
-                        <span key={dept} className="va-merge-chip">{dept}</span>
+                  
+                  <div className="input-group">
+                    <label>Time Slot</label>
+                    <div className="radio-card-group">
+                      {TIME_SLOT_OPTIONS.map((slot) => (
+                        <label key={slot.value} className={`radio-card ${timeSlot === slot.value ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="slot"
+                            value={slot.value}
+                            checked={timeSlot === slot.value}
+                            onChange={(e) => setTimeSlot(e.target.value)}
+                          />
+                          <div className="rc-content">
+                            <span className="rc-title">{slot.title}</span>
+                            <span className="rc-desc">{slot.description}</span>
+                          </div>
+                        </label>
                       ))}
                     </div>
                   </div>
-                )}
-              </>
+                </div>
+
+                <div className="step-footer">
+                  <button className="btn-primary" onClick={() => goToStep(2)} disabled={!allocationDate || !timeSlot}>
+                    Next: Select Students <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
             )}
 
-            <div className="va-step-actions">
-              <button className="va-btn va-btn-ghost" onClick={prevStep}>
-                <ArrowLeft size={16} /> Back
-              </button>
-              <button className="va-btn va-btn-primary" onClick={nextStep}>
-                Continue <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
+            {/* STEP 2: STUDENTS */}
+            {currentStep === 2 && (
+              <div className="fade-in">
+                <div className="section-title">
+                  <h2>Who is attending?</h2>
+                  <p>Select the academic year and filter by departments if necessary.</p>
+                </div>
 
-        {/* ─────────────────────────────────────────────────────────────────────
-            STEP 3: SELECT VENUES
-        ────────────────────────────────────────────────────────────────────── */}
-        {currentStep === 3 && (
-          <div className="va-step-content">
-            <div className="va-step-header">
-              <Building2 size={24} className="va-step-icon" />
-              <div>
-                <h2>Select Venues</h2>
-                <p>Choose venues where students will be allocated. Real-time capacity shown.</p>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="va-loading">
-                <RefreshCw size={20} className="va-spin" />
-                <span>Loading venues...</span>
-              </div>
-            ) : (
-              <>
-                {/* Capacity Summary */}
-                <div className={`va-capacity-summary ${getTotalCapacity() >= getStudentCount() ? 'va-sufficient' : 'va-insufficient'}`}>
-                  <div className="va-capacity-items">
-                    <div className="va-capacity-item">
-                      <span className="va-cap-label">Selected Venues</span>
-                      <span className="va-cap-value">{getSelectedVenueCount()}</span>
-                    </div>
-                    <div className="va-capacity-item">
-                      <span className="va-cap-label">Total Capacity</span>
-                      <span className="va-cap-value">{getTotalCapacity()}</span>
-                    </div>
-                    <div className="va-capacity-item">
-                      <span className="va-cap-label">Students to Allocate</span>
-                      <span className="va-cap-value va-highlight">{getStudentCount()}</span>
-                    </div>
-                  </div>
-                  <div className="va-capacity-status">
-                    {getTotalCapacity() >= getStudentCount() ? (
-                      <><CheckCircle size={16} /> Capacity is sufficient</>
+                {loading ? <div className="loader"><RefreshCw className="spin" /> Loading data...</div> : (
+                  <>
+                    <h3 className="sub-heading">Academic Year</h3>
+                    {years.length === 0 ? (
+                      <div className="empty-state compact">
+                        <p>No student years are available for allocation.</p>
+                      </div>
                     ) : (
-                      <><AlertTriangle size={16} /> Need {getStudentCount() - getTotalCapacity()} more seats</>
+                      <div className="pill-group">
+                        {years.map(y => (
+                          <button key={y.year} className={`pill ${selectedYear === y.year ? 'active' : ''}`} onClick={() => setSelectedYear(y.year)}>
+                            Year {y.year}
+                          </button>
+                        ))}
+                      </div>
                     )}
-                  </div>
-                </div>
 
-                {/* Quick Actions */}
-                <div className="va-venue-actions">
-                  <button className="va-btn va-btn-sm va-btn-ghost" onClick={selectAllVenues}>
-                    Select All
-                  </button>
-                  <button className="va-btn va-btn-sm va-btn-ghost" onClick={clearVenues}>
-                    Clear All
-                  </button>
-                  <div className="va-reserved-input">
-                    <label>Reserved slots per venue:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={reservedSlots}
-                      onChange={(e) => setReservedSlots(parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-
-                {/* Venue Grid */}
-                <div className="va-venue-grid">
-                  {venues.map((venue) => {
-                    const effectiveCapacity = Math.max(0, (venue.available_seats || venue.capacity) - reservedSlots);
-                    const isSelected = selectedVenueIds.includes(venue.venue_id);
-                    const isFull = effectiveCapacity <= 0;
-                    
-                    return (
-                      <div
-                        key={venue.venue_id}
-                        className={`va-venue-card ${isSelected ? 'va-selected' : ''} ${isFull ? 'va-disabled' : ''}`}
-                        onClick={() => !isFull && toggleVenue(venue.venue_id)}
-                      >
-                        <div className="va-venue-header">
-                          <span className="va-venue-name">{venue.venue_name}</span>
-                          {isSelected && <CheckCircle size={18} className="va-check" />}
+                    {selectedYear && (
+                      <div className="mt-6 fade-in">
+                        <div className="flex-between mb-4">
+                          <h3 className="sub-heading m-0">Departments</h3>
+                          <label className="toggle-switch">
+                            <input type="checkbox" checked={mergeDepartments} onChange={(e) => setMergeDepartments(e.target.checked)} />
+                            <span className="slider"></span>
+                            <span className="toggle-label">Interleave Seating</span>
+                          </label>
                         </div>
-                        {venue.location && (
-                          <div className="va-venue-location">
-                            <MapPin size={12} /> {venue.location}
+                        
+                        {departments.length === 0 ? (
+                          <div className="empty-state compact">
+                            <p>No departments with unallocated students were found for Year {selectedYear}.</p>
+                          </div>
+                        ) : (
+                          <div className="grid-cards">
+                            {departments.map(dept => (
+                              <div key={dept.department} className={`selection-card ${selectedDepartments.includes(dept.department) ? 'selected' : ''}`} 
+                                   onClick={() => setSelectedDepartments(prev => prev.includes(dept.department) ? prev.filter(d => d !== dept.department) : [...prev, dept.department])}>
+                                <div className="sc-header">
+                                  <strong>{dept.department}</strong>
+                                  <div className="checkbox">{selectedDepartments.includes(dept.department) && <Check size={14} />}</div>
+                                </div>
+                                <span className="sc-meta">{dept.unallocated_students} Students</span>
+                              </div>
+                            ))}
                           </div>
                         )}
-                        <div className="va-venue-stats">
-                          <div className="va-venue-stat">
-                            <span className="va-venue-stat-value">{venue.capacity}</span>
-                            <span className="va-venue-stat-label">Total</span>
-                          </div>
-                          <div className="va-venue-stat">
-                            <span className="va-venue-stat-value">{venue.current_students || 0}</span>
-                            <span className="va-venue-stat-label">Current</span>
-                          </div>
-                          <div className="va-venue-stat va-stat-available">
-                            <span className="va-venue-stat-value">{effectiveCapacity}</span>
-                            <span className="va-venue-stat-label">Available</span>
-                          </div>
-                        </div>
-                        {isFull && <div className="va-venue-full-tag">Full</div>}
                       </div>
-                    );
-                  })}
+                    )}
+                  </>
+                )}
+
+                <div className="step-footer">
+                  <button className="btn-secondary" onClick={() => goToStep(1)}>Back</button>
+                  <button className="btn-primary" onClick={() => goToStep(3)} disabled={!selectedYear}>
+                    Next: Choose Venues <ChevronRight size={18} />
+                  </button>
                 </div>
-              </>
+              </div>
             )}
 
-            <div className="va-step-actions">
-              <button className="va-btn va-btn-ghost" onClick={prevStep}>
-                <ArrowLeft size={16} /> Back
-              </button>
-              <button 
-                className="va-btn va-btn-primary" 
-                onClick={() => { handlePreview(); nextStep(); }}
-                disabled={selectedVenueIds.length === 0}
-              >
-                Preview Allocation <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────────────────
-            STEP 4: PREVIEW & EXECUTE
-        ────────────────────────────────────────────────────────────────────── */}
-        {currentStep === 4 && (
-          <div className="va-step-content">
-            {allocationResult ? (
-              /* SUCCESS STATE */
-              <>
-                <div className="va-success-banner">
-                  <CheckCircle size={32} />
+            {/* STEP 3: VENUES */}
+            {currentStep === 3 && (
+              <div className="fade-in">
+                <div className="section-title flex-between">
                   <div>
-                    <h2>Allocation Complete!</h2>
-                    <p>
-                      Successfully allocated <strong>{allocationResult.totalAllocated}</strong> students 
-                      to <strong>{allocationResult.venuesUsed}</strong> venues.
+                    <h2>Available Venues</h2>
+                    <p>Select rooms to accommodate {getStudentCount()} students.</p>
+                  </div>
+                  <div className="input-group small-input">
+                    <label>Buffer Seats/Room</label>
+                    <input type="number" min="0" value={reservedSlots} onChange={(e) => setReservedSlots(parseInt(e.target.value)||0)} />
+                  </div>
+                </div>
+
+                {loading ? <div className="loader"><RefreshCw className="spin" /> Checking availability...</div> : (
+                  venues.length === 0 ? (
+                    <div className="empty-state">
+                      <p>No active venues are available for the selected schedule.</p>
+                    </div>
+                  ) : (
+                    <div className="venue-list">
+                      {venues.map(venue => {
+                        const effectiveCap = Math.max(
+                          0,
+                          (Number.isFinite(Number(venue.available_seats)) ? Number(venue.available_seats) : Number(venue.capacity) || 0) - reservedSlots,
+                        );
+                        const isUnavailable = effectiveCap <= 0;
+                        const isSelected = selectedVenueIds.includes(venue.venue_id);
+
+                        return (
+                          <div key={venue.venue_id} className={`venue-row ${isSelected ? 'selected' : ''} ${isUnavailable ? 'disabled' : ''}`}
+                               onClick={() => !isUnavailable && toggleVenue(venue.venue_id)}>
+                            <div className="vr-info">
+                              <div className="vr-checkbox">{isSelected && <Check size={14} />}</div>
+                              <div>
+                                <h4 className="m-0">{venue.venue_name}</h4>
+                                <span className="text-muted text-sm venue-location"><MapPin size={12}/> {venue.location || 'Campus Main'}</span>
+                              </div>
+                            </div>
+                            
+                            {isUnavailable ? (
+                              <span className="badge danger">No usable seats</span>
+                            ) : (
+                              <div className="vr-stats">
+                                <div className="stat-block">
+                                  <span>Total</span>
+                                  <strong>{venue.capacity}</strong>
+                                </div>
+                                <div className="stat-block">
+                                  <span>Occupied</span>
+                                  <strong>{venue.current_students || 0}</strong>
+                                </div>
+                                <div className="stat-block success-text">
+                                  <span>Usable</span>
+                                  <strong>{effectiveCap}</strong>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                <div className="step-footer">
+                  <button className="btn-secondary" onClick={() => goToStep(2)}>Back</button>
+                  <button className="btn-primary" onClick={handlePreview} disabled={!isCapacitySufficient}>
+                    Generate Preview <Zap size={18} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+             {/* STEP 4: PREVIEW */}
+             {currentStep === 4 && previewData && (
+              <div className="fade-in">
+                <div className="section-title">
+                  <h2>{allocationResult ? 'Allocation Complete' : 'Review Allocation'}</h2>
+                  <p>
+                    {allocationResult
+                      ? 'The selected students have been assigned to venues successfully.'
+                      : 'Please review the matrix before finalizing.'}
+                  </p>
+                </div>
+
+                <div className="summary-strip">
+                  <div className="summary-tile">
+                    <span className="summary-tile-label">Students</span>
+                    <strong>{previewData.summary?.totalStudents || getStudentCount()}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span className="summary-tile-label">Venues used</span>
+                    <strong>{allocationResult?.venuesUsed || previewData.summary?.totalVenuesUsed || 0}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span className="summary-tile-label">Buffer seats</span>
+                    <strong>{reservedSlots}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span className="summary-tile-label">Seating mode</span>
+                    <strong>{shouldGroupDepartments ? 'Interleaved' : 'Department wise'}</strong>
+                  </div>
+                </div>
+
+                {allocationResult ? (
+                  <div className="result-panel">
+                    <div className="result-banner success-text">
+                      <CheckCircle size={20} />
+                      <span>{allocationResult.totalAllocated} students were allocated across {allocationResult.venuesUsed} venues.</span>
+                    </div>
+
+                    <div className="matrix-grid">
+                      {allocationResult.allocation?.map((item) => (
+                        <div key={item.group_id} className="matrix-card result-card">
+                          <div className="mc-header">
+                            <strong>{item.venue_name}</strong>
+                            <span className="badge primary">+{item.newly_allocated}</span>
+                          </div>
+                          <div className="result-stats">
+                            <div className="flex-between text-sm mb-2">
+                              <span>Group</span>
+                              <strong>{item.group_name}</strong>
+                            </div>
+                            <div className="flex-between text-sm mb-2">
+                              <span>Existing students</span>
+                              <strong>{item.existing_students}</strong>
+                            </div>
+                            <div className="flex-between text-sm mb-2">
+                              <span>Newly allocated</span>
+                              <strong>{item.newly_allocated}</strong>
+                            </div>
+                            <div className="flex-between text-sm">
+                              <span>Final occupancy</span>
+                              <strong>{item.total_students} / {item.capacity}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="matrix-grid">
+                     {previewData.allocation?.map((item, idx) => (
+                       <div key={idx} className="matrix-card">
+                          <div className="mc-header">
+                            <strong>{item.venue?.venue_name}</strong>
+                            <span className="badge primary">{item.students?.length} Assigned</span>
+                          </div>
+                          <div className="mc-body">
+                            {item.departmentBreakdown && Object.entries(item.departmentBreakdown).map(([dept, count]) => (
+                              <div key={dept} className="flex-between text-sm mb-2">
+                                <span>{dept}</span>
+                                <strong>{count}</strong>
+                              </div>
+                            ))}
+                          </div>
+                       </div>
+                     ))}
+                  </div>
+                )}
+
+                <div className="review-details">
+                  <div className="review-block">
+                    <span className="summary-label">Selected venues</span>
+                    <div className="selected-chip-list">
+                      {selectedVenues.map((venue) => (
+                        <span key={venue.venue_id} className="selected-chip">{venue.venue_name}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="review-block">
+                    <span className="summary-label">Departments</span>
+                    <p className="review-copy">
+                      {targetDepartments.length > 0 ? targetDepartments.join(', ') : 'All departments in the selected year'}
                     </p>
                   </div>
                 </div>
 
-                <div className="va-result-grid">
-                  {allocationResult.allocation?.map((venue, idx) => (
-                    <div key={idx} className="va-result-card">
-                      <div className="va-result-header">
-                        <span className="va-result-name">{venue.venue_name}</span>
-                        <span className="va-result-badge">+{venue.newly_allocated}</span>
-                      </div>
-                      <div className="va-result-body">
-                        <span>{venue.existing_students} existing + {venue.newly_allocated} new = {venue.total_students}/{venue.capacity}</span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="step-footer">
+                  {allocationResult ? (
+                    <>
+                      <button className="btn-secondary" onClick={() => goToStep(3)}>Back to Edit</button>
+                      <button className="btn-primary" onClick={resetWizard}>Start New Allocation</button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn-secondary" onClick={() => goToStep(3)}>Back to Edit</button>
+                      <button className="btn-success" onClick={handleExecute} disabled={!canExecute}>
+                        {loading ? <><RefreshCw className="spin" size={18} /> Allocating...</> : <><CheckCircle size={18} /> Confirm & Allocate</>}
+                      </button>
+                    </>
+                  )}
                 </div>
-
-                <div className="va-step-actions va-actions-center">
-                  <button className="va-btn va-btn-primary" onClick={resetAll}>
-                    <RotateCcw size={16} /> New Allocation
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* PREVIEW STATE */
-              <>
-                <div className="va-step-header">
-                  <Zap size={24} className="va-step-icon" />
-                  <div>
-                    <h2>Preview Allocation</h2>
-                    <p>Review the allocation before confirming</p>
-                  </div>
-                </div>
-
-                {loading ? (
-                  <div className="va-loading">
-                    <RefreshCw size={20} className="va-spin" />
-                    <span>Generating preview...</span>
-                  </div>
-                ) : previewData ? (
-                  <>
-                    {/* Summary Cards */}
-                    <div className="va-preview-summary">
-                      <div className="va-summary-card va-card-blue">
-                        <span className="va-summary-value">{previewData.summary?.totalStudents || 0}</span>
-                        <span className="va-summary-label">Students</span>
-                      </div>
-                      <div className="va-summary-card va-card-green">
-                        <span className="va-summary-value">{previewData.summary?.totalVenuesUsed || 0}</span>
-                        <span className="va-summary-label">Venues</span>
-                      </div>
-                      <div className="va-summary-card va-card-amber">
-                        <span className="va-summary-value">{reservedSlots}</span>
-                        <span className="va-summary-label">Reserved/Venue</span>
-                      </div>
-                    </div>
-
-                    {/* Venue Allocation Details */}
-                    <div className="va-preview-details">
-                      <h4>Allocation Details</h4>
-                      {previewData.allocation?.map((venueAlloc, idx) => (
-                        <div key={idx} className="va-preview-item">
-                          <div className="va-preview-item-header">
-                            <span className="va-preview-venue">{venueAlloc.venue?.venue_name}</span>
-                            <span className="va-preview-count">{venueAlloc.students?.length || 0} students</span>
-                          </div>
-                          <div className="va-preview-depts">
-                            {venueAlloc.departmentBreakdown && Object.entries(venueAlloc.departmentBreakdown).map(([dept, count]) => (
-                              <span key={dept} className="va-preview-dept">{dept}: {count}</span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="va-no-preview">
-                    <AlertTriangle size={24} />
-                    <p>Failed to generate preview. Please go back and try again.</p>
-                  </div>
-                )}
-
-                <div className="va-step-actions">
-                  <button className="va-btn va-btn-ghost" onClick={prevStep}>
-                    <ArrowLeft size={16} /> Back
-                  </button>
-                  <button 
-                    className="va-btn va-btn-success" 
-                    onClick={handleExecute}
-                    disabled={loading || !previewData}
-                  >
-                    {loading ? (
-                      <><RefreshCw size={16} className="va-spin" /> Executing...</>
-                    ) : (
-                      <><Zap size={16} /> Execute Allocation</>
-                    )}
-                  </button>
-                </div>
-              </>
+              </div>
             )}
           </div>
-        )}
+        </main>
+
+        {/* RIGHT SIDEBAR: Live Summary Panel */}
+        <aside className="summary-panel">
+          <div className="summary-card sticky-top">
+            <h3>Live Overview</h3>
+            
+            <div className="summary-section">
+              <span className="summary-label">Schedule</span>
+              <div className="summary-value">
+                {allocationDate ? new Date(allocationDate).toLocaleDateString('en-GB') : 'Not selected'}
+                {selectedTimeSlot && (
+                  <span className="text-muted block text-sm">
+                    {selectedTimeSlot.title} · {selectedTimeSlot.description}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="summary-section">
+              <span className="summary-label">Target Audience</span>
+              <div className="summary-value">
+                {selectedYear ? `Year ${selectedYear}` : 'Not selected'}
+                {selectedDepartments.length > 0 && <span className="text-muted block text-sm">{selectedDepartments.length} Depts selected</span>}
+              </div>
+            </div>
+
+            <div className="capacity-widget">
+              <div className="flex-between mb-2">
+                <span className="text-sm font-medium">Capacity vs Required</span>
+                <span className="text-sm font-bold">{getTotalCapacity()} / {getStudentCount()}</span>
+              </div>
+              <div className="progress-bg">
+                <div 
+                  className={`progress-fill ${isCapacitySufficient ? 'bg-success' : 'bg-warning'}`} 
+                  style={{ width: `${Math.min((getTotalCapacity() / (getStudentCount() || 1)) * 100, 100)}%` }}
+                ></div>
+              </div>
+              {getStudentCount() > 0 && (
+                <p className={`text-xs mt-2 ${isCapacitySufficient ? 'success-text' : 'danger-text'}`}>
+                  {isCapacitySufficient 
+                    ? <><CheckCircle size={12} className="inline mr-1"/> Sufficient seats allocated</>
+                    : <><AlertTriangle size={12} className="inline mr-1"/> Need {getStudentCount() - getTotalCapacity()} more seats</>
+                  }
+                </p>
+              )}
+            </div>
+
+            {currentStep === 4 && !allocationResult && (
+              <button className="btn-success w-full mt-6" onClick={handleExecute} disabled={!canExecute}>
+                {loading ? <><RefreshCw className="spin" size={18} /> Allocating...</> : <><CheckCircle size={18} /> Confirm & Allocate</>}
+              </button>
+            )}
+
+            {allocationResult && (
+              <div className="result-sidebar-note mt-6">
+                <span className="summary-label">Last execution</span>
+                <p className="review-copy m-0">
+                  {allocationResult.totalAllocated} students allocated successfully.
+                </p>
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );
