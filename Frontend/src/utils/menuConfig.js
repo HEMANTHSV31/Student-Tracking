@@ -195,6 +195,12 @@ export const getMenuByRole = (user) => {
         icon: CalendarCheck,
         section: "academic",
       },
+      {
+        id: "my-assessment",
+        label: "My Assessment",
+        icon: MapPin,
+        section: "assessment",
+      },
     ];
 
     // Add EXTRA pages based on permissions

@@ -65,6 +65,7 @@ import TasksAssignments from "../pages/Student/Tasks&Assignments/Tasks&Assignmen
 import StudentRoadmap from "../pages/Student/RoadMap&Material/RoadMap&Material";
 import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
 import CodePracticePage from "../pages/Student/CodePractice/CodePracticePage";
+import MyAssessment from "../pages/Student/MyAssessment/MyAssessment";
 
 const AppNavigator = () => {
   const user = useAuthStore((s) => s.user);
@@ -169,6 +170,7 @@ const AppNavigator = () => {
             {/* Permission-based routes */}
             <Route path="courses" element={<CourseList />} />
             <Route path="question-bank/:courseId" element={<QuestionBank />} />
+            <Route path="my-assessment" element={<MyAssessment />} />
             <Route path="admin-tasks" element={<TaskHeader />} />
             <Route path="all-classes" element={<GroupsClasses />} />
           </Route>

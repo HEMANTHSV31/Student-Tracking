@@ -471,3 +471,90 @@ export const deleteAllocation = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete allocation' });
   }
 };
+
+/** GET /api/assessment-venues/my-allocation — student looks up their own seat */
+export const getMyAllocation = async (req, res) => {
+  try {
+    const [userRows] = await db.query(
+      'SELECT user_id, name, email, ID, department FROM users WHERE user_id = ? AND is_active = 1',
+      [req.user.user_id]
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    const student = userRows[0];
+    const rollNumber = (student.ID || '').trim().toUpperCase();
+    const email = (student.email || '').trim().toLowerCase();
+
+    if (!rollNumber && !email) {
+      return res.json({ success: true, allocations: [] });
+    }
+
+    const hasYearColumn = await columnExists('assessment_slots', 'year');
+    const yearSelect = hasYearColumn ? ', s.year' : '';
+
+    const [rows] = await db.query(`
+      SELECT aa.allocation_data, aa.overall_stats,
+             s.id AS slot_id, s.slot_label, s.slot_date, s.start_time, s.end_time,
+             s.subject_code${yearSelect}
+      FROM assessment_allocations aa
+      JOIN assessment_slots s ON s.id = aa.slot_id
+      WHERE s.status = 'Allocated'
+      ORDER BY s.slot_date DESC, s.start_time DESC
+    `);
+
+    const results = [];
+
+    for (const row of rows) {
+      const allocData = typeof row.allocation_data === 'string'
+        ? JSON.parse(row.allocation_data)
+        : row.allocation_data;
+
+      for (const [venueName, venueObj] of Object.entries(allocData)) {
+        const seatMap = venueObj.seatMap;
+        if (!Array.isArray(seatMap)) continue;
+
+        let found = false;
+        let myRow = null, myCol = null;
+
+        for (let r = 0; r < seatMap.length && !found; r++) {
+          for (let c = 0; c < seatMap[r].length && !found; c++) {
+            const seat = seatMap[r][c];
+            if (!seat) continue;
+            const seatRoll = (seat.rollNumber || '').trim().toUpperCase();
+            const seatEmail = (seat.email || '').trim().toLowerCase();
+            if ((rollNumber && seatRoll === rollNumber) || (email && seatEmail === email)) {
+              found = true;
+              myRow = seat.row;
+              myCol = seat.col;
+            }
+          }
+        }
+
+        if (found) {
+          results.push({
+            slot_id: row.slot_id,
+            slot_label: row.slot_label,
+            slot_date: row.slot_date,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            subject_code: row.subject_code,
+            year: hasYearColumn ? row.year : null,
+            venue: venueName,
+            myRow,
+            myCol,
+            myRoll: rollNumber,
+            rows_count: venueObj.rows,
+            columns_count: venueObj.columns,
+            seatMap: seatMap,
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, allocations: results });
+  } catch (error) {
+    console.error('Error fetching student allocation:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch your allocation' });
+  }
+};

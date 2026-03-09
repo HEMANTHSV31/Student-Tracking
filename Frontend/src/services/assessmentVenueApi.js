@@ -81,3 +81,9 @@ export const deleteAllocation = async (slotId) => {
   const res = await apiDelete(`${BASE}/allocations/${slotId}`);
   return res.json();
 };
+
+// ── Student: my allocation ───────────────────────────────────────────────
+export const fetchMyAllocation = async () => {
+  const res = await apiGet(`${BASE}/my-allocation`);
+  return res.json();
+};

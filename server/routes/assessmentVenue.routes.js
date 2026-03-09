@@ -5,6 +5,7 @@ import {
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
   saveAllocation, getAllocation, deleteAllocation,
+  getMyAllocation,
 } from '../controllers/assessmentVenue.controller.js';
 
 const router = Router();
@@ -25,6 +26,9 @@ router.put('/slots/:id/status', authenticate, updateSlotStatus);
 router.get('/clusters',            authenticate, getClusters);
 router.put('/clusters/:year',      authenticate, updateCluster);
 router.delete('/clusters/:year',   authenticate, deleteClusterYear);
+
+// Student self-lookup
+router.get('/my-allocation', authenticate, getMyAllocation);
 
 // Allocations
 router.post('/allocations',           authenticate, saveAllocation);
