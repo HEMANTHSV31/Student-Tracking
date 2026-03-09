@@ -3736,3 +3736,242 @@
     font-size: 0.68rem;
   }
 }
+
+  /* Final mobile overrides */
+  @media (max-width: 768px) {
+    .aa-root {
+      overflow-x: hidden;
+    }
+
+    .aa-sticky-header {
+      position: static;
+    }
+
+    .aa-header-container,
+    .aa-header-left-section,
+    .aa-header-right-section,
+    .aa-topbar,
+    .aa-topbar-left,
+    .aa-topbar-actions,
+    .aa-results-topbar,
+    .aa-results-topbar-right,
+    .aa-section-bar,
+    .aa-section-bar-right,
+    .aa-slot-info-header,
+    .aa-slot-info-main,
+    .aa-seat-section-header,
+    .aa-capacity-top,
+    .aa-vc-header,
+    .aa-vc-body,
+    .aa-cl-table-header,
+    .aa-cl-add-wrap,
+    .aa-vsrow-header,
+    .aa-vsrow-stats,
+    .aa-modal-footer,
+    .aa-form-row,
+    .aa-action-row,
+    .aa-action-row-centered,
+    .aa-pagination,
+    .aa-year-selector {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .aa-header-left-section,
+    .aa-header-right-section,
+    .aa-topbar-left,
+    .aa-topbar-actions,
+    .aa-results-topbar-right,
+    .aa-section-bar-right,
+    .aa-search-wrap,
+    .aa-date-filter-wrap,
+    .aa-year-selector,
+    .aa-cl-add-wrap,
+    .aa-cl-add-input {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .aa-toggle-container,
+    .aa-cl-year-pills,
+    .aa-cl-pattern-toggle,
+    .aa-pattern-btns,
+    .aa-venue-tabs,
+    .aa-slot-list,
+    .aa-seatmap-legend {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-wrap: nowrap;
+      scrollbar-width: thin;
+    }
+
+    .aa-toggle-tab,
+    .aa-cl-year-pill,
+    .aa-venue-tab,
+    .aa-slot-chip,
+    .aa-seatmap-legend .aa-chip {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .aa-card,
+    .aa-seat-section,
+    .aa-results-topbar,
+    .aa-section-bar,
+    .aa-topbar,
+    .aa-topbar-slots,
+    .aa-slot-info-header,
+    .aa-modal,
+    .aa-modal-header,
+    .aa-modal-body,
+    .aa-modal-footer {
+      border-radius: 14px;
+    }
+
+    .aa-setup-grid,
+    .aa-alloc-content.aa-alloc-has-data,
+    .aa-alloc-grid,
+    .aa-info-row,
+    .aa-cl-two-col,
+    .aa-filter-grid,
+    .aa-venue-grid,
+    .aa-sl-card-grid,
+    .aa-venue-readonly-grid,
+    .aa-venue-select-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .aa-stats-section {
+      gap: 12px;
+      margin-inline: -2px;
+      padding: 0 2px 8px;
+    }
+
+    .aa-stat-card {
+      flex: 0 0 min(82vw, 240px);
+      min-height: 92px;
+    }
+
+    .aa-btn,
+    .aa-btn-lg,
+    .aa-pagination-btn,
+    .aa-pat-btn,
+    .aa-year-btn,
+    .aa-cl-pat-btn,
+    .aa-action-row .aa-btn,
+    .aa-action-row-centered .aa-btn,
+    .aa-topbar-actions .aa-btn,
+    .aa-results-topbar-right .aa-btn,
+    .aa-section-bar-right .aa-btn,
+    .aa-modal-footer .aa-btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .aa-table-card,
+    .aa-slot-table-wrap,
+    .aa-table-wrap,
+    .aa-seatmap-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .aa-table,
+    .aa-slot-table,
+    .aa-cl-two-col .aa-table {
+      min-width: 640px;
+    }
+
+    .aa-modal {
+      width: calc(100vw - 20px);
+      max-width: calc(100vw - 20px);
+      max-height: calc(100vh - 20px);
+      margin: 10px;
+    }
+
+    .aa-modal-overlay {
+      padding: 10px;
+    }
+
+    .aa-seat-section-header {
+      gap: 12px;
+    }
+
+    .aa-seat-section-title {
+      flex-wrap: wrap;
+    }
+
+    .aa-seatmap {
+      min-width: max-content;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .aa-content-area,
+    .aa-sticky-header {
+      padding: 10px;
+    }
+
+    .aa-card,
+    .aa-seat-section,
+    .aa-results-topbar,
+    .aa-section-bar,
+    .aa-topbar,
+    .aa-topbar-slots,
+    .aa-slot-info-header,
+    .aa-modal-header,
+    .aa-modal-body,
+    .aa-modal-footer {
+      padding: 12px;
+    }
+
+    .aa-back-btn,
+    .aa-header-stat,
+    .aa-toggle-tab,
+    .aa-btn,
+    .aa-btn-lg,
+    .aa-year-btn,
+    .aa-cl-year-pill,
+    .aa-cl-pat-btn,
+    .aa-pat-btn,
+    .aa-pagination-btn {
+      min-height: 42px;
+      font-size: 0.8rem;
+    }
+
+    .aa-stat-card {
+      flex-basis: 85vw;
+      padding: 14px;
+    }
+
+    .aa-stat-icon {
+      width: 40px;
+      height: 40px;
+    }
+
+    .aa-stat-num {
+      font-size: 1.45rem;
+    }
+
+    .aa-card-title,
+    .aa-section-header,
+    .aa-seat-section-title,
+    .aa-slot-info-item,
+    .aa-cl-table-title {
+      font-size: 0.82rem;
+    }
+
+    .aa-table,
+    .aa-slot-table,
+    .aa-cl-two-col .aa-table {
+      min-width: 560px;
+    }
+
+    .aa-modal {
+      width: calc(100vw - 12px);
+      max-width: calc(100vw - 12px);
+      max-height: calc(100vh - 12px);
+      margin: 6px;
+    }
+  }

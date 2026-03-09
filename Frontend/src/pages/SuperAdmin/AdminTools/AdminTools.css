@@ -3,18 +3,19 @@
 */
 
 .at-container {
-  min-height: 100vh;
+  min-height: auto;
   background: #f8fafc;
-  padding: 18px 12px;
+  padding: 18px 12px 0;
 }
 
 .at-content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 8px 12px;
+  padding: 8px 12px 0;
 }
 
 .at-category { margin-bottom: 32px; }
+.at-category:last-child { margin-bottom: 0; }
 
 .at-category-title {
   font-family: 'Outfit', sans-serif;
@@ -61,8 +62,8 @@
 }
 
 @media (max-width: 640px) {
-  .at-container { padding: 12px 8px; }
-  .at-content { padding: 6px; }
+  .at-container { padding: 12px 8px 0; }
+  .at-content { padding: 6px 6px 0; }
   .at-cards-grid { grid-template-columns: 1fr; gap: 12px; }
   .at-card { padding: 12px; }
   .at-card-title { font-size:14px }
