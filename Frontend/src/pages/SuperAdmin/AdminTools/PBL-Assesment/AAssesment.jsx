@@ -196,6 +196,21 @@ const AAssesment = () => {
 
   const valuesMatch = (a, b) => normalizeCellValue(a).toLowerCase() === normalizeCellValue(b).toLowerCase();
 
+  const getColumnLabel = (index) => {
+    let value = index + 1;
+    let label = '';
+
+    while (value > 0) {
+      const remainder = (value - 1) % 26;
+      label = String.fromCharCode(65 + remainder) + label;
+      value = Math.floor((value - 1) / 26);
+    }
+
+    return label;
+  };
+
+  const getSeatLabel = (rowIndex, columnIndex) => `${getColumnLabel(columnIndex)}${rowIndex + 1}`;
+
   const formatDateLabel = (dateValue) => {
     if (!dateValue) return '—';
     const str = String(dateValue);
@@ -452,7 +467,7 @@ const AAssesment = () => {
           if (student) {
             map[row][col] = {
               ...student,
-              seatNumber: `${String.fromCharCode(65 + row)}${col + 1}`,
+              seatNumber: `${getColumnLabel(col)}${row + 1}`,
               row: row + 1,
               col: col + 1,
               venue: venue.venue_name,
@@ -643,11 +658,11 @@ const AAssesment = () => {
     Object.entries(venueAllocations)
       .filter(([, alloc]) => alloc.stats.totalStudents > 0)
       .forEach(([venueName, alloc]) => {
-        alloc.seatMap.forEach((row) => row.forEach((seat) => {
+        alloc.seatMap.forEach((row, rowIdx) => row.forEach((seat, colIdx) => {
           if (seat) allStudentRows.push({
             'S.No': allStudentRows.length + 1,
             Venue: venueName,
-            'Seat Number': seat.seatNumber,
+            'Seat Number': getSeatLabel(rowIdx, colIdx),
             'Roll Number': seat.rollNumber,
             Name: seat.name,
             Department: seat.normalizedDept,
@@ -1944,7 +1959,7 @@ const AAssesment = () => {
                 return (
                   <>
                     <div className="aa-seatmap-scroll">
-                      <div className="aa-seatmap">
+                      <div className="aa-seatmap" style={{ '--aa-seat-columns': COLS }}>
                         <div className="aa-cluster-header-row">
                           <div className="aa-rh-spacer" />
                           {Array.from({ length: COLS }, (_, i) => {
@@ -1961,33 +1976,39 @@ const AAssesment = () => {
                         </div>
                         <div className="aa-col-headers">
                           <div className="aa-rh-spacer" />
-                          {Array.from({ length: COLS }, (_, i) => <div key={i} className="aa-col-header">{i + 1}</div>)}
+                          {Array.from({ length: COLS }, (_, i) => (
+                            <div key={i} className="aa-col-header">{getColumnLabel(i)}</div>
+                          ))}
                         </div>
                         {alloc.seatMap.map((row, rowIdx) => (
                           <div key={rowIdx} className="aa-seat-row">
-                            <div className="aa-row-header">{String.fromCharCode(65 + rowIdx)}</div>
-                            {row.map((seat, colIdx) => (
-                              <div
-                                key={colIdx}
-                                className={`aa-seat ${seat ? 'aa-seat-occ' : 'aa-seat-empty'}`}
-                                style={{
-                                  background: seat ? getDepartmentColor(seat.normalizedDept) : '',
-                                }}
-                                title={seat
-                                  ? `${seat.seatNumber}  •  ${seat.name}\n${seat.rollNumber}  •  ${seat.normalizedDept}  •  Year ${seat.year}`
-                                  : 'Empty Seat'}
-                              >
-                                {seat ? (
-                                  <div className="aa-seat-inner">
-                                    <span className="aa-seat-no">{seat.seatNumber}</span>
-                                    <span className="aa-seat-dept">{seat.normalizedDept}</span>
-                                    <span className="aa-seat-name">{seat.name.split(' ')[0]}</span>
-                                  </div>
-                                ) : (
-                                  <span className="aa-seat-dash">—</span>
-                                )}
-                              </div>
-                            ))}
+                            <div className="aa-row-header">{rowIdx + 1}</div>
+                            {row.map((seat, colIdx) => {
+                              const seatLabel = getSeatLabel(rowIdx, colIdx);
+
+                              return (
+                                <div
+                                  key={colIdx}
+                                  className={`aa-seat ${seat ? 'aa-seat-occ' : 'aa-seat-empty'}`}
+                                  style={{
+                                    background: seat ? getDepartmentColor(seat.normalizedDept) : '',
+                                  }}
+                                  title={seat
+                                    ? `${seatLabel}  •  ${seat.name}\n${seat.rollNumber}  •  ${seat.normalizedDept}  •  Year ${seat.year}`
+                                    : 'Empty Seat'}
+                                >
+                                  {seat ? (
+                                    <div className="aa-seat-inner">
+                                      <span className="aa-seat-no">{seatLabel}</span>
+                                      <span className="aa-seat-dept">{seat.normalizedDept}</span>
+                                      <span className="aa-seat-name">{seat.name.split(' ')[0]}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="aa-seat-dash">—</span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         ))}
                       </div>

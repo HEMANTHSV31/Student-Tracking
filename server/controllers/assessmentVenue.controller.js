@@ -1,5 +1,28 @@
 import db from '../config/db.js';
 
+const columnExistsCache = new Map();
+
+async function columnExists(tableName, columnName) {
+  const cacheKey = `${tableName}.${columnName}`;
+  if (columnExistsCache.has(cacheKey)) {
+    return columnExistsCache.get(cacheKey);
+  }
+
+  const [rows] = await db.query(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+
+  const exists = rows.length > 0;
+  columnExistsCache.set(cacheKey, exists);
+  return exists;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Assessment Venues
 // ─────────────────────────────────────────────────────────────────────
@@ -178,6 +201,7 @@ export const getSlots = async (req, res) => {
 export const createSlot = async (req, res) => {
   try {
     const { slot_date, start_time, end_time, slot_label, subject_code, year } = req.body;
+    const hasYearColumn = await columnExists('assessment_slots', 'year');
 
     if (!slot_date || !start_time || !end_time) {
       return res.status(400).json({
@@ -187,29 +211,56 @@ export const createSlot = async (req, res) => {
     }
 
     // Check for duplicate slot (same date + time range + year)
-    const [dup] = await db.query(
-      `SELECT id FROM assessment_slots
-       WHERE slot_date = ? AND start_time = ? AND end_time = ? AND year = ?`,
-      [slot_date, start_time, end_time, year || 1]
-    );
+    let duplicateQuery = `
+      SELECT id FROM assessment_slots
+      WHERE slot_date = ? AND start_time = ? AND end_time = ?`;
+    const duplicateParams = [slot_date, start_time, end_time];
+
+    if (hasYearColumn) {
+      duplicateQuery += ' AND year = ?';
+      duplicateParams.push(year || 1);
+    }
+
+    const [dup] = await db.query(duplicateQuery, duplicateParams);
     if (dup.length > 0) {
+      const duplicateMessage = hasYearColumn
+        ? `A slot already exists on ${slot_date} at ${start_time} - ${end_time} for Year ${year || 1}. Please choose a different time.`
+        : `A slot already exists on ${slot_date} at ${start_time} - ${end_time}. Please choose a different time.`;
+
       return res.status(409).json({
         success: false,
-        message: `A slot already exists on ${slot_date} at ${start_time} - ${end_time} for Year ${year || 1}. Please choose a different time.`,
+        message: duplicateMessage,
       });
     }
 
     // Create the slot
+    const insertColumns = ['slot_date', 'start_time', 'end_time', 'slot_label', 'subject_code'];
+    const insertValues = [slot_date, start_time, end_time, slot_label || null, subject_code || null];
+
+    if (hasYearColumn) {
+      insertColumns.push('year');
+      insertValues.push(year || 1);
+    }
+
+    const placeholders = insertColumns.map(() => '?').join(', ');
     const [result] = await db.query(
-      `INSERT INTO assessment_slots (slot_date, start_time, end_time, slot_label, subject_code, year)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [slot_date, start_time, end_time, slot_label || null, subject_code || null, year || 1]
+      `INSERT INTO assessment_slots (${insertColumns.join(', ')})
+       VALUES (${placeholders})`,
+      insertValues
     );
 
     res.status(201).json({
       success: true,
       message: 'Slot created successfully',
-      data: { id: result.insertId, slot_date, start_time, end_time, slot_label, subject_code, year },
+      data: {
+        id: result.insertId,
+        slot_date,
+        start_time,
+        end_time,
+        slot_label,
+        subject_code,
+        year: hasYearColumn ? (year || 1) : null,
+      },
     });
   } catch (error) {
     console.error('Error creating slot:', error);
@@ -362,9 +413,12 @@ export const saveAllocation = async (req, res) => {
 export const getAllocation = async (req, res) => {
   try {
     const { slotId } = req.params;
+    const hasYearColumn = await columnExists('assessment_slots', 'year');
+
+    const yearSelect = hasYearColumn ? ', s.year' : '';
 
     const [rows] = await db.query(`
-      SELECT aa.*, s.slot_label, s.slot_date, s.start_time, s.end_time, s.year, s.subject_code
+      SELECT aa.*, s.slot_label, s.slot_date, s.start_time, s.end_time${yearSelect}, s.subject_code
       FROM assessment_allocations aa
       JOIN assessment_slots s ON s.id = aa.slot_id
       WHERE aa.slot_id = ?
@@ -391,7 +445,7 @@ export const getAllocation = async (req, res) => {
         slot_date: allocation.slot_date,
         start_time: allocation.start_time,
         end_time: allocation.end_time,
-        year: allocation.year,
+        year: hasYearColumn ? allocation.year : null,
         subject_code: allocation.subject_code,
         created_at: allocation.created_at,
         updated_at: allocation.updated_at,

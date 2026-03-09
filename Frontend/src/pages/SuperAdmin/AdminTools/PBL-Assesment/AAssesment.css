@@ -684,7 +684,8 @@
 .aa-results-root {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
+  width: 100%;
 }
 
 /* ─── Top Action Bar ──────────────────────────────────────────── */
@@ -693,12 +694,12 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
-  background: var(--aa-surface);
-  border: 1px solid var(--aa-border);
-  border-radius: var(--aa-radius);
-  padding: 12px 18px;
-  box-shadow: var(--aa-shadow-sm);
+  gap: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #dbe6f3;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .aa-results-topbar-right {
@@ -706,21 +707,21 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 /* ─── Overall Stats Row ───────────────────────────────────────── */
 .aa-stats-section {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   gap: 16px;
-}
-
-@media (max-width: 860px) {
-  .aa-stats-section { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 480px) {
-  .aa-stats-section { grid-template-columns: 1fr 1fr; }
+  align-items: stretch;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding-bottom: 6px;
 }
 
 .aa-stat-card {
@@ -728,10 +729,28 @@
   align-items: center;
   gap: 16px;
   padding: 18px 20px;
-  border-radius: var(--aa-radius);
-  box-shadow: var(--aa-shadow);
+  min-height: 102px;
+  width: 100%;
+  border-radius: 18px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
   border: 1px solid transparent;
   color: #fff;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  flex: 1 0 220px;
+}
+
+.aa-stat-card > div:last-child {
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.aa-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.16);
 }
 
 .aa-stat-blue   { background: #3b82f6; }
@@ -743,12 +762,15 @@
 .aa-stat-icon {
   width: 44px;
   height: 44px;
-  background: rgba(255,255,255,.2);
-  border-radius: 10px;
+  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .aa-stat-num {
@@ -759,8 +781,25 @@
 
 .aa-stat-label {
   font-size: 0.8rem;
-  opacity: 0.88;
-  margin-top: 3px;
+  opacity: 0.9;
+  margin-top: 4px;
+  letter-spacing: 0.2px;
+}
+
+@media (max-width: 768px) {
+  .aa-stats-section {
+    gap: 12px;
+  }
+
+  .aa-stat-card {
+    flex-basis: 190px;
+    min-height: 94px;
+    padding: 16px;
+  }
+
+  .aa-stat-num {
+    font-size: 1.7rem;
+  }
 }
 
 /* ─── Info Row (2-col) ────────────────────────────────────────── */
@@ -864,6 +903,10 @@
 /* ─── Seat Section ────────────────────────────────────────────── */
 .aa-seat-section {
   padding: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
 }
 
 .aa-seat-section-header {
@@ -873,6 +916,8 @@
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e6edf5;
 }
 
 .aa-seat-section-title {
@@ -885,9 +930,14 @@
 }
 
 .aa-seat-subtitle {
-  font-weight: 400;
-  color: var(--aa-muted);
-  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  background: #eef4fb;
+  border-radius: 999px;
+  font-weight: 500;
+  color: #64748b;
+  font-size: 0.82rem;
 }
 
 /* ─── Venue Tabs ──────────────────────────────────────────────── */
@@ -895,31 +945,36 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-left: auto;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .aa-venue-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 9px 14px;
   font-size: 0.83rem;
   font-weight: 600;
   border: 1.5px solid var(--aa-border);
-  border-radius: 8px;
-  background: var(--aa-bg);
+  border-radius: 12px;
+  background: #f8fafc;
   color: var(--aa-muted);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.18s ease;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.45);
 }
 
 .aa-venue-tab:hover {
-  background: #e2e8f0;
+  background: #eef4fb;
+  border-color: #c7d7ea;
   color: var(--aa-text);
 }
 
 .aa-tab-active {
   color: #fff !important;
-  box-shadow: 0 2px 10px rgba(59,130,246,.32);
+  box-shadow: 0 10px 20px rgba(59,130,246,.22);
 }
 
 .aa-tab-badge {
@@ -975,15 +1030,20 @@
 /* ─── Seat Map ────────────────────────────────────────────────── */
 .aa-seatmap-scroll {
   overflow-x: auto;
-  padding-bottom: 8px;
+  overflow-y: hidden;
+  padding: 4px 0 10px;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .aa-seatmap {
   display: inline-block;
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 16px;
-  border: 1px solid var(--aa-border);
+  min-width: max-content;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 18px;
+  padding: 18px;
+  border: 1px solid #d7e1ec;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
 }
 
 .aa-col-headers {
@@ -1035,9 +1095,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
-  color: var(--aa-muted);
+  color: #475569;
   flex-shrink: 0;
   margin: 0 2px;
 }
@@ -1053,16 +1113,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  color: var(--aa-muted);
+  color: #475569;
   flex-shrink: 0;
 }
 
 .aa-seat {
   width: 72px;
   height: 72px;
-  border-radius: 7px;
+  border-radius: 12px;
   margin: 0 2px;
   display: flex;
   align-items: center;
@@ -1074,19 +1134,19 @@
 }
 
 .aa-seat-empty {
-  background: #f1f5f9;
+  background: rgba(255,255,255,0.52);
   border: 1.5px dashed #cbd5e1;
 }
 
 .aa-seat-occ {
-  border: 1.5px solid rgba(0,0,0,.12);
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  border: 1.5px solid rgba(15,23,42,.08);
+  box-shadow: 0 8px 16px rgba(15,23,42,.08);
   cursor: pointer;
 }
 
 .aa-seat-occ:hover {
-  transform: scale(1.08);
-  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 14px 22px rgba(15,23,42,.16);
   z-index: 10;
 }
 
@@ -1106,7 +1166,7 @@
   font-size: 0.65rem;
   font-weight: 700;
   color: #1e293b;
-  opacity: 0.75;
+  opacity: 0.8;
   line-height: 1;
 }
 
@@ -3082,4 +3142,597 @@
 .aa-muted {
   color: #94a3b8;
   font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FLUID SEATMAP OVERRIDES
+════════════════════════════════════════════════════════════════ */
+.aa-seatmap {
+  --aa-seat-columns: 1;
+  --aa-seat-gap: 4px;
+  --aa-seat-min-size: 72px;
+  --aa-row-header-size: 38px;
+  width: 100%;
+  min-width: calc(
+    var(--aa-row-header-size) +
+    (var(--aa-seat-columns) * var(--aa-seat-min-size)) +
+    (var(--aa-seat-columns) * var(--aa-seat-gap))
+  );
+  box-sizing: border-box;
+}
+
+.aa-cluster-header-row,
+.aa-col-headers,
+.aa-seat-row {
+  display: grid;
+  grid-template-columns: var(--aa-row-header-size) repeat(var(--aa-seat-columns), minmax(var(--aa-seat-min-size), 1fr));
+  gap: var(--aa-seat-gap);
+  align-items: stretch;
+}
+
+.aa-cluster-header-row,
+.aa-col-headers {
+  margin-bottom: 4px;
+}
+
+.aa-rh-spacer,
+.aa-row-header,
+.aa-cluster-header,
+.aa-col-header,
+.aa-seat {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.aa-rh-spacer {
+  min-height: 1px;
+}
+
+.aa-row-header {
+  height: auto;
+  min-height: var(--aa-seat-min-size);
+}
+
+.aa-cluster-header {
+  height: 24px;
+}
+
+.aa-col-header {
+  height: 28px;
+}
+
+.aa-seat {
+  height: auto;
+  min-height: var(--aa-seat-min-size);
+  aspect-ratio: 1 / 1;
+}
+
+@media (max-width: 1024px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 64px;
+    --aa-row-header-size: 34px;
+  }
+}
+
+@media (max-width: 768px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 56px;
+    --aa-row-header-size: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 48px;
+    --aa-row-header-size: 28px;
+    --aa-seat-gap: 3px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE LAYOUT
+════════════════════════════════════════════════════════════════ */
+@media (min-width: 1440px) {
+  .aa-content-area {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  .aa-card,
+  .aa-seat-section {
+    padding: 24px 28px;
+  }
+
+  .aa-stats-section {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1280px) {
+  .aa-header-left-section,
+  .aa-header-right-section,
+  .aa-results-topbar,
+  .aa-results-topbar-right,
+  .aa-topbar,
+  .aa-topbar-actions,
+  .aa-topbar-slots,
+  .aa-topbar-left,
+  .aa-section-bar,
+  .aa-section-bar-right,
+  .aa-slot-info-header,
+  .aa-slot-info-main,
+  .aa-seat-section-header,
+  .aa-year-selector {
+    flex-wrap: wrap;
+  }
+
+  .aa-setup-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .aa-alloc-content.aa-alloc-has-data,
+  .aa-alloc-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .aa-venue-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .aa-seat,
+  .aa-col-header,
+  .aa-cluster-header {
+    width: 64px;
+  }
+
+  .aa-seat,
+  .aa-row-header {
+    height: 64px;
+  }
+
+  .aa-seat-dept,
+  .aa-seat-name {
+    max-width: 58px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .aa-content-area {
+    padding: 14px;
+  }
+
+  .aa-card,
+  .aa-seat-section,
+  .aa-modal-body,
+  .aa-modal-header,
+  .aa-modal-footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .aa-header-container,
+  .aa-results-topbar,
+  .aa-topbar,
+  .aa-topbar-slots,
+  .aa-section-bar,
+  .aa-cl-table-header {
+    align-items: flex-start;
+  }
+
+  .aa-toggle-container,
+  .aa-cl-year-pills,
+  .aa-cl-pattern-toggle,
+  .aa-pattern-btns {
+    width: 100%;
+  }
+
+  .aa-toggle-container,
+  .aa-cl-year-pills,
+  .aa-venue-tabs {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .aa-toggle-tab,
+  .aa-cl-year-pill {
+    flex: 1 0 auto;
+    text-align: center;
+  }
+
+  .aa-setup-grid,
+  .aa-alloc-content.aa-alloc-has-data,
+  .aa-alloc-grid,
+  .aa-info-row,
+  .aa-cl-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .aa-stats-section {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  }
+
+  .aa-vc-body,
+  .aa-capacity-top,
+  .aa-vsrow-header,
+  .aa-slot-info-header,
+  .aa-cl-add-wrap {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .aa-date-filter-wrap,
+  .aa-search-wrap,
+  .aa-section-bar-right,
+  .aa-results-topbar-right,
+  .aa-topbar-actions,
+  .aa-topbar-left,
+  .aa-year-selector,
+  .aa-cl-add-wrap {
+    width: 100%;
+  }
+
+  .aa-search-wrap,
+  .aa-date-filter-wrap {
+    min-width: 0;
+  }
+
+  .aa-date-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .aa-table th,
+  .aa-table td,
+  .aa-slot-table th,
+  .aa-slot-table td {
+    padding: 12px 14px;
+  }
+
+  .aa-table {
+    min-width: 620px;
+  }
+
+  .aa-slot-table {
+    min-width: 760px;
+  }
+
+  .aa-seat,
+  .aa-col-header,
+  .aa-cluster-header {
+    width: 56px;
+  }
+
+  .aa-seat,
+  .aa-row-header {
+    height: 56px;
+  }
+
+  .aa-rh-spacer,
+  .aa-row-header {
+    width: 32px;
+  }
+
+  .aa-seat-dept {
+    font-size: 0.66rem;
+    max-width: 50px;
+  }
+
+  .aa-seat-name,
+  .aa-seat-no {
+    max-width: 50px;
+    font-size: 0.56rem;
+  }
+
+  .aa-stat-num {
+    font-size: 1.6rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .aa-sticky-header {
+    padding: 10px 12px;
+  }
+
+  .aa-content-area {
+    padding: 12px;
+  }
+
+  .aa-card,
+  .aa-seat-section,
+  .aa-section-bar,
+  .aa-results-topbar,
+  .aa-topbar-slots,
+  .aa-slot-info-header,
+  .aa-year-selector,
+  .aa-modal-body,
+  .aa-modal-header,
+  .aa-modal-footer {
+    padding: 14px;
+  }
+
+  .aa-header-left-section,
+  .aa-header-right-section,
+  .aa-action-row,
+  .aa-action-row-centered,
+  .aa-modal-footer,
+  .aa-form-row,
+  .aa-pattern-btns,
+  .aa-dept-add-row,
+  .aa-cl-add-wrap,
+  .aa-capacity-info,
+  .aa-vsrow-stats,
+  .aa-slot-list,
+  .aa-seatmap-legend,
+  .aa-venue-tabs,
+  .aa-year-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aa-btn,
+  .aa-pagination-btn,
+  .aa-pat-btn,
+  .aa-year-btn,
+  .aa-cl-pat-btn {
+    justify-content: center;
+  }
+
+  .aa-action-row,
+  .aa-action-row-centered,
+  .aa-topbar-actions,
+  .aa-results-topbar-right,
+  .aa-section-bar-right {
+    width: 100%;
+  }
+
+  .aa-action-row .aa-btn,
+  .aa-action-row-centered .aa-btn,
+  .aa-topbar-actions .aa-btn,
+  .aa-results-topbar-right .aa-btn,
+  .aa-section-bar-right .aa-btn,
+  .aa-modal-footer .aa-btn {
+    width: 100%;
+  }
+
+  .aa-filter-grid,
+  .aa-venue-grid,
+  .aa-sl-card-grid,
+  .aa-venue-readonly-grid,
+  .aa-venue-select-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .aa-stats-section {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .aa-pagination {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .aa-search-wrap,
+  .aa-date-filter-wrap,
+  .aa-cl-add-input,
+  .aa-topbar-left,
+  .aa-topbar-actions,
+  .aa-section-bar-right,
+  .aa-results-topbar-right {
+    width: 100%;
+  }
+
+  .aa-modal {
+    max-width: 100%;
+    max-height: calc(100vh - 24px);
+  }
+
+  .aa-venue-card,
+  .aa-sl-card,
+  .aa-table-card,
+  .aa-slot-table-wrap {
+    border-radius: 10px;
+  }
+
+  .aa-seatmap {
+    padding: 12px;
+  }
+
+  .aa-venue-tabs {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .aa-seat,
+  .aa-col-header,
+  .aa-cluster-header {
+    width: 48px;
+    margin: 0 1px;
+  }
+
+  .aa-seat,
+  .aa-row-header {
+    height: 48px;
+  }
+
+  .aa-col-header,
+  .aa-row-header,
+  .aa-cluster-header {
+    font-size: 0.62rem;
+  }
+
+  .aa-seat-inner {
+    padding: 2px;
+  }
+
+  .aa-seat-dept,
+  .aa-seat-name,
+  .aa-seat-no {
+    max-width: 42px;
+  }
+
+  .aa-seat-dept {
+    font-size: 0.58rem;
+  }
+
+  .aa-seat-name,
+  .aa-seat-no {
+    font-size: 0.5rem;
+  }
+
+  .aa-stat-card {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .aa-sticky-header,
+  .aa-content-area {
+    padding: 10px;
+  }
+
+  .aa-card,
+  .aa-seat-section,
+  .aa-results-topbar,
+  .aa-topbar-slots,
+  .aa-section-bar,
+  .aa-slot-info-header,
+  .aa-year-selector,
+  .aa-modal-header,
+  .aa-modal-body,
+  .aa-modal-footer {
+    padding: 12px;
+  }
+
+  .aa-card-title,
+  .aa-section-header,
+  .aa-seat-section-title,
+  .aa-slot-info-item,
+  .aa-section-bar-left,
+  .aa-cl-table-title {
+    font-size: 0.82rem;
+  }
+
+  .aa-back-btn,
+  .aa-header-stat,
+  .aa-toggle-tab,
+  .aa-btn,
+  .aa-btn-lg,
+  .aa-year-btn,
+  .aa-cl-year-pill,
+  .aa-cl-pat-btn,
+  .aa-pat-btn,
+  .aa-pagination-btn {
+    font-size: 0.78rem;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .aa-search-wrap,
+  .aa-date-filter-wrap,
+  .aa-upload-zone,
+  .aa-capacity-card,
+  .aa-warning-box,
+  .aa-existing-slots,
+  .aa-no-slot-selected {
+    padding: 12px;
+  }
+
+  .aa-upload-zone {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .aa-stat-card {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .aa-stats-section {
+    grid-template-columns: 1fr;
+  }
+
+  .aa-stat-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .aa-stat-num {
+    font-size: 1.35rem;
+  }
+
+  .aa-results-topbar-right {
+    width: 100%;
+    margin-left: 0;
+    justify-content: stretch;
+  }
+
+  .aa-vc-header,
+  .aa-vc-body,
+  .aa-vc-slots,
+  .aa-sl-card-header,
+  .aa-sl-card-body,
+  .aa-table th,
+  .aa-table td,
+  .aa-slot-table th,
+  .aa-slot-table td {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .aa-table {
+    min-width: 560px;
+  }
+
+  .aa-slot-table {
+    min-width: 680px;
+  }
+
+  .aa-seatmap {
+    padding: 10px;
+  }
+
+  .aa-seat,
+  .aa-col-header,
+  .aa-cluster-header {
+    width: 42px;
+  }
+
+  .aa-seat,
+  .aa-row-header {
+    height: 42px;
+  }
+
+  .aa-rh-spacer,
+  .aa-row-header {
+    width: 28px;
+  }
+
+  .aa-seat-dept,
+  .aa-seat-name,
+  .aa-seat-no {
+    max-width: 36px;
+  }
+
+  .aa-seat-dept,
+  .aa-seat-name,
+  .aa-seat-no,
+  .aa-col-header,
+  .aa-row-header,
+  .aa-cluster-header {
+    font-size: 0.46rem;
+  }
+
+  .aa-dept-pill,
+  .aa-chip,
+  .aa-slot-chip,
+  .aa-inline-badge,
+  .aa-status-pill,
+  .aa-badge,
+  .aa-cl-chip,
+  .aa-mini-chip {
+    font-size: 0.68rem;
+  }
 }

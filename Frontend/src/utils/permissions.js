@@ -3,6 +3,16 @@
  * Checks user permissions for feature access
  */
 
+const permissionAliases = {
+  assignments: 'tasks',
+  attendance: 'classes',
+  grades: 'classes',
+  students: 'classes',
+  venues: 'classes',
+};
+
+const normalizePermission = (permission) => permissionAliases[permission] || permission;
+
 /**
  * Check if user has a specific permission
  * @param {object} user - User object from auth store
@@ -11,12 +21,18 @@
  */
 export const hasPermission = (user, permission) => {
   if (!user) return false;
+  const normalizedPermission = normalizePermission(permission);
   
   // Admins have all permissions
   if (user.role === 'admin') return true;
+
+  // Faculty has baseline operational access across faculty screens
+  if (user.role === 'faculty' && ['classes', 'attendance', 'students', 'grades', 'venues'].includes(permission)) {
+    return true;
+  }
   
   // Check user's specific permissions
-  if (user.permissions && user.permissions[permission]) {
+  if (user.permissions && user.permissions[normalizedPermission]) {
     return true;
   }
   
@@ -80,29 +96,15 @@ export const getNavigationItems = (user) => {
   if (user.role === 'faculty') {
     items.push({ path: '/', label: 'Dashboard', icon: 'LayoutDashboard' });
     items.push({ path: '/classes', label: 'My Classes', icon: 'School' });
-    
-    if (hasPermission(user, 'students')) {
-      items.push({ path: '/students', label: 'Students', icon: 'GraduationCap' });
-    }
-    
-    if (hasPermission(user, 'attendance')) {
-      items.push({ path: '/attendance', label: 'Attendance', icon: 'ClipboardCheck' });
-    }
-    
-    if (hasPermission(user, 'tasks') || hasPermission(user, 'assignments')) {
-      items.push({ path: '/tasks', label: 'Tasks & Assignments', icon: 'ListTodo' });
-    }
-    
+
+    items.push({ path: '/students', label: 'Students', icon: 'GraduationCap' });
+    items.push({ path: '/attendance', label: 'Attendance', icon: 'ClipboardCheck' });
+    items.push({ path: '/tasks', label: 'Tasks & Assignments', icon: 'ListTodo' });
+    items.push({ path: '/group-insights', label: 'Group Insights', icon: 'BarChart3' });
+    items.push({ path: '/venue-allocation', label: 'Venue Allocation', icon: 'MapPin' });
+
     if (hasPermission(user, 'questionBank')) {
       items.push({ path: '/courses', label: 'Question Bank', icon: 'BookOpen' });
-    }
-    
-    if (hasPermission(user, 'grades')) {
-      items.push({ path: '/group-insights', label: 'Group Insights', icon: 'BarChart3' });
-    }
-    
-    if (hasPermission(user, 'venues')) {
-      items.push({ path: '/venue-allocation', label: 'Venue Allocation', icon: 'MapPin' });
     }
     
     return items;
