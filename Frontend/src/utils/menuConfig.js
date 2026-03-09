@@ -199,7 +199,7 @@ export const getMenuByRole = (user) => {
         id: "my-assessment",
         label: "My Assessment",
         icon: MapPin,
-        section: "assessment",
+        section: "classes",
       },
     ];
 
