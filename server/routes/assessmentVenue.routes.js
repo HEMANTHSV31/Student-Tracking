@@ -6,6 +6,7 @@ import {
   getClusters, updateCluster, deleteClusterYear,
   saveAllocation, getAllocation, deleteAllocation,
   getMyAllocation,
+  getAttendance, saveAttendance, getAttendanceStats,
 } from '../controllers/assessmentVenue.controller.js';
 
 const router = Router();
@@ -34,5 +35,10 @@ router.get('/my-allocation', authenticate, getMyAllocation);
 router.post('/allocations',           authenticate, saveAllocation);
 router.get('/allocations/:slotId',    authenticate, getAllocation);
 router.delete('/allocations/:slotId', authenticate, deleteAllocation);
+
+// Attendance
+router.get('/attendance/:slotId',       authenticate, getAttendance);
+router.post('/attendance/:slotId',      authenticate, saveAttendance);
+router.get('/attendance-stats/:slotId', authenticate, getAttendanceStats);
 
 export default router;

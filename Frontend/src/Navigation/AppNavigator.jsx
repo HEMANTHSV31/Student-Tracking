@@ -56,6 +56,10 @@ import FacultyReports from "../pages/SuperAdmin/Reports&Analytics/Reporst&analyt
 //Faculty -> Code Evaluation
 import SubmissionsList from "../pages/Faculty/CodeEvaluation/SubmissionList/SubmissionsList";
 import CodeEvaluation from "../pages/Faculty/CodeEvaluation/CodeReviewer/CodeEvaluation";
+//Faculty -> Assessment Attendance
+import FacultyAssessmentAttendance from "../pages/Faculty/AssessmentAttendance/AssessmentAttendance";
+//SuperAdmin -> Assessment Attendance (PBL Assessment)
+import AssessmentAttendance from "../pages/SuperAdmin/AdminTools/PBL-Assesment/AssessmentAttendance/AssessmentAttendance";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
@@ -125,6 +129,7 @@ const AppNavigator = () => {
             <Route path="admin-tools/role-changer" element={<RoleChanger />} />
             <Route path="admin-tools/venue-allocation" element={<VenueAllocation />} />
             <Route path="admin-tools/pbl-assessment" element={<AAssesment />} />
+            <Route path="admin-tools/assessment-attendance" element={<AssessmentAttendance />} />
           </Route>
         )}
 
@@ -153,6 +158,7 @@ const AppNavigator = () => {
             <Route path="admin-tools" element={<AdminTools />} />
             <Route path="admin-tools/venue-allocation" element={<VenueAllocation />} />
             <Route path="admin-tools/pbl-assessment" element={<AAssesment />} />
+            <Route path="admin-tools/assessment-attendance" element={<FacultyAssessmentAttendance />} />
           </Route>
         )}
 

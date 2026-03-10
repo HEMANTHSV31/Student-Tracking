@@ -28,10 +28,16 @@
             }
 
             const authData = await authResponse.json();
+            
+            // Store token in localStorage as fallback for cookie issues
+            if (authData.token) {
+              localStorage.setItem('token', authData.token);
+            }
 
             // Fetch user data using cookie
             const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
-              credentials: 'include' // Send cookies automatically
+              credentials: 'include', // Send cookies automatically
+              headers: authData.token ? { 'Authorization': `Bearer ${authData.token}` } : {}
             });
 
             if (!response.ok) {
@@ -59,21 +65,28 @@
           } catch (err) {
             console.warn('Logout request failed:', err);
           }
+          // Clear localStorage token
+          localStorage.removeItem('token');
           set({ user: null });
         },
 
         restore: async () => {
           try {
-            // Fetch user data using httpOnly cookie
+            // Get token from localStorage as fallback
+            const token = localStorage.getItem('token');
+            
+            // Fetch user data using httpOnly cookie or Authorization header
             const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
-              credentials: 'include' // Send cookies automatically
+              credentials: 'include', // Send cookies automatically
+              headers: token ? { 'Authorization': `Bearer ${token}` } : {}
             });
             
             if (response.ok) {
               const data = await response.json();
               set({ user: data.user, isRestoring: false });
             } else {
-              // Cookie invalid or expired
+              // Cookie/token invalid or expired
+              localStorage.removeItem('token');
               set({ user: null, isRestoring: false });
             }
           } catch {

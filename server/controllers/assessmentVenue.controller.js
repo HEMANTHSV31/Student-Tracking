@@ -558,3 +558,186 @@ export const getMyAllocation = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch your allocation' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────
+//  Assessment Attendance
+// ─────────────────────────────────────────────────────────────────────
+
+/** GET /api/assessment-venues/attendance/:slotId - Get attendance for a slot */
+export const getAttendance = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+    const hasYearColumn = await columnExists('assessment_slots', 'year');
+    const yearSelect = hasYearColumn ? ', s.year' : '';
+
+    const [rows] = await db.query(`
+      SELECT aa.*, s.slot_label, s.slot_date, s.start_time, s.end_time${yearSelect}, s.subject_code,
+             u.name AS marked_by_name
+      FROM assessment_allocations aa
+      JOIN assessment_slots s ON s.id = aa.slot_id
+      LEFT JOIN users u ON u.user_id = aa.attendance_marked_by
+      WHERE aa.slot_id = ?
+    `, [slotId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Allocation not found' });
+    }
+
+    const allocation = rows[0];
+    res.json({
+      success: true,
+      data: {
+        slot_id: allocation.slot_id,
+        slot_label: allocation.slot_label,
+        slot_date: allocation.slot_date,
+        start_time: allocation.start_time,
+        end_time: allocation.end_time,
+        subject_code: allocation.subject_code,
+        year: hasYearColumn ? allocation.year : null,
+        allocation_data: typeof allocation.allocation_data === 'string'
+          ? JSON.parse(allocation.allocation_data)
+          : allocation.allocation_data,
+        attendance_data: allocation.attendance_data 
+          ? (typeof allocation.attendance_data === 'string' 
+              ? JSON.parse(allocation.attendance_data) 
+              : allocation.attendance_data)
+          : null,
+        attendance_marked_by: allocation.marked_by_name,
+        attendance_marked_at: allocation.attendance_marked_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch attendance' });
+  }
+};
+
+/** POST /api/assessment-venues/attendance/:slotId - Save attendance for a slot */
+export const saveAttendance = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+    const { attendance_data, venue_name } = req.body;
+    const userId = req.user.user_id;
+
+    if (!attendance_data) {
+      return res.status(400).json({ success: false, message: 'Attendance data is required' });
+    }
+
+    // Check if allocation exists
+    const [allocCheck] = await db.query(
+      'SELECT id, attendance_data FROM assessment_allocations WHERE slot_id = ?',
+      [slotId]
+    );
+    
+    if (allocCheck.length === 0) {
+      return res.status(404).json({ success: false, message: 'Allocation not found' });
+    }
+
+    // Merge with existing attendance data if updating specific venue
+    let finalAttendanceData = attendance_data;
+    if (venue_name && allocCheck[0].attendance_data) {
+      const existingData = typeof allocCheck[0].attendance_data === 'string'
+        ? JSON.parse(allocCheck[0].attendance_data)
+        : allocCheck[0].attendance_data;
+      finalAttendanceData = { ...existingData, ...attendance_data };
+    }
+
+    // Update attendance
+    await db.query(`
+      UPDATE assessment_allocations 
+      SET attendance_data = ?, 
+          attendance_marked_by = ?,
+          attendance_marked_at = CURRENT_TIMESTAMP
+      WHERE slot_id = ?
+    `, [JSON.stringify(finalAttendanceData), userId, slotId]);
+
+    res.json({ success: true, message: 'Attendance saved successfully' });
+  } catch (error) {
+    console.error('Error saving attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to save attendance' });
+  }
+};
+
+/** GET /api/assessment-venues/attendance-stats/:slotId - Get attendance statistics */
+export const getAttendanceStats = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+
+    const [rows] = await db.query(`
+      SELECT aa.allocation_data, aa.attendance_data,
+             s.slot_label, s.slot_date, s.start_time, s.end_time
+      FROM assessment_allocations aa
+      JOIN assessment_slots s ON s.id = aa.slot_id
+      WHERE aa.slot_id = ?
+    `, [slotId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Allocation not found' });
+    }
+
+    const allocation = rows[0];
+    const allocData = typeof allocation.allocation_data === 'string'
+      ? JSON.parse(allocation.allocation_data)
+      : allocation.allocation_data;
+    const attendData = allocation.attendance_data
+      ? (typeof allocation.attendance_data === 'string'
+          ? JSON.parse(allocation.attendance_data)
+          : allocation.attendance_data)
+      : {};
+
+    // Calculate stats per venue
+    const stats = {};
+    let totalAllocated = 0;
+    let totalPresent = 0;
+    let totalAbsent = 0;
+
+    for (const [venueName, venueObj] of Object.entries(allocData)) {
+      const seatMap = venueObj.seatMap || [];
+      const venueAttend = attendData[venueName] || {};
+      
+      let allocated = 0;
+      let present = 0;
+      let absent = 0;
+
+      for (let r = 0; r < seatMap.length; r++) {
+        for (let c = 0; c < seatMap[r].length; c++) {
+          const seat = seatMap[r][c];
+          if (seat) {
+            allocated++;
+            const key = `${r}-${c}`;
+            if (venueAttend[key] === true) {
+              present++;
+            } else if (venueAttend[key] === false) {
+              absent++;
+            }
+          }
+        }
+      }
+
+      stats[venueName] = { allocated, present, absent, unmarked: allocated - present - absent };
+      totalAllocated += allocated;
+      totalPresent += present;
+      totalAbsent += absent;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        slot_label: allocation.slot_label,
+        slot_date: allocation.slot_date,
+        start_time: allocation.start_time,
+        end_time: allocation.end_time,
+        venues: stats,
+        total: {
+          allocated: totalAllocated,
+          present: totalPresent,
+          absent: totalAbsent,
+          unmarked: totalAllocated - totalPresent - totalAbsent,
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching attendance stats:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch attendance stats' });
+  }
+};

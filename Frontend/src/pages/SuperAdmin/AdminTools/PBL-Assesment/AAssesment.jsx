@@ -8,13 +8,15 @@ import {
   BookOpen, Info, Plus, Trash2,
   ChevronUp, ChevronDown, X, AlertTriangle, Edit3,
   Save, Calendar, Eye, Zap, Shield,
-  Monitor, RefreshCw, CircleDot, Search, MoreVertical
+  Monitor, RefreshCw, CircleDot, Search, MoreVertical,
+  UserCheck, UserX, ClipboardCheck
 } from 'lucide-react';
 import {
   fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi,
   fetchSlots, createSlot, deleteSlot as deleteSlotApi,
   fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi,
-  saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi
+  saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi,
+  fetchAttendance, saveAttendance as saveAttendanceApi
 } from '../../../../services/assessmentVenueApi';
 import './AAssesment.css';
 
@@ -81,6 +83,12 @@ const AAssesment = () => {
   const [clusterSaving, setClusterSaving] = useState(false);
   const [clusterSaveMsg, setClusterSaveMsg] = useState('');
   const [allocYear, setAllocYear] = useState(2);
+
+  // ── Attendance State ─────────────────────────────────────────────────────
+  const [attendanceMode, setAttendanceMode] = useState(false);
+  const [attendanceData, setAttendanceData] = useState({});
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [attendanceModified, setAttendanceModified] = useState(false);
 
   // ── Load venues + slots from backend ─────────────────────────────────────
   const loadVenues = useCallback(async () => {
@@ -284,6 +292,12 @@ const AAssesment = () => {
       'MECTRONIC': '#6EE7B7', 'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'UNKNOWN': '#E5E7EB',
     };
     return colors[dept] || '#C4B5FD';
+  };
+
+  // Helper to get contrasting text color based on background brightness
+  const getDepartmentTextColor = (dept) => {
+    const darkTextDepts = ['AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 'UNKNOWN', 'MECTRONIC'];
+    return darkTextDepts.includes(dept) ? '#1e293b' : '#ffffff';
   };
 
   const byDeptCount = (dept) => students.filter((s) => normalizeDepartment(s.department) === dept).length;
@@ -659,6 +673,10 @@ const AAssesment = () => {
         }
       }
       
+      // Reset attendance state for new allocation
+      setAttendanceMode(false);
+      setAttendanceData({});
+      setAttendanceModified(false);
       setActiveTab('results');
     }
   };
@@ -778,16 +796,15 @@ const AAssesment = () => {
       <div class="dept-summary">
         <h3>Department Summary</h3>
         <table>
-          <thead><tr><th>Department</th><th>Count</th><th>%</th></tr></thead>
+          <thead><tr><th>Department</th><th>Count</th></tr></thead>
           <tbody>
     `;
     deptSummary.forEach(({ dept, count }) => {
-      const pct = totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : 0;
-      deptSummaryHTML += `<tr><td><span class="dept-badge" style="background:${getDepartmentColor(dept)}">${dept}</span></td><td>${count}</td><td>${pct}%</td></tr>`;
+      deptSummaryHTML += `<tr><td><span class="dept-badge" style="background:${getDepartmentColor(dept)};color:${getDepartmentTextColor(dept)}">${dept}</span></td><td>${count}</td></tr>`;
     });
     deptSummaryHTML += `
           </tbody>
-          <tfoot><tr><th>Total</th><th>${totalStudents}</th><th>100%</th></tr></tfoot>
+          <tfoot><tr><th>Total</th><th>${totalStudents}</th></tr></tfoot>
         </table>
       </div>
     `;
@@ -857,7 +874,7 @@ const AAssesment = () => {
           .dept-summary th, .dept-summary td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
           .dept-summary th { background: #f8fafc; font-weight: 600; color: #475569; }
           .dept-summary tfoot th { background: #f1f5f9; font-weight: 700; }
-          .dept-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #1e293b; }
+          .dept-badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; }
           
           @media print {
             body { padding: 10px; }
@@ -876,17 +893,6 @@ const AAssesment = () => {
         </div>
         <div class="seatmap">
           ${seatMapHTML}
-        </div>
-        <div class="legend">
-          <div class="legend-item"><div class="legend-dot" style="background:#dbeafe"></div>CSE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#dcfce7"></div>IT</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#fef9c3"></div>ECE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#fce7f3"></div>EEE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#ffedd5"></div>MECH</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#e0e7ff"></div>CIVIL</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#f3e8ff"></div>AIDS</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#ccfbf1"></div>AIML</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#fff;border:1px dashed #cbd5e1"></div>Empty</div>
         </div>
         ${deptSummaryHTML}
         <script>
@@ -913,7 +919,90 @@ const AAssesment = () => {
       setActiveTab('slots');
       setActiveVenue('');
       setOverallStats(null);
+      setAttendanceMode(false);
+      setAttendanceData({});
+      setAttendanceModified(false);
     }
+  };
+
+  // ── Attendance Functions ─────────────────────────────────────────────────
+  const loadAttendanceData = async (slotId) => {
+    try {
+      const res = await fetchAttendance(slotId);
+      if (res.success && res.data) {
+        // Build attendance data map from allocations
+        const attendanceMap = {};
+        res.data.forEach(alloc => {
+          if (alloc.attendance_data) {
+            attendanceMap[alloc.venue_id] = alloc.attendance_data;
+          }
+        });
+        setAttendanceData(attendanceMap);
+      }
+    } catch (err) {
+      console.error('Failed to load attendance:', err);
+    }
+  };
+
+  const toggleSeatAttendance = (venueId, rowIdx, colIdx) => {
+    if (!attendanceMode) return;
+    
+    const key = `${rowIdx}-${colIdx}`;
+    setAttendanceData(prev => {
+      const venueAttendance = { ...(prev[venueId] || {}) };
+      
+      if (venueAttendance[key] === true) {
+        venueAttendance[key] = false; // Present -> Absent
+      } else if (venueAttendance[key] === false) {
+        delete venueAttendance[key]; // Absent -> Unmarked
+      } else {
+        venueAttendance[key] = true; // Unmarked -> Present
+      }
+      
+      return { ...prev, [venueId]: venueAttendance };
+    });
+    setAttendanceModified(true);
+  };
+
+  const handleSaveAttendance = async () => {
+    if (!selectedSlot?.id || !attendanceModified) return;
+    
+    setAttendanceSaving(true);
+    try {
+      const res = await saveAttendanceApi(selectedSlot.id, attendanceData);
+      if (res.success) {
+        setAttendanceModified(false);
+        alert('Attendance saved successfully!');
+      } else {
+        alert(res.message || 'Failed to save attendance');
+      }
+    } catch (err) {
+      console.error('Save attendance error:', err);
+      alert('Failed to save attendance');
+    } finally {
+      setAttendanceSaving(false);
+    }
+  };
+
+  const getAttendanceStats = (venueId) => {
+    const alloc = venueAllocations[venueId];
+    if (!alloc) return { present: 0, absent: 0, unmarked: 0, total: 0 };
+    
+    const venueAttendance = attendanceData[venueId] || {};
+    let present = 0, absent = 0, unmarked = 0;
+    
+    alloc.seatMap.forEach((row, rowIdx) => {
+      row.forEach((seat, colIdx) => {
+        if (seat) {
+          const key = `${rowIdx}-${colIdx}`;
+          if (venueAttendance[key] === true) present++;
+          else if (venueAttendance[key] === false) absent++;
+          else unmarked++;
+        }
+      });
+    });
+    
+    return { present, absent, unmarked, total: present + absent + unmarked };
   };
 
   const slotDateOptions = getAvailableSlotDates(students);
@@ -1356,9 +1445,13 @@ const AAssesment = () => {
                         key={sl.id}
                         className="aa-sl-card aa-sl-card-clickable"
                         onClick={async () => {
-                          // Check if allocation already exists
+                          // Check if allocation already exists (either by status or by fetching data)
+                          const isAllocated = sl.status === 'Allocated';
+                          
                           try {
                             const res = await fetchAllocation(sl.id);
+                            console.log('Fetch allocation result:', res);
+                            
                             if (res.success && res.hasAllocation && res.data) {
                               // Load stored allocation and go to results
                               setSelectedSlot(sl);
@@ -1368,14 +1461,23 @@ const AAssesment = () => {
                               setOverallStats(res.data.overall_stats);
                               // Set active venue to first venue with students
                               const usedVenues = Object.keys(res.data.allocation_data).filter(
-                                v => res.data.allocation_data[v].stats.totalStudents > 0
+                                v => res.data.allocation_data[v]?.stats?.totalStudents > 0
                               );
-                              setActiveVenue(usedVenues[0] || Object.keys(res.data.allocation_data)[0]);
+                              setActiveVenue(usedVenues[0] || Object.keys(res.data.allocation_data)[0] || '');
+                              // Reset attendance state and load attendance data
+                              setAttendanceMode(false);
+                              setAttendanceModified(false);
+                              loadAttendanceData(sl.id);
                               setActiveTab('results');
                               return;
+                            } else if (isAllocated) {
+                              console.warn('Slot marked as Allocated but no allocation data found');
                             }
                           } catch (err) {
-                            console.log('No existing allocation, proceeding to allocate tab');
+                            console.error('Error fetching allocation:', err);
+                            if (isAllocated) {
+                              console.warn('Slot marked as Allocated but failed to fetch data');
+                            }
                           }
                           
                           // No allocation found - go to allocate tab
@@ -2057,6 +2159,21 @@ const AAssesment = () => {
                 <ArrowLeft size={15} /> Back to Config
               </button>
               <div className="aa-results-topbar-right">
+                <button 
+                  className={`aa-btn aa-btn-sm ${attendanceMode ? 'aa-btn-success' : 'aa-btn-outline'}`}
+                  onClick={() => setAttendanceMode(!attendanceMode)}
+                >
+                  <ClipboardCheck size={15} /> {attendanceMode ? 'Attendance ON' : 'Attendance'}
+                </button>
+                {attendanceMode && (
+                  <button 
+                    className="aa-btn aa-btn-primary aa-btn-sm" 
+                    onClick={handleSaveAttendance}
+                    disabled={attendanceSaving || !attendanceModified}
+                  >
+                    <Save size={15} /> {attendanceSaving ? 'Saving...' : 'Save Attendance'}
+                  </button>
+                )}
                 <button className="aa-btn aa-btn-outline aa-btn-sm" onClick={handlePrint}>
                   <Printer size={15} /> Print
                 </button>
@@ -2110,6 +2227,30 @@ const AAssesment = () => {
                 )}
               </div>
             )}
+
+            {/* Attendance Stats Section */}
+            {attendanceMode && activeVenue && (() => {
+              const stats = getAttendanceStats(activeVenue);
+              return (
+                <div className="aa-attendance-stats">
+                  <div className="aa-attendance-legend">
+                    <span className="aa-legend-title"><ClipboardCheck size={14} /> Attendance for {activeVenue}</span>
+                    <div className="aa-legend-items">
+                      <span className="aa-legend-item aa-legend-present">
+                        <UserCheck size={14} /> Present: <strong>{stats.present}</strong>
+                      </span>
+                      <span className="aa-legend-item aa-legend-absent">
+                        <UserX size={14} /> Absent: <strong>{stats.absent}</strong>
+                      </span>
+                      <span className="aa-legend-item aa-legend-unmarked">
+                        <Users size={14} /> Unmarked: <strong>{stats.unmarked}</strong>
+                      </span>
+                    </div>
+                    <span className="aa-legend-help">Click seats: Unmarked → Present → Absent → Unmarked</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="aa-card aa-seat-section">
               <div className="aa-seat-section-header">
@@ -2172,23 +2313,34 @@ const AAssesment = () => {
                             {row.map((seat, colIdx) => {
                               const seatLabel = getSeatLabel(rowIdx, colIdx);
                               const dept = seat ? normalizeDepartment(seat.normalizedDept || seat.department) : null;
+                              const attendanceKey = `${rowIdx}-${colIdx}`;
+                              const venueAttendance = attendanceData[activeVenue] || {};
+                              const attendanceStatus = venueAttendance[attendanceKey];
+                              const isPresent = attendanceStatus === true;
+                              const isAbsent = attendanceStatus === false;
 
                               return (
                                 <div
                                   key={colIdx}
-                                  className={`aa-seat ${seat ? 'aa-seat-occ' : 'aa-seat-empty'}`}
+                                  className={`aa-seat ${seat ? 'aa-seat-occ' : 'aa-seat-empty'} ${attendanceMode && seat ? 'aa-seat-clickable' : ''} ${isPresent ? 'aa-seat-present' : ''} ${isAbsent ? 'aa-seat-absent' : ''}`}
                                   style={{
                                     background: seat ? getDepartmentColor(dept) : '',
                                   }}
                                   title={seat
-                                    ? `${seatLabel}  •  ${seat.name}\n${seat.rollNumber}  •  ${dept}  •  Year ${seat.year}`
+                                    ? `${seatLabel}  •  ${seat.name}\n${seat.rollNumber}  •  ${dept}  •  Year ${seat.year}${attendanceMode ? `\n\nAttendance: ${isPresent ? 'Present' : isAbsent ? 'Absent' : 'Not marked'}` : ''}`
                                     : 'Empty Seat'}
+                                  onClick={() => seat && toggleSeatAttendance(activeVenue, rowIdx, colIdx)}
                                 >
                                   {seat ? (
                                     <div className="aa-seat-inner">
                                       <span className="aa-seat-no">{seatLabel}</span>
                                       <span className="aa-seat-dept">{dept}</span>
                                       <span className="aa-seat-name">{seat.rollNumber}</span>
+                                      {attendanceMode && (
+                                        <span className={`aa-seat-attendance ${isPresent ? 'aa-attendance-present' : isAbsent ? 'aa-attendance-absent' : 'aa-attendance-unmarked'}`}>
+                                          {isPresent ? <UserCheck size={12} /> : isAbsent ? <UserX size={12} /> : <Users size={10} />}
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
                                     <span className="aa-seat-dash">—</span>
@@ -2213,9 +2365,16 @@ const AAssesment = () => {
                           <div className="aa-dept-summary-grid">
                             {deptSummary.map(({ dept, count }) => (
                               <div key={dept} className="aa-dept-summary-item">
-                                <span className="aa-dept-badge" style={{ background: getDepartmentColor(dept) }}>{dept}</span>
+                                <span 
+                                  className="aa-dept-badge" 
+                                  style={{ 
+                                    background: getDepartmentColor(dept),
+                                    color: getDepartmentTextColor(dept)
+                                  }}
+                                >
+                                  {dept}
+                                </span>
                                 <span className="aa-dept-count">{count}</span>
-                                <span className="aa-dept-pct">{totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : 0}%</span>
                               </div>
                             ))}
                           </div>

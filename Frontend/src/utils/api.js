@@ -14,10 +14,14 @@ const API_URL = import.meta.env.VITE_API_URL;
 export const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_URL}${endpoint}`;
   
+  // Get token from localStorage as fallback for cookie issues
+  const token = localStorage.getItem('token');
+  
   const defaultOptions = {
     credentials: 'include', // Always include cookies
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...options.headers,
     },
     ...options,
