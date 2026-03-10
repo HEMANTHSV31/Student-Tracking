@@ -12,12 +12,13 @@ import {
   UserCheck, UserX, ClipboardCheck
 } from 'lucide-react';
 import {
-  fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi, toggleVenueStatus,
+  fetchVenues,
   fetchSlots, createSlot, deleteSlot as deleteSlotApi,
   fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi,
   saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi,
   fetchAttendance, saveAttendance as saveAttendanceApi
 } from '../../../../services/assessmentVenueApi';
+import ManageVenues from './ManageVenues/ManageVenues';
 import './AAssesment.css';
 
 const AAssesment = () => {
@@ -25,15 +26,8 @@ const AAssesment = () => {
   // ── Navigation State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'clusters' | 'venues' | 'allocate' | 'results'
 
-  // ── Venue State (from backend) ───────────────────────────────────────────
+  // ── Venue State (loaded via ManageVenues callback) ───────────────────────
   const [venues, setVenues] = useState([]);
-  const [venueLoading, setVenueLoading] = useState(true);
-  const [venueError, setVenueError] = useState('');
-  const [showVenueForm, setShowVenueForm] = useState(false);
-  const [editingVenue, setEditingVenue] = useState(null);
-  const [venueForm, setVenueForm] = useState({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
-  const [venueSearch, setVenueSearch] = useState('');
-  const [venueActionMenu, setVenueActionMenu] = useState(null);
 
   // ── Slot State (from backend) ────────────────────────────────────────────
   const [slots, setSlots] = useState([]);
@@ -91,18 +85,6 @@ const AAssesment = () => {
   const [attendanceModified, setAttendanceModified] = useState(false);
 
   // ── Load venues + slots from backend ─────────────────────────────────────
-  const loadVenues = useCallback(async () => {
-    setVenueLoading(true);
-    try {
-      const res = await fetchVenues();
-      if (res.success) setVenues(res.data || []);
-      else setVenueError(res.message || 'Failed to load venues');
-    } catch {
-      setVenueError('Failed to connect to server');
-    } finally {
-      setVenueLoading(false);
-    }
-  }, []);
 
   const loadSlots = useCallback(async () => {
     setSlotLoading(true);
@@ -129,10 +111,12 @@ const AAssesment = () => {
   }, []);
 
   useEffect(() => {
-    loadVenues();
     loadSlots();
     loadClusters();
-  }, [loadVenues, loadSlots, loadClusters]);
+    // Venues are loaded by ManageVenues component and synced via onVenuesLoaded callback
+    // Initial venue fetch for allocation tab
+    fetchVenues().then(res => { if (res.success) setVenues(res.data || []); }).catch(() => {});
+  }, [loadSlots, loadClusters]);
 
   // ── Derived from selected venues ─────────────────────────────────────────
   const selectedVenues = venues.filter((v) => selectedVenueIds.includes(v.id));
@@ -320,65 +304,7 @@ const AAssesment = () => {
       .sort((a, b) => b.count - a.count);
   };
 
-  // ── Venue CRUD Handlers ──────────────────────────────────────────────────
-  const handleSaveVenue = async () => {
-    const { venue_name, rows_count, columns_count } = venueForm;
-    if (!venue_name.trim() || !rows_count || !columns_count) {
-      alert('All fields are required!');
-      return;
-    }
-    try {
-      let res;
-      if (editingVenue) {
-        res = await updateVenue(editingVenue.id, venueForm);
-      } else {
-        res = await createVenue(venueForm);
-      }
-      if (res.success) {
-        setShowVenueForm(false);
-        setEditingVenue(null);
-        setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
-        loadVenues();
-      } else {
-        alert(res.message || 'Failed to save venue');
-      }
-    } catch {
-      alert('Server error saving venue');
-    }
-  };
 
-  const handleDeleteVenue = async (id) => {
-    if (!window.confirm('Delete this venue? This cannot be undone.')) return;
-    try {
-      const res = await deleteVenueApi(id);
-      if (res.success) loadVenues();
-      else alert(res.message || 'Failed to delete venue');
-    } catch {
-      alert('Server error deleting venue');
-    }
-  };
-
-  const openEditVenue = (v) => {
-    setEditingVenue(v);
-    setVenueForm({ venue_name: v.venue_name, location: v.location || '', rows_count: v.rows_count, columns_count: v.columns_count });
-    setShowVenueForm(true);
-  };
-
-  const handleToggleVenueStatus = async (venue) => {
-    const newStatus = venue.status === 'Active' ? 'Inactive' : 'Active';
-    try {
-      const res = await toggleVenueStatus(venue.id, newStatus);
-      if (res.success) {
-        setVenues(prev => prev.map(v => 
-          v.id === venue.id ? { ...v, status: newStatus } : v
-        ));
-      } else {
-        alert(res.message || 'Failed to update status');
-      }
-    } catch {
-      alert('Server error updating venue status');
-    }
-  };
 
   // ── Slot CRUD Handlers ───────────────────────────────────────────────────
   const handleSaveSlot = async () => {
@@ -1124,11 +1050,6 @@ const AAssesment = () => {
     { key: 'results', icon: Eye, label: 'Results', disabled: !Object.keys(venueAllocations).length },
   ];
 
-  // Render filtered venues for table (sorted ascending by name)
-  const filteredVenues = venues
-    .filter(v => v.venue_name?.toLowerCase().includes(venueSearch.toLowerCase()))
-    .sort((a, b) => (a.venue_name || '').localeCompare(b.venue_name || ''));
-
   return (
     <div className="aa-root">
       {/* ══ STICKY HEADER ═════════════════════════════════════════════════ */}
@@ -1160,236 +1081,7 @@ const AAssesment = () => {
             TAB: MANAGE VENUES
         ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'venues' && (
-          <div className="aa-venues-tab">
-            <div className="aa-topbar">
-              <div className="aa-search-wrap">
-                <Search size={18} className="aa-search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search venues..."
-                  className="aa-search-input"
-                  value={venueSearch}
-                  onChange={(e) => setVenueSearch(e.target.value)}
-                />
-              </div>
-              <div className="aa-topbar-actions">
-                <button
-                  className="aa-btn aa-btn-primary"
-                  onClick={() => {
-                    setEditingVenue(null);
-                    setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
-                    setShowVenueForm(true);
-                  }}
-                >
-                  <Plus size={16} /> Create Venue
-                </button>
-              </div>
-            </div>
-
-            <div className="aa-table-card">
-              {venueLoading && (
-                <div className="aa-loading-overlay">
-                  <RefreshCw size={20} className="aa-spin" /> Loading...
-                </div>
-              )}
-
-              {venueError ? (
-                <div className="aa-empty-state aa-empty-error">
-                  <AlertTriangle size={32} />
-                  <p>{venueError}</p>
-                  <button className="aa-btn aa-btn-sm aa-btn-outline" onClick={loadVenues}>Retry</button>
-                </div>
-              ) : venues.length === 0 && !venueLoading ? (
-                <div className="aa-empty-state">
-                  <Building2 size={40} strokeWidth={1.5} />
-                  <p>No venues created yet</p>
-                  <p className="aa-empty-sub">Create venues that can be used during slot allocation</p>
-                  <button
-                    className="aa-btn aa-btn-primary"
-                    onClick={() => {
-                      setEditingVenue(null);
-                      setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
-                      setShowVenueForm(true);
-                    }}
-                  >
-                    <Plus size={16} /> Create Venue
-                  </button>
-                </div>
-              ) : (
-                <div className="aa-table-wrap">
-                  <table className="aa-table">
-                    <thead>
-                      <tr>
-                        <th>Venue Details</th>
-                        <th>Rows</th>
-                        <th>Columns</th>
-                        <th>Capacity</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredVenues.map((v) => (
-                        <tr 
-                          key={v.id} 
-                          className={`aa-venue-row ${v.status === 'Inactive' ? 'aa-row-inactive' : ''}`}
-                        >
-                          <td>
-                            <div className="aa-venue-cell">
-                              <div className="aa-venue-cell-name">{v.venue_name}</div>
-                              <div className="aa-venue-cell-location">
-                                <MapPin size={14} />
-                                <span>{v.location || 'No location'}</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td>{v.rows_count}</td>
-                          <td>{v.columns_count}</td>
-                          <td>
-                            <div className="aa-capacity-display">
-                              <Users size={16} className="aa-capacity-icon" />
-                              <span className="aa-capacity-num">{v.total_capacity}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <button 
-                              className={`aa-status-badge ${v.status === 'Active' ? 'aa-status-active' : 'aa-status-inactive'}`}
-                              onClick={() => handleToggleVenueStatus(v)}
-                              title={v.status === 'Active' ? 'Click to deactivate' : 'Click to activate'}
-                            >
-                              {v.status || 'Active'}
-                            </button>
-                          </td>
-                          <td>
-                            <div className="aa-action-cell">
-                              <button
-                                className="aa-action-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  setVenueActionMenu(venueActionMenu?.id === v.id ? null : {
-                                    id: v.id,
-                                    x: rect.right - 180,
-                                    y: rect.bottom + 4
-                                  });
-                                }}
-                              >
-                                <MoreVertical size={18} />
-                              </button>
-                              {venueActionMenu?.id === v.id && (
-                                <>
-                                  <div className="aa-menu-overlay" onClick={() => setVenueActionMenu(null)} />
-                                  <div className="aa-action-menu" style={{ top: venueActionMenu.y, left: venueActionMenu.x }}>
-                                    <button className="aa-menu-item" onClick={() => { openEditVenue(v); setVenueActionMenu(null); }}>
-                                      <Edit3 size={14} /> Edit Venue
-                                    </button>
-                                    <button className="aa-menu-item aa-menu-danger" onClick={() => { handleDeleteVenue(v.id); setVenueActionMenu(null); }}>
-                                      <Trash2 size={14} /> Delete Venue
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {showVenueForm && (
-              <div className="aa-modal-overlay" onClick={() => setShowVenueForm(false)}>
-                <div className="aa-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="aa-modal-header">
-                    <h3>{editingVenue ? 'Edit Venue' : 'Create New Venue'}</h3>
-                    <button className="aa-icon-btn" onClick={() => setShowVenueForm(false)}><X size={18} /></button>
-                  </div>
-                  <div className="aa-modal-body">
-                    <div className="aa-form-group">
-                      <label>Venue Name</label>
-                      <input
-                        type="text"
-                        value={venueForm.venue_name}
-                        onChange={(e) => setVenueForm((p) => ({ ...p, venue_name: e.target.value }))}
-                        placeholder="e.g. Seminar Hall 1"
-                        className="aa-form-input"
-                      />
-                    </div>
-                    <div className="aa-form-group">
-                      <label>Location</label>
-                      <div className="aa-input-with-icon">
-                        <MapPin size={16} className="aa-input-icon" />
-                        <input
-                          type="text"
-                          value={venueForm.location}
-                          onChange={(e) => setVenueForm((p) => ({ ...p, location: e.target.value }))}
-                          placeholder="e.g. Building A, Floor 2"
-                          className="aa-form-input aa-form-input-icon"
-                        />
-                      </div>
-                    </div>
-                    <div className="aa-form-row">
-                      <div className="aa-form-group">
-                        <label>Rows</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={26}
-                          value={venueForm.rows_count}
-                          onChange={(e) => setVenueForm((p) => ({
-                            ...p,
-                            rows_count: Math.max(1, Math.min(26, parseInt(e.target.value) || 1))
-                          }))}
-                          className="aa-form-input"
-                        />
-                        <span className="aa-form-hint">A–Z (max 26)</span>
-                      </div>
-                      <div className="aa-form-group">
-                        <label>Columns</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={60}
-                          value={venueForm.columns_count}
-                          onChange={(e) => setVenueForm((p) => ({
-                            ...p,
-                            columns_count: Math.max(1, parseInt(e.target.value) || 1)
-                          }))}
-                          className="aa-form-input"
-                        />
-                      </div>
-                      <div className="aa-form-group">
-                        <label>Total</label>
-                        <div className="aa-form-total">{venueForm.rows_count * venueForm.columns_count}</div>
-                      </div>
-                    </div>
-                    <div className="aa-form-preview">
-                      <span className="aa-form-preview-label">Column Pattern Preview</span>
-                      <div className="aa-form-preview-cols">
-                        {Array.from({ length: Math.min(venueForm.columns_count, 12) }, (_, i) => {
-                          const cl = getColumnCluster(i);
-                          return (
-                            <div key={i} className={`aa-fp-col ${cl === 'CS' ? 'aa-fp-cs' : 'aa-fp-core'}`}>
-                              {i + 1}
-                            </div>
-                          );
-                        })}
-                        {venueForm.columns_count > 12 && <span className="aa-fp-more">+{venueForm.columns_count - 12}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="aa-modal-footer">
-                    <button className="aa-btn aa-btn-ghost" onClick={() => setShowVenueForm(false)}>Cancel</button>
-                    <button className="aa-btn aa-btn-primary" onClick={handleSaveVenue}>
-                      <Save size={15} /> {editingVenue ? 'Update Venue' : 'Create Venue'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <ManageVenues columnPattern={columnPattern} onVenuesLoaded={setVenues} />
         )}
 
         {/* ══════════════════════════════════════════════════════════════════

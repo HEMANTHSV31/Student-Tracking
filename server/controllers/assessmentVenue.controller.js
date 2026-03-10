@@ -4,8 +4,9 @@ const columnExistsCache = new Map();
 
 async function columnExists(tableName, columnName) {
   const cacheKey = `${tableName}.${columnName}`;
-  if (columnExistsCache.has(cacheKey)) {
-    return columnExistsCache.get(cacheKey);
+  // Only trust cached TRUE — a cached FALSE may be stale after migration
+  if (columnExistsCache.get(cacheKey) === true) {
+    return true;
   }
 
   const [rows] = await db.query(
@@ -19,8 +20,18 @@ async function columnExists(tableName, columnName) {
   );
 
   const exists = rows.length > 0;
-  columnExistsCache.set(cacheKey, exists);
+  if (exists) {
+    columnExistsCache.set(cacheKey, true);
+  }
   return exists;
+}
+
+async function ensureLocationColumn() {
+  if (await columnExists('assessment_venues', 'location')) return;
+  await db.query(
+    'ALTER TABLE assessment_venues ADD COLUMN location VARCHAR(255) DEFAULT NULL AFTER venue_name'
+  );
+  columnExistsCache.set('assessment_venues.location', true);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -30,24 +41,16 @@ async function columnExists(tableName, columnName) {
 /** GET /api/assessment-venues/ */
 export const getAllVenues = async (req, res) => {
   try {
-    // Check if location column exists
-    const hasLocation = await columnExists('assessment_venues', 'location');
-    
-    const selectCols = hasLocation 
-      ? 'id, venue_name, location, rows_count, columns_count, total_capacity, status, created_at'
-      : 'id, venue_name, rows_count, columns_count, total_capacity, status, created_at';
+    await ensureLocationColumn();
     
     const [venues] = await db.query(`
-      SELECT ${selectCols}
+      SELECT id, venue_name, location, rows_count, columns_count, total_capacity, status, created_at
       FROM assessment_venues
       WHERE deleted_at IS NULL
       ORDER BY venue_name ASC
     `);
     
-    // Add empty location if column doesn't exist
-    const venuesWithLocation = hasLocation ? venues : venues.map(v => ({ ...v, location: '' }));
-    
-    res.json({ success: true, data: venuesWithLocation });
+    res.json({ success: true, data: venues });
   } catch (error) {
     console.error('Error fetching assessment venues:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch venues' });
@@ -78,21 +81,12 @@ export const createVenue = async (req, res) => {
       return res.status(409).json({ success: false, message: `Venue "${venue_name}" already exists` });
     }
 
-    // Check if location column exists
-    const hasLocation = await columnExists('assessment_venues', 'location');
+    await ensureLocationColumn();
     
-    let result;
-    if (hasLocation) {
-      [result] = await db.query(
-        'INSERT INTO assessment_venues (venue_name, location, rows_count, columns_count) VALUES (?, ?, ?, ?)',
-        [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count)]
-      );
-    } else {
-      [result] = await db.query(
-        'INSERT INTO assessment_venues (venue_name, rows_count, columns_count) VALUES (?, ?, ?)',
-        [venue_name.trim(), parseInt(rows_count), parseInt(columns_count)]
-      );
-    }
+    const [result] = await db.query(
+      'INSERT INTO assessment_venues (venue_name, location, rows_count, columns_count) VALUES (?, ?, ?, ?)',
+      [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count)]
+    );
 
     res.status(201).json({
       success: true,
@@ -132,20 +126,12 @@ export const updateVenue = async (req, res) => {
       return res.status(409).json({ success: false, message: `Venue "${venue_name}" already exists` });
     }
 
-    // Check if location column exists
-    const hasLocation = await columnExists('assessment_venues', 'location');
+    await ensureLocationColumn();
     
-    if (hasLocation) {
-      await db.query(
-        'UPDATE assessment_venues SET venue_name = ?, location = ?, rows_count = ?, columns_count = ? WHERE id = ?',
-        [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count), id]
-      );
-    } else {
-      await db.query(
-        'UPDATE assessment_venues SET venue_name = ?, rows_count = ?, columns_count = ? WHERE id = ?',
-        [venue_name.trim(), parseInt(rows_count), parseInt(columns_count), id]
-      );
-    }
+    await db.query(
+      'UPDATE assessment_venues SET venue_name = ?, location = ?, rows_count = ?, columns_count = ? WHERE id = ?',
+      [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count), id]
+    );
 
     res.json({ success: true, message: 'Venue updated successfully' });
   } catch (error) {
