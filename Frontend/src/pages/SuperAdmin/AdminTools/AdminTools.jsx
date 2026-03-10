@@ -9,7 +9,8 @@ import {
     Database,
     TrendingUp,
     MapPin,
-    Building2
+    Building2,
+    ClipboardCheck
 } from 'lucide-react';
 import './AdminTools.css';
 
@@ -84,6 +85,14 @@ const AdminTools = () => {
                     icon: MapPin,
                     color: '#F59E0B', // Amber
                     route: '/admin-tools/pbl-assessment'
+                },
+                {
+                    id: 'assessment-attendance',
+                    title: 'Assessment Attendance',
+                    description: 'Mark attendance for assessment allocations',
+                    icon: ClipboardCheck,
+                    color: '#10B981', // Green
+                    route: '/admin-tools/assessment-attendance'
                 }
             ]
         }

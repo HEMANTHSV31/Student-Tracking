@@ -1240,14 +1240,17 @@
 }
 
 .aa-dept-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #1e293b;
-  min-width: 50px;
+  min-width: 70px;
   text-align: center;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .aa-dept-count {
@@ -4055,3 +4058,127 @@
       margin: 6px;
     }
   }
+
+/* ─── Attendance Mode ───────────────────────────────────────────── */
+.aa-btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  border-color: #10b981;
+}
+
+.aa-btn-success:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.aa-attendance-stats {
+  margin: 0 16px 16px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid #86efac;
+  border-radius: 12px;
+}
+
+.aa-attendance-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+.aa-legend-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #166534;
+}
+
+.aa-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.aa-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.aa-legend-present {
+  color: #047857;
+}
+
+.aa-legend-absent {
+  color: #dc2626;
+}
+
+.aa-legend-unmarked {
+  color: #6b7280;
+}
+
+.aa-legend-help {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+  margin-left: auto;
+}
+
+/* Seat attendance states */
+.aa-seat-clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.aa-seat-clickable:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 10;
+}
+
+.aa-seat-present {
+  box-shadow: inset 0 0 0 3px #10b981 !important;
+}
+
+.aa-seat-absent {
+  box-shadow: inset 0 0 0 3px #ef4444 !important;
+}
+
+/* Attendance icon in seat */
+.aa-seat-attendance {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.aa-attendance-present {
+  background: #10b981;
+  color: #fff;
+}
+
+.aa-attendance-absent {
+  background: #ef4444;
+  color: #fff;
+}
+
+.aa-attendance-unmarked {
+  background: rgba(100, 116, 139, 0.5);
+  color: #fff;
+}
+
+/* Relative positioning for seat inner to position attendance icon */
+.aa-seat-occ .aa-seat-inner {
+  position: relative;
+}

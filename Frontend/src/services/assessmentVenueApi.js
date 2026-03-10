@@ -87,3 +87,22 @@ export const fetchMyAllocation = async () => {
   const res = await apiGet(`${BASE}/my-allocation`);
   return res.json();
 };
+
+// ── Attendance ───────────────────────────────────────────────────────────
+export const fetchAttendance = async (slotId) => {
+  const res = await apiGet(`${BASE}/attendance/${slotId}`);
+  return res.json();
+};
+
+export const saveAttendance = async (slotId, attendanceData, venueName = null) => {
+  const res = await apiPost(`${BASE}/attendance/${slotId}`, {
+    attendance_data: attendanceData,
+    venue_name: venueName,
+  });
+  return res.json();
+};
+
+export const fetchAttendanceStats = async (slotId) => {
+  const res = await apiGet(`${BASE}/attendance-stats/${slotId}`);
+  return res.json();
+};
