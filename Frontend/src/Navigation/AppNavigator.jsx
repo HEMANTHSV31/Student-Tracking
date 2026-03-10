@@ -159,6 +159,8 @@ const AppNavigator = () => {
             <Route path="admin-tools/venue-allocation" element={<VenueAllocation />} />
             <Route path="admin-tools/pbl-assessment" element={<AAssesment />} />
             <Route path="admin-tools/assessment-attendance" element={<FacultyAssessmentAttendance />} />
+            {/* Direct Assessment Attendance for Faculty (sidebar link) */}
+            <Route path="assessment-attendance" element={<FacultyAssessmentAttendance />} />
           </Route>
         )}
 

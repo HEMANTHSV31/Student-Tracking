@@ -1,22 +1,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Lottie from 'lottie-react';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Users, Building2,
   UserCheck, UserX, ClipboardCheck, Save, Search, RefreshCw,
-  Grid3X3, BarChart3, CheckCircle, AlertCircle, Filter
+  Grid3X3, BarChart3, CheckCircle, AlertCircle, Filter, X, Download, Lock, Unlock
 } from 'lucide-react';
 import {
   fetchSlots, fetchAllocation, fetchAttendance, saveAttendance as saveAttendanceApi
 } from '../../../services/assessmentVenueApi';
+import emptyAnimation from '../../../animation/empty-file.json';
 import './AssessmentAttendance.css';
 
 const AssessmentAttendance = () => {
   const navigate = useNavigate();
   
+  // ── Helper: Get Today's Date as YYYY-MM-DD ─────────────────────────────────
+  const getTodayDateStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   // ── State ────────────────────────────────────────────────────────────────
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [dateFilter, setDateFilter] = useState(getTodayDateStr());
   const [venueAllocations, setVenueAllocations] = useState({});
   const [activeVenue, setActiveVenue] = useState('');
   const [overallStats, setOverallStats] = useState(null);
@@ -39,6 +48,63 @@ const AssessmentAttendance = () => {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const hr = h % 12 || 12;
     return `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
+  };
+
+  // ── Time-based Access Control ────────────────────────────────────────────
+  // Access window: 30 minutes before slot start to 2 hours after slot end
+  const getTimeAccessStatus = (slot) => {
+    if (!slot?.slot_date || !slot?.start_time || !slot?.end_time) {
+      return { allowed: true, status: 'unknown', message: '' };
+    }
+
+    const now = new Date();
+    const slotDate = normalizeDateForFilter(slot.slot_date);
+    
+    // Parse slot start and end times
+    const [startH, startM] = slot.start_time.split(':').map(Number);
+    const [endH, endM] = slot.end_time.split(':').map(Number);
+    
+    const slotStart = new Date(`${slotDate}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
+    const slotEnd = new Date(`${slotDate}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
+    
+    // Access window: 30 min before to 2 hours after
+    const windowStart = new Date(slotStart.getTime() - 30 * 60 * 1000);
+    const windowEnd = new Date(slotEnd.getTime() + 2 * 60 * 60 * 1000);
+    
+    if (now < windowStart) {
+      const diff = windowStart - now;
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      return {
+        allowed: false,
+        status: 'early',
+        message: `Attendance opens in ${hours > 0 ? `${hours}h ` : ''}${mins}m (30 min before slot)`,
+        windowStart: formatTime12(slot.start_time),
+      };
+    }
+    
+    if (now > windowEnd) {
+      return {
+        allowed: false,
+        status: 'expired',
+        message: 'Attendance window closed (2 hours after slot end)',
+        closedAt: formatTime12(`${String(endH + 2).padStart(2, '0')}:${String(endM).padStart(2, '0')}`),
+      };
+    }
+    
+    // Within the allowed window
+    const remaining = windowEnd - now;
+    const remHours = Math.floor(remaining / (1000 * 60 * 60));
+    const remMins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return {
+      allowed: true,
+      status: now < slotStart ? 'early-open' : now <= slotEnd ? 'in-progress' : 'grace-period',
+      message: now <= slotEnd 
+        ? 'Slot in progress' 
+        : `Grace period: ${remHours > 0 ? `${remHours}h ` : ''}${remMins}m remaining`,
+      remaining: `${remHours > 0 ? `${remHours}h ` : ''}${remMins}m`,
+    };
   };
 
   const normalizeDepartment = (dept) => {
@@ -86,6 +152,28 @@ const AssessmentAttendance = () => {
   const getColumnLabel = (col) => String.fromCharCode(65 + col);
   const getSeatLabel = (row, col) => `${getColumnLabel(col)}${row + 1}`;
 
+  // Normalize date to YYYY-MM-DD format for comparison
+  const normalizeDateForFilter = (dateValue) => {
+    if (!dateValue) return '';
+    const str = String(dateValue);
+    if (str.includes('T')) return str.split('T')[0];
+    return str;
+  };
+
+  // Format date label for display
+  const formatDateLabel = (dateValue) => {
+    if (!dateValue) return '—';
+    const str = String(dateValue);
+    let dateOnly = str;
+    if (str.includes('T')) dateOnly = str.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+      const [year, month, day] = dateOnly.split('-').map(Number);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${String(day).padStart(2, '0')} ${months[month - 1]} ${year}`;
+    }
+    return dateValue;
+  };
+
   // ── Load Slots ───────────────────────────────────────────────────────────
   const loadSlots = useCallback(async () => {
     setSlotsLoading(true);
@@ -127,14 +215,8 @@ const AssessmentAttendance = () => {
       
       // Fetch attendance data
       const attRes = await fetchAttendance(slot.id);
-      if (attRes.success && attRes.data) {
-        const attendanceMap = {};
-        attRes.data.forEach(alloc => {
-          if (alloc.attendance_data) {
-            attendanceMap[alloc.venue_id] = alloc.attendance_data;
-          }
-        });
-        setAttendanceData(attendanceMap);
+      if (attRes.success && attRes.data?.attendance_data) {
+        setAttendanceData(attRes.data.attendance_data);
       } else {
         setAttendanceData({});
       }
@@ -144,7 +226,12 @@ const AssessmentAttendance = () => {
   };
 
   // ── Attendance Functions ─────────────────────────────────────────────────
+  const timeAccess = selectedSlot ? getTimeAccessStatus(selectedSlot) : { allowed: true, status: 'unknown', message: '' };
+
   const toggleSeatAttendance = (venueId, rowIdx, colIdx) => {
+    // Check time-based access
+    if (!timeAccess.allowed) return;
+    
     const key = `${rowIdx}-${colIdx}`;
     setAttendanceData(prev => {
       const venueAttendance = { ...(prev[venueId] || {}) };
@@ -163,7 +250,7 @@ const AssessmentAttendance = () => {
   };
 
   const markAllPresent = () => {
-    if (!activeVenue || !venueAllocations[activeVenue]) return;
+    if (!timeAccess.allowed || !activeVenue || !venueAllocations[activeVenue]) return;
     
     const alloc = venueAllocations[activeVenue];
     const newAttendance = {};
@@ -181,7 +268,7 @@ const AssessmentAttendance = () => {
   };
 
   const markAllAbsent = () => {
-    if (!activeVenue || !venueAllocations[activeVenue]) return;
+    if (!timeAccess.allowed || !activeVenue || !venueAllocations[activeVenue]) return;
     
     const alloc = venueAllocations[activeVenue];
     const newAttendance = {};
@@ -199,9 +286,45 @@ const AssessmentAttendance = () => {
   };
 
   const clearAttendance = () => {
-    if (!activeVenue) return;
+    if (!timeAccess.allowed || !activeVenue) return;
     setAttendanceData(prev => ({ ...prev, [activeVenue]: {} }));
     setAttendanceModified(true);
+  };
+
+  const exportAttendance = () => {
+    if (!selectedSlot || !activeVenue || !venueAllocations[activeVenue]) return;
+    
+    const alloc = venueAllocations[activeVenue];
+    const venueAttendance = attendanceData[activeVenue] || {};
+    
+    // Header with slot info
+    const slotInfo = `${selectedSlot.slotName} | ${selectedSlot.subject_code || ''} | ${formatDate(selectedSlot.slot_date)} | ${formatTime12(selectedSlot.start_time)} - ${formatTime12(selectedSlot.end_time)} | ${activeVenue}`;
+    const rows = [
+      [slotInfo],
+      [],
+      ['Seat', 'Roll Number', 'Name', 'Department', 'Status']
+    ];
+    
+    alloc.seatMap.forEach((row, rowIdx) => {
+      row.forEach((seat, colIdx) => {
+        if (seat) {
+          const seatLabel = getSeatLabel(rowIdx, colIdx);
+          const key = `${rowIdx}-${colIdx}`;
+          const status = venueAttendance[key] === true ? 'Present' : venueAttendance[key] === false ? 'Absent' : 'Unmarked';
+          const dept = normalizeDepartment(seat.normalizedDept || seat.department);
+          rows.push([seatLabel, seat.rollNumber, seat.name, dept, status]);
+        }
+      });
+    });
+    
+    const csvContent = rows.map(r => r.map(c => `"${c || ''}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance_${selectedSlot.slotName}_${activeVenue}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSaveAttendance = async () => {
@@ -264,10 +387,14 @@ const AssessmentAttendance = () => {
       slot.subject_code?.toLowerCase().includes(search.toLowerCase()) ||
       formatDate(slot.slot_date).toLowerCase().includes(search.toLowerCase());
     const matchesYear = !yearFilter || slot.year === parseInt(yearFilter);
-    return matchesSearch && matchesYear;
+    const matchesDate = !dateFilter || normalizeDateForFilter(slot.slot_date) === dateFilter;
+    return matchesSearch && matchesYear && matchesDate;
   });
 
   const uniqueYears = [...new Set(slots.map(s => s.year))].sort();
+  
+  // Get unique dates that have allocated slots
+  const uniqueDates = [...new Set(slots.map(s => normalizeDateForFilter(s.slot_date)))].filter(Boolean).sort();
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -287,7 +414,8 @@ const AssessmentAttendance = () => {
             <button
               className="asa-btn asa-btn-primary"
               onClick={handleSaveAttendance}
-              disabled={attendanceSaving || !attendanceModified}
+              disabled={attendanceSaving || !attendanceModified || !timeAccess.allowed}
+              title={!timeAccess.allowed ? timeAccess.message : 'Save attendance'}
             >
               <Save size={16} /> {attendanceSaving ? 'Saving...' : 'Save Attendance'}
             </button>
@@ -299,9 +427,27 @@ const AssessmentAttendance = () => {
         {/* Slot List */}
         {!selectedSlot ? (
           <div className="asa-slot-section">
-            <div className="asa-slot-header">
-              <h2><Calendar size={18} /> Select Assessment Slot</h2>
-              <div className="asa-slot-filters">
+            {/* Unified Topbar: Date Filter + Search + Year */}
+            <div className="asa-topbar">
+              <div className="asa-topbar-left">
+                <div className="asa-date-filter-wrap">
+                  <Calendar size={16} className="asa-date-icon" />
+                  <input
+                    type="date"
+                    className="asa-date-input"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                  />
+                  {dateFilter && (
+                    <button
+                      className="asa-date-clear-btn"
+                      onClick={() => setDateFilter('')}
+                      title="Clear date filter"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="asa-search-box">
                   <Search size={16} />
                   <input
@@ -311,6 +457,8 @@ const AssessmentAttendance = () => {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
+              </div>
+              <div className="asa-topbar-right">
                 <select
                   className="asa-select"
                   value={yearFilter}
@@ -321,9 +469,6 @@ const AssessmentAttendance = () => {
                     <option key={y} value={y}>Year {y}</option>
                   ))}
                 </select>
-                <button className="asa-btn asa-btn-ghost" onClick={loadSlots}>
-                  <RefreshCw size={16} /> Refresh
-                </button>
               </div>
             </div>
 
@@ -334,9 +479,12 @@ const AssessmentAttendance = () => {
               </div>
             ) : filteredSlots.length === 0 ? (
               <div className="asa-empty">
-                <AlertCircle size={48} />
-                <p>No allocated slots found</p>
-                <span>Slots must be allocated before attendance can be marked</span>
+                <Lottie 
+                  animationData={emptyAnimation} 
+                  loop={true} 
+                  style={{ width: 180, height: 180 , marginTop: '-40px'}} 
+                />
+                <p>No allocated slots found{dateFilter ? ` for ${formatDateLabel(dateFilter)}` : ''}</p>
               </div>
             ) : (
               <div className="asa-slot-grid">
@@ -397,28 +545,28 @@ const AssessmentAttendance = () => {
               return (
                 <div className="asa-stats-row">
                   <div className="asa-stat-card asa-stat-blue">
-                    <Users size={22} />
+                    <span className="asa-stat-dot"></span>
                     <div className="asa-stat-info">
                       <div className="asa-stat-num">{overallStats.totalStudents}</div>
                       <div className="asa-stat-label">Total Students</div>
                     </div>
                   </div>
                   <div className="asa-stat-card asa-stat-green">
-                    <UserCheck size={22} />
+                    <span className="asa-stat-dot"></span>
                     <div className="asa-stat-info">
                       <div className="asa-stat-num">{attStats.present}</div>
                       <div className="asa-stat-label">Present</div>
                     </div>
                   </div>
                   <div className="asa-stat-card asa-stat-red">
-                    <UserX size={22} />
+                    <span className="asa-stat-dot"></span>
                     <div className="asa-stat-info">
                       <div className="asa-stat-num">{attStats.absent}</div>
                       <div className="asa-stat-label">Absent</div>
                     </div>
                   </div>
                   <div className="asa-stat-card asa-stat-gray">
-                    <AlertCircle size={22} />
+                    <span className="asa-stat-dot"></span>
                     <div className="asa-stat-info">
                       <div className="asa-stat-num">{attStats.unmarked}</div>
                       <div className="asa-stat-label">Unmarked</div>
@@ -454,17 +602,49 @@ const AssessmentAttendance = () => {
                     })}
                 </div>
                 <div className="asa-quick-actions">
-                  <button className="asa-btn asa-btn-sm asa-btn-success" onClick={markAllPresent}>
+                  <button 
+                    className="asa-btn asa-btn-sm asa-btn-outline" 
+                    onClick={markAllPresent}
+                    disabled={!timeAccess.allowed}
+                    title={!timeAccess.allowed ? timeAccess.message : 'Mark all as present'}
+                  >
                     <UserCheck size={14} /> All Present
                   </button>
-                  <button className="asa-btn asa-btn-sm asa-btn-danger" onClick={markAllAbsent}>
-                    <UserX size={14} /> All Absent
-                  </button>
-                  <button className="asa-btn asa-btn-sm asa-btn-ghost" onClick={clearAttendance}>
+                  <button 
+                    className="asa-btn asa-btn-sm asa-btn-ghost" 
+                    onClick={clearAttendance}
+                    disabled={!timeAccess.allowed}
+                    title={!timeAccess.allowed ? timeAccess.message : 'Clear all attendance'}
+                  >
                     Clear
+                  </button>
+                  <button className="asa-btn asa-btn-sm asa-btn-ghost" onClick={exportAttendance}>
+                    <Download size={14} /> Export
                   </button>
                 </div>
               </div>
+
+              {/* Time Access Status Banner */}
+              {selectedSlot && (
+                <div className={`asa-time-access ${timeAccess.allowed ? 'asa-time-allowed' : 'asa-time-locked'}`}>
+                  {timeAccess.allowed ? (
+                    <>
+                      <Unlock size={16} />
+                      <span>
+                        <strong>Attendance Open</strong> — {timeAccess.message}
+                        {timeAccess.remaining && <span className="asa-time-remaining"> ({timeAccess.remaining} left)</span>}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={16} />
+                      <span>
+                        <strong>Attendance Locked</strong> — {timeAccess.message}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Attendance Legend */}
               {activeVenue && (() => {
@@ -472,13 +652,13 @@ const AssessmentAttendance = () => {
                 return (
                   <div className="asa-legend">
                     <span className="asa-legend-item asa-legend-present">
-                      <UserCheck size={14} /> Present: <strong>{stats.present}</strong>
+                      <span className="asa-legend-dot"></span> Present: <strong>{stats.present}</strong>
                     </span>
                     <span className="asa-legend-item asa-legend-absent">
-                      <UserX size={14} /> Absent: <strong>{stats.absent}</strong>
+                      <span className="asa-legend-dot"></span> Absent: <strong>{stats.absent}</strong>
                     </span>
                     <span className="asa-legend-item asa-legend-unmarked">
-                      <Users size={14} /> Unmarked: <strong>{stats.unmarked}</strong>
+                      <span className="asa-legend-dot"></span> Unmarked: <strong>{stats.unmarked}</strong>
                     </span>
                     <span className="asa-legend-help">
                       Click seat: Unmarked → Present → Absent → Unmarked
@@ -512,23 +692,27 @@ const AssessmentAttendance = () => {
                             const attendanceStatus = venueAttendance[key];
                             const isPresent = attendanceStatus === true;
                             const isAbsent = attendanceStatus === false;
+                            const isLocked = !timeAccess.allowed;
 
                             return (
                               <div
                                 key={colIdx}
-                                className={`asa-seat ${seat ? 'asa-seat-occupied' : 'asa-seat-empty'} ${isPresent ? 'asa-seat-present' : ''} ${isAbsent ? 'asa-seat-absent' : ''}`}
-                                style={{ background: seat ? getDepartmentColor(dept) : '' }}
-                                onClick={() => seat && toggleSeatAttendance(activeVenue, rowIdx, colIdx)}
-                                title={seat ? `${seatLabel} • ${seat.name}\n${seat.rollNumber} • ${dept}\n\nClick to toggle attendance` : 'Empty'}
+                                className={`asa-seat ${seat ? 'asa-seat-occupied' : 'asa-seat-empty'} ${isPresent ? 'asa-seat-present' : ''} ${isAbsent ? 'asa-seat-absent' : ''} ${isLocked && seat ? 'asa-seat-locked' : ''}`}
+                                onClick={() => seat && !isLocked && toggleSeatAttendance(activeVenue, rowIdx, colIdx)}
+                                title={seat 
+                                  ? isLocked 
+                                    ? `${seatLabel} • ${seat.name}\n${seat.rollNumber} • ${dept}\n\n🔒 ${timeAccess.message}` 
+                                    : `${seatLabel} • ${seat.name}\n${seat.rollNumber} • ${dept}\n\nClick to toggle attendance` 
+                                  : 'Empty'}
                               >
                                 {seat ? (
                                   <div className="asa-seat-inner">
-                                    <span className="asa-seat-label">{seatLabel}</span>
-                                    <span className="asa-seat-dept" style={{ color: getDepartmentTextColor(dept) }}>{dept}</span>
-                                    <span className="asa-seat-roll">{seat.rollNumber}</span>
                                     <span className={`asa-seat-status ${isPresent ? 'asa-status-present' : isAbsent ? 'asa-status-absent' : 'asa-status-unmarked'}`}>
-                                      {isPresent ? <UserCheck size={14} /> : isAbsent ? <UserX size={14} /> : '?'}
+                                      {isPresent ? <UserCheck size={12} /> : isAbsent ? <UserX size={12} /> : '?'}
                                     </span>
+                                    <span className="asa-seat-label">{seatLabel}</span>
+                                    <span className="asa-seat-dept">{dept}</span>
+                                    <span className="asa-seat-roll">{seat.rollNumber}</span>
                                   </div>
                                 ) : (
                                   <span className="asa-seat-empty-dash">—</span>
@@ -543,17 +727,6 @@ const AssessmentAttendance = () => {
                 );
               })()}
             </div>
-
-            {/* Modified Warning */}
-            {attendanceModified && (
-              <div className="asa-save-banner">
-                <AlertCircle size={18} />
-                <span>You have unsaved changes</span>
-                <button className="asa-btn asa-btn-primary" onClick={handleSaveAttendance} disabled={attendanceSaving}>
-                  <Save size={16} /> {attendanceSaving ? 'Saving...' : 'Save Now'}
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

@@ -1,9 +1,3 @@
-/* ═══════════════════════════════════════════════════════════════
-   Assessment Attendance – AssessmentAttendance.css
-   Professional Modern UI Design
-   All styles scoped under .asa-* prefix
-════════════════════════════════════════════════════════════════ */
-
 :root {
   --asa-primary: #6366f1;
   --asa-primary-d: #4f46e5;
@@ -34,7 +28,6 @@
   --asa-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ─── Root ────────────────────────────────────────────────────── */
 .asa-root {
   min-height: 100vh;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -43,7 +36,6 @@
   background-attachment: fixed;
 }
 
-/* ─── Header ──────────────────────────────────────────────────── */
 .asa-header {
   position: sticky;
   top: 0;
@@ -110,14 +102,12 @@
   filter: drop-shadow(0 2px 4px rgba(16, 185, 129, 0.3));
 }
 
-/* ─── Content ─────────────────────────────────────────────────── */
 .asa-content {
   padding: 28px;
   max-width: 1700px;
   margin: 0 auto;
 }
 
-/* ─── Buttons ─────────────────────────────────────────────────── */
 .asa-btn {
   display: inline-flex;
   align-items: center;
@@ -213,13 +203,51 @@
   transform: translateY(-1px);
 }
 
-/* ─── Slot Section ────────────────────────────────────────────── */
+.asa-btn-outline {
+  background: transparent;
+  color: var(--asa-primary);
+  border: 1px solid var(--asa-primary);
+  box-shadow: none;
+}
+
+.asa-btn-outline::before {
+  display: none;
+}
+
+.asa-btn-outline:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.08);
+  transform: translateY(-1px);
+}
+
 .asa-slot-section {
   background: var(--asa-surface);
   border-radius: var(--asa-radius-lg);
   border: 1px solid var(--asa-border);
   padding: 28px;
   box-shadow: var(--asa-shadow);
+}
+
+.asa-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.asa-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.asa-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .asa-slot-header {
@@ -253,6 +281,74 @@
   flex-wrap: wrap;
 }
 
+.asa-date-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  padding: 10px 16px;
+  background: var(--asa-bg);
+  border: 1px solid var(--asa-border);
+  border-radius: 10px;
+  transition: var(--asa-transition);
+}
+
+.asa-date-filter-wrap:hover {
+  border-color: var(--asa-primary);
+}
+
+.asa-date-filter-wrap:focus-within {
+  border-color: var(--asa-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.asa-date-icon {
+  color: var(--asa-muted);
+  flex-shrink: 0;
+}
+
+.asa-date-input {
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 500;
+  outline: none;
+  color: var(--asa-text);
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.asa-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.asa-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.asa-date-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: var(--asa-border);
+  border-radius: 50%;
+  color: var(--asa-muted);
+  cursor: pointer;
+  transition: var(--asa-transition);
+}
+
+.asa-date-clear-btn:hover {
+  background: var(--asa-red);
+  color: white;
+}
+
 .asa-search-box {
   display: flex;
   align-items: center;
@@ -262,6 +358,8 @@
   border: 1px solid var(--asa-border);
   border-radius: 10px;
   transition: var(--asa-transition);
+  flex: 1;
+  min-width: 200px;
 }
 
 .asa-search-box:focus-within {
@@ -274,7 +372,7 @@
   background: transparent;
   font-size: 0.875rem;
   outline: none;
-  width: 200px;
+  width: 100%;
   color: var(--asa-text);
 }
 
@@ -314,7 +412,6 @@
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-/* ─── Loading / Empty ─────────────────────────────────────────── */
 .asa-loading, .asa-empty {
   display: flex;
   flex-direction: column;
@@ -352,7 +449,6 @@
   to { transform: rotate(360deg); }
 }
 
-/* ─── Slot Grid ───────────────────────────────────────────────── */
 .asa-slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -363,40 +459,31 @@
   background: var(--asa-surface);
   border: 1px solid var(--asa-border);
   border-radius: var(--asa-radius);
-  padding: 20px;
+  padding: 0;
   cursor: pointer;
-  transition: var(--asa-transition);
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
-}
-
-.asa-slot-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--asa-primary) 0%, var(--asa-green) 100%);
-  opacity: 0;
-  transition: var(--asa-transition);
+  box-shadow: var(--asa-shadow-sm);
 }
 
 .asa-slot-card:hover {
   border-color: var(--asa-primary);
-  box-shadow: var(--asa-shadow-md);
-  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+  transform: translateY(-2px);
 }
 
-.asa-slot-card:hover::before {
-  opacity: 1;
+.asa-slot-card:active {
+  transform: translateY(0);
 }
 
 .asa-slot-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 14px;
+  padding: 18px 20px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--asa-border-lt);
 }
 
 .asa-slot-date {
@@ -414,7 +501,7 @@
 
 .asa-slot-year {
   padding: 5px 12px;
-  background: linear-gradient(135deg, var(--asa-primary-lt) 0%, #e0e7ff 100%);
+  background: var(--asa-primary-lt);
   color: var(--asa-primary-d);
   font-size: 0.75rem;
   font-weight: 700;
@@ -423,15 +510,16 @@
 }
 
 .asa-slot-card-body {
-  margin-bottom: 14px;
+  padding: 16px 20px;
 }
 
 .asa-slot-time {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.875rem;
-  color: var(--asa-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--asa-text-secondary);
   margin-bottom: 8px;
 }
 
@@ -440,17 +528,19 @@
 }
 
 .asa-slot-subject {
-  font-size: 0.825rem;
-  color: var(--asa-text-secondary);
+  font-size: 0.85rem;
+  color: var(--asa-muted);
   font-weight: 500;
-  padding: 6px 0;
+  padding: 10px 0 0;
+  margin-top: 8px;
   border-top: 1px dashed var(--asa-border);
 }
 
 .asa-slot-card-footer {
   display: flex;
   justify-content: flex-end;
-  padding-top: 14px;
+  padding: 14px 20px;
+  background: #fafafa;
   border-top: 1px solid var(--asa-border-lt);
 }
 
@@ -467,11 +557,10 @@
 }
 
 .asa-status-allocated {
-  background: linear-gradient(135deg, var(--asa-green-lt) 0%, #d1fae5 100%);
+  background: var(--asa-green-lt);
   color: #047857;
 }
 
-/* ─── Attendance Section ──────────────────────────────────────── */
 .asa-attendance-section {
   display: flex;
   flex-direction: column;
@@ -513,105 +602,99 @@
 
 .asa-year-badge {
   padding: 6px 14px;
-  background: linear-gradient(135deg, var(--asa-primary-lt) 0%, #e0e7ff 100%);
-  color: var(--asa-primary-d);
+  background: var(--asa-bg);
+  color: var(--asa-text-secondary);
   font-size: 0.825rem;
-  font-weight: 700;
+  font-weight: 600;
   border-radius: 8px;
-  letter-spacing: 0.02em;
+  border: 1px solid var(--asa-border);
 }
 
-/* ─── Stats Row ───────────────────────────────────────────────── */
 .asa-stats-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
 }
 
 .asa-stat-card {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px 22px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px;
   background: var(--asa-surface);
-  border-radius: var(--asa-radius);
+  border-radius: 12px;
   border: 1px solid var(--asa-border);
-  box-shadow: var(--asa-shadow);
-  transition: var(--asa-transition);
-  position: relative;
-  overflow: hidden;
+  box-shadow: var(--asa-shadow-sm);
 }
 
 .asa-stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--asa-shadow-md);
+  box-shadow: var(--asa-shadow);
+}
+
+.asa-stat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 8px;
+  flex-shrink: 0;
 }
 
 .asa-stat-card svg {
-  flex-shrink: 0;
-  padding: 10px;
-  border-radius: 10px;
-  background: var(--asa-bg);
+  display: none;
 }
 
 .asa-stat-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .asa-stat-num {
-  font-size: 1.75rem;
-  font-weight: 800;
+  font-size: 2rem;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.02em;
 }
 
 .asa-stat-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--asa-muted);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
-.asa-stat-blue { border-left: 4px solid var(--asa-primary); }
-.asa-stat-blue svg { background: var(--asa-primary-lt); color: var(--asa-primary); }
+.asa-stat-blue .asa-stat-dot { background: var(--asa-primary); }
 .asa-stat-blue .asa-stat-num { color: var(--asa-primary); }
 
-.asa-stat-green { border-left: 4px solid var(--asa-green); }
-.asa-stat-green svg { background: var(--asa-green-lt); color: var(--asa-green); }
+.asa-stat-green .asa-stat-dot { background: var(--asa-green); }
 .asa-stat-green .asa-stat-num { color: var(--asa-green); }
 
-.asa-stat-red { border-left: 4px solid var(--asa-red); }
-.asa-stat-red svg { background: var(--asa-red-lt); color: var(--asa-red); }
+.asa-stat-red .asa-stat-dot { background: var(--asa-red); }
 .asa-stat-red .asa-stat-num { color: var(--asa-red); }
 
-.asa-stat-gray { border-left: 4px solid #94a3b8; }
-.asa-stat-gray svg { background: #f1f5f9; color: #64748b; }
-.asa-stat-gray .asa-stat-num { color: #64748b; }
+.asa-stat-gray .asa-stat-dot { background: #94a3b8; }
+.asa-stat-gray .asa-stat-num { color: var(--asa-text); }
 
-/* ─── Venue Section ───────────────────────────────────────────── */
 .asa-venue-section {
   background: var(--asa-surface);
-  border-radius: var(--asa-radius-lg);
+  border-radius: 12px;
   border: 1px solid var(--asa-border);
-  padding: 24px;
-  box-shadow: var(--asa-shadow);
+  padding: 20px;
+  box-shadow: var(--asa-shadow-sm);
 }
 
 .asa-venue-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
   gap: 14px;
 }
 
 .asa-venue-tabs {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -619,31 +702,30 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 10px 16px;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--asa-muted);
-  background: var(--asa-bg);
-  border: 2px solid transparent;
-  border-radius: 10px;
+  background: var(--asa-surface);
+  border: 1px solid var(--asa-border);
+  border-radius: 24px;
   cursor: pointer;
-  transition: var(--asa-transition);
+  transition: all 0.2s ease;
 }
 
 .asa-venue-tab:hover {
-  background: var(--asa-bg-alt);
+  background: var(--asa-bg);
   color: var(--asa-text-secondary);
-  border-color: var(--asa-border);
 }
 
 .asa-tab-active {
   color: #fff !important;
   border-color: transparent !important;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  box-shadow: none;
 }
 
 .asa-tab-count {
-  padding: 3px 10px;
+  padding: 2px 10px;
   background: rgba(255,255,255,0.3);
   border-radius: 12px;
   font-size: 0.75rem;
@@ -651,17 +733,7 @@
 }
 
 .asa-tab-present {
-  padding: 3px 8px;
-  background: rgba(16, 185, 129, 0.25);
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #047857;
-}
-
-.asa-tab-active .asa-tab-present {
-  background: rgba(255,255,255,0.3);
-  color: #fff;
+  display: none;
 }
 
 .asa-quick-actions {
@@ -669,18 +741,16 @@
   gap: 10px;
 }
 
-/* ─── Legend ──────────────────────────────────────────────────── */
 .asa-legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 24px;
   padding: 14px 20px;
-  background: linear-gradient(135deg, rgba(240, 253, 244, 0.8) 0%, rgba(220, 252, 231, 0.8) 100%);
-  border: 1px solid rgba(134, 239, 172, 0.6);
-  border-radius: var(--asa-radius);
-  margin-bottom: 20px;
-  backdrop-filter: blur(8px);
+  background: var(--asa-green-lt);
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  margin-bottom: 16px;
 }
 
 .asa-legend-item {
@@ -692,33 +762,34 @@
 }
 
 .asa-legend-item svg {
-  padding: 4px;
-  border-radius: 6px;
+  display: none;
 }
 
-.asa-legend-present { color: #047857; }
-.asa-legend-present svg { background: rgba(16, 185, 129, 0.2); }
-.asa-legend-absent { color: #dc2626; }
-.asa-legend-absent svg { background: rgba(239, 68, 68, 0.2); }
+.asa-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.asa-legend-present { color: var(--asa-green); }
+.asa-legend-present .asa-legend-dot { background: var(--asa-green); }
+.asa-legend-absent { color: var(--asa-red); }
+.asa-legend-absent .asa-legend-dot { background: var(--asa-red); }
 .asa-legend-unmarked { color: #6b7280; }
-.asa-legend-unmarked svg { background: rgba(107, 114, 128, 0.2); }
+.asa-legend-unmarked .asa-legend-dot { background: #94a3b8; }
 
 .asa-legend-help {
   font-size: 0.8rem;
   color: #64748b;
   font-style: italic;
   margin-left: auto;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 8px;
 }
 
-/* ─── Seat Map ────────────────────────────────────────────────── */
 .asa-seatmap-container {
   overflow-x: auto;
   padding: 16px;
-  background: linear-gradient(180deg, var(--asa-bg) 0%, rgba(241, 245, 249, 0.5) 100%);
-  border-radius: var(--asa-radius);
+  background: var(--asa-bg);
+  border-radius: 12px;
   border: 1px solid var(--asa-border-lt);
 }
 
@@ -730,8 +801,8 @@
 .asa-col-headers, .asa-seat-row {
   display: grid;
   grid-template-columns: 40px repeat(var(--asa-cols), minmax(75px, 1fr));
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .asa-row-spacer {
@@ -742,30 +813,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 800;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--asa-muted);
   height: 32px;
-  background: var(--asa-surface);
-  border-radius: 8px;
-  letter-spacing: 0.02em;
 }
 
 .asa-row-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 800;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--asa-muted);
   min-height: 90px;
-  background: var(--asa-surface);
-  border-radius: 8px;
 }
+
 
 .asa-seat {
   min-height: 90px;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -773,7 +840,7 @@
   text-align: center;
   padding: 8px;
   cursor: pointer;
-  transition: var(--asa-transition);
+  transition: all 0.2s ease;
   position: relative;
 }
 
@@ -784,30 +851,24 @@
 }
 
 .asa-seat-occupied {
-  border: 2px solid rgba(15,23,42,0.08);
-  box-shadow: var(--asa-shadow-sm);
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
 }
 
 .asa-seat-occupied:hover {
-  transform: scale(1.08);
-  box-shadow: var(--asa-shadow-md);
+  transform: scale(1.03);
   z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .asa-seat-present {
-  box-shadow: inset 0 0 0 4px var(--asa-green), var(--asa-shadow-sm) !important;
-}
-
-.asa-seat-present:hover {
-  box-shadow: inset 0 0 0 4px var(--asa-green), var(--asa-shadow-md) !important;
+  background: var(--asa-green-lt) !important;
+  border-color: var(--asa-green) !important;
 }
 
 .asa-seat-absent {
-  box-shadow: inset 0 0 0 4px var(--asa-red), var(--asa-shadow-sm) !important;
-}
-
-.asa-seat-absent:hover {
-  box-shadow: inset 0 0 0 4px var(--asa-red), var(--asa-shadow-md) !important;
+  background: var(--asa-red-lt) !important;
+  border-color: var(--asa-red) !important;
 }
 
 .asa-seat-inner {
@@ -822,7 +883,7 @@
 .asa-seat-label {
   font-size: 0.7rem;
   font-weight: 700;
-  color: rgba(30, 41, 59, 0.6);
+  color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -830,32 +891,43 @@
 .asa-seat-dept {
   font-size: 0.8rem;
   font-weight: 800;
+  color: #334155;
 }
 
 .asa-seat-roll {
   font-size: 0.7rem;
   font-weight: 600;
-  color: rgba(30, 41, 59, 0.8);
+  color: #64748b;
 }
 
 .asa-seat-status {
   position: absolute;
-  bottom: -6px;
-  right: -6px;
-  width: 24px;
-  height: 24px;
+  top: -8px;
+  left: -8px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  border: 3px solid #fff;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .asa-status-present {
-  background: linear-gradient(135deg, var(--asa-green) 0%, var(--asa-green-d) 100%);
+  background: var(--asa-green);
+  color: #fff;
+}
+
+.asa-status-absent {
+  background: var(--asa-red);
+  color: #fff;
+}
+
+.asa-status-unmarked {
+  background: #94a3b8;
   color: #fff;
 }
 
@@ -874,7 +946,6 @@
   color: #cbd5e1;
 }
 
-/* ─── Save Banner ─────────────────────────────────────────────── */
 .asa-save-banner {
   position: fixed;
   bottom: 28px;
@@ -920,7 +991,6 @@
   color: #92400e;
 }
 
-/* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .asa-content {
     padding: 20px;
@@ -951,12 +1021,39 @@
     padding: 20px;
   }
 
+  .asa-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .asa-topbar-left {
+    flex-direction: column;
+  }
+
+  .asa-topbar-right {
+    width: 100%;
+  }
+
+  .asa-topbar-right .asa-select {
+    width: 100%;
+  }
+
   .asa-slot-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .asa-slot-filters {
+    width: 100%;
+  }
+
+  .asa-date-filter-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .asa-date-input {
+    min-width: 120px;
     width: 100%;
   }
 
@@ -1062,4 +1159,60 @@
   .asa-seat {
     min-height: 80px;
   }
+}
+
+/* ─── Time-based Access Control ─────────────────────────────────────────── */
+.asa-time-access {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.asa-time-access svg {
+  flex-shrink: 0;
+}
+
+.asa-time-access strong {
+  font-weight: 700;
+}
+
+.asa-time-allowed {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.asa-time-allowed svg {
+  color: #16a34a;
+}
+
+.asa-time-locked {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.asa-time-locked svg {
+  color: #dc2626;
+}
+
+.asa-time-remaining {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.asa-seat-locked {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+  filter: grayscale(30%);
+}
+
+.asa-seat-locked:hover {
+  transform: none !important;
+  box-shadow: none !important;
 }

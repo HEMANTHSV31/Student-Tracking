@@ -32,7 +32,7 @@ const SideTab = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
-  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice", "venue-allocation", "admin-tools"].some((seg) =>
+  const isFullBleedPage = ["group-insights", "tasks", "roadmap", "reports", "attendance", "code-practice", "venue-allocation", "admin-tools", "assessment-attendance"].some((seg) =>
     location.pathname.includes(seg),
   );
 
@@ -56,6 +56,7 @@ const SideTab = () => {
     "all-classes": { title: "All Classes & Groups" },
     "admin-tools": { title: "Admin Tools" },
     "admin-tasks": { title: "Tasks & Assignments" },
+    "assessment-attendance": { title: "Assessment Attendance" },
 
     students: { title: "Students" },
     attendance: { title: "Attendance" },

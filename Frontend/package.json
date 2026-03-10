@@ -20,6 +20,7 @@
     "dotenv": "^17.2.3",
     "framer-motion": "^12.23.26",
     "lodash": "^4.17.21",
+    "lottie-react": "^2.4.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
