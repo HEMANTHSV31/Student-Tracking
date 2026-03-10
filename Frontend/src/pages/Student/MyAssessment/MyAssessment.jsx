@@ -7,11 +7,12 @@ import {
   GraduationCap,
   Loader2,
   AlertCircle,
-  ClipboardX,
   Search,
   X,
   Armchair,
 } from "lucide-react";
+import Lottie from 'lottie-react';
+import emptyAnimation from '../../../animation/empty-file.json';
 import { fetchMyAllocation } from "../../../services/assessmentVenueApi";
 import "./MyAssessment.css";
 
@@ -143,7 +144,15 @@ const MyAssessment = () => {
   if (allocations.length === 0) {
     return (
       <div className="ma-container">
-        <div className="ma-empty"><div className="ma-empty-icon"><ClipboardX size={36} /></div><h3>No Assessment Allocated</h3><p>You have not been allocated to any PBL assessment venue yet. Check back later.</p></div>
+        <div className="ma-empty">
+            <Lottie 
+              animationData={emptyAnimation} 
+              loop={true} 
+              style={{ width: 180, height: 180, marginTop: '-40px' }} 
+            />
+            <h3>No Upcoming Assessment</h3>
+            <p>You have no upcoming PBL assessment allocations. Past assessments are no longer shown here.</p>
+        </div>
       </div>
     );
   }

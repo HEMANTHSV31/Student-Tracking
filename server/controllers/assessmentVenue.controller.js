@@ -541,7 +541,8 @@ export const getMyAllocation = async (req, res) => {
       FROM assessment_allocations aa
       JOIN assessment_slots s ON s.id = aa.slot_id
       WHERE s.status = 'Allocated'
-      ORDER BY s.slot_date DESC, s.start_time DESC
+        AND s.slot_date >= CURDATE()
+      ORDER BY s.slot_date ASC, s.start_time ASC
     `);
 
     const results = [];
