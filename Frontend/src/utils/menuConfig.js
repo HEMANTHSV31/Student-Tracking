@@ -150,11 +150,11 @@ export const getMenuByRole = (user) => {
       });
     }
 
-    // Add Admin Tools for faculty
+    // Add Assessment Attendance for faculty (direct access, not full Admin Tools)
     menu.push({
-      id: "admin-tools",
-      label: "Admin Tools",
-      icon: Briefcase,
+      id: "assessment-attendance",
+      label: "Assessment Attendance",
+      icon: CalendarCheck,
       section: "tools",
     });
 
