@@ -23,6 +23,11 @@ export const deleteVenue = async (id) => {
   return res.json();
 };
 
+export const toggleVenueStatus = async (id, status) => {
+  const res = await apiPut(`${BASE}/${id}/status`, { status });
+  return res.json();
+};
+
 // ── Slots ────────────────────────────────────────────────────────────────
 export const fetchSlots = async (params = {}) => {
   const qs = new URLSearchParams(params).toString();
