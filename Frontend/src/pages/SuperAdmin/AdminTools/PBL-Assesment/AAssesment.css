@@ -1796,7 +1796,17 @@
   vertical-align: middle;
 }
 
-/* ── Table Cells ── */
+/* ═══════════════════════════════════════════════════════════════════════
+   Venue Table - Classes & Groups Style
+═══════════════════════════════════════════════════════════════════════ */
+.aa-venue-row {
+  transition: background-color 0.2s ease;
+}
+
+.aa-venue-row:hover {
+  background-color: #f8fafc;
+}
+
 .aa-venue-cell {
   display: flex;
   flex-direction: column;
@@ -1807,14 +1817,96 @@
   font-weight: 700;
   color: #0f172a;
   font-size: 15px;
+  white-space: nowrap;
 }
 
-.aa-venue-cell-sub {
+.aa-venue-cell-location {
   font-size: 12px;
   color: #64748b;
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+}
+
+.aa-venue-cell-location svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* Capacity Display */
+.aa-capacity-display {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.aa-capacity-display .aa-capacity-icon {
+  color: #94a3b8;
+}
+
+.aa-capacity-display .aa-capacity-num {
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* Status Badge - Classes & Groups Style */
+.aa-status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.aa-status-badge.aa-status-active {
+  background-color: #16a34a;
+  color: white;
+}
+
+.aa-status-badge.aa-status-active:hover {
+  background-color: #15803d;
+}
+
+.aa-status-badge.aa-status-inactive {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+.aa-status-badge.aa-status-inactive:hover {
+  background-color: #e2e8f0;
+}
+
+.aa-row-inactive {
+  opacity: 0.6;
+}
+
+.aa-row-inactive:hover {
+  opacity: 0.85;
+}
+
+/* Input with Icon */
+.aa-input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.aa-input-icon {
+  position: absolute;
+  left: 12px;
+  color: #94a3b8;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.aa-form-input-icon {
+  padding-left: 36px !important;
 }
 
 .aa-badge {

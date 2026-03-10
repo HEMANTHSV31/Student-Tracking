@@ -12,7 +12,7 @@ import {
   UserCheck, UserX, ClipboardCheck
 } from 'lucide-react';
 import {
-  fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi,
+  fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi, toggleVenueStatus,
   fetchSlots, createSlot, deleteSlot as deleteSlotApi,
   fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi,
   saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi,
@@ -31,7 +31,7 @@ const AAssesment = () => {
   const [venueError, setVenueError] = useState('');
   const [showVenueForm, setShowVenueForm] = useState(false);
   const [editingVenue, setEditingVenue] = useState(null);
-  const [venueForm, setVenueForm] = useState({ venue_name: '', rows_count: 6, columns_count: 6 });
+  const [venueForm, setVenueForm] = useState({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
   const [venueSearch, setVenueSearch] = useState('');
   const [venueActionMenu, setVenueActionMenu] = useState(null);
 
@@ -337,7 +337,7 @@ const AAssesment = () => {
       if (res.success) {
         setShowVenueForm(false);
         setEditingVenue(null);
-        setVenueForm({ venue_name: '', rows_count: 6, columns_count: 6 });
+        setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
         loadVenues();
       } else {
         alert(res.message || 'Failed to save venue');
@@ -360,8 +360,24 @@ const AAssesment = () => {
 
   const openEditVenue = (v) => {
     setEditingVenue(v);
-    setVenueForm({ venue_name: v.venue_name, rows_count: v.rows_count, columns_count: v.columns_count });
+    setVenueForm({ venue_name: v.venue_name, location: v.location || '', rows_count: v.rows_count, columns_count: v.columns_count });
     setShowVenueForm(true);
+  };
+
+  const handleToggleVenueStatus = async (venue) => {
+    const newStatus = venue.status === 'Active' ? 'Inactive' : 'Active';
+    try {
+      const res = await toggleVenueStatus(venue.id, newStatus);
+      if (res.success) {
+        setVenues(prev => prev.map(v => 
+          v.id === venue.id ? { ...v, status: newStatus } : v
+        ));
+      } else {
+        alert(res.message || 'Failed to update status');
+      }
+    } catch {
+      alert('Server error updating venue status');
+    }
   };
 
   // ── Slot CRUD Handlers ───────────────────────────────────────────────────
@@ -1108,10 +1124,10 @@ const AAssesment = () => {
     { key: 'results', icon: Eye, label: 'Results', disabled: !Object.keys(venueAllocations).length },
   ];
 
-  // Render filtered venues for table
-  const filteredVenues = venues.filter(v => 
-    v.venue_name?.toLowerCase().includes(venueSearch.toLowerCase())
-  );
+  // Render filtered venues for table (sorted ascending by name)
+  const filteredVenues = venues
+    .filter(v => v.venue_name?.toLowerCase().includes(venueSearch.toLowerCase()))
+    .sort((a, b) => (a.venue_name || '').localeCompare(b.venue_name || ''));
 
   return (
     <div className="aa-root">
@@ -1161,7 +1177,7 @@ const AAssesment = () => {
                   className="aa-btn aa-btn-primary"
                   onClick={() => {
                     setEditingVenue(null);
-                    setVenueForm({ venue_name: '', rows_count: 6, columns_count: 6 });
+                    setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
                     setShowVenueForm(true);
                   }}
                 >
@@ -1192,7 +1208,7 @@ const AAssesment = () => {
                     className="aa-btn aa-btn-primary"
                     onClick={() => {
                       setEditingVenue(null);
-                      setVenueForm({ venue_name: '', rows_count: 6, columns_count: 6 });
+                      setVenueForm({ venue_name: '', location: '', rows_count: 6, columns_count: 6 });
                       setShowVenueForm(true);
                     }}
                   >
@@ -1204,24 +1220,46 @@ const AAssesment = () => {
                   <table className="aa-table">
                     <thead>
                       <tr>
-                        <th>Venue Name</th>
+                        <th>Venue Details</th>
                         <th>Rows</th>
                         <th>Columns</th>
                         <th>Capacity</th>
-                        <th style={{ width: 80 }}>Actions</th>
+                        <th>Status</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredVenues.map((v) => (
-                        <tr key={v.id}>
+                        <tr 
+                          key={v.id} 
+                          className={`aa-venue-row ${v.status === 'Inactive' ? 'aa-row-inactive' : ''}`}
+                        >
                           <td>
                             <div className="aa-venue-cell">
                               <div className="aa-venue-cell-name">{v.venue_name}</div>
+                              <div className="aa-venue-cell-location">
+                                <MapPin size={14} />
+                                <span>{v.location || 'No location'}</span>
+                              </div>
                             </div>
                           </td>
                           <td>{v.rows_count}</td>
                           <td>{v.columns_count}</td>
-                          <td><span className="aa-badge aa-badge-blue">{v.total_capacity}</span></td>
+                          <td>
+                            <div className="aa-capacity-display">
+                              <Users size={16} className="aa-capacity-icon" />
+                              <span className="aa-capacity-num">{v.total_capacity}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <button 
+                              className={`aa-status-badge ${v.status === 'Active' ? 'aa-status-active' : 'aa-status-inactive'}`}
+                              onClick={() => handleToggleVenueStatus(v)}
+                              title={v.status === 'Active' ? 'Click to deactivate' : 'Click to activate'}
+                            >
+                              {v.status || 'Active'}
+                            </button>
+                          </td>
                           <td>
                             <div className="aa-action-cell">
                               <button
@@ -1278,6 +1316,19 @@ const AAssesment = () => {
                         placeholder="e.g. Seminar Hall 1"
                         className="aa-form-input"
                       />
+                    </div>
+                    <div className="aa-form-group">
+                      <label>Location</label>
+                      <div className="aa-input-with-icon">
+                        <MapPin size={16} className="aa-input-icon" />
+                        <input
+                          type="text"
+                          value={venueForm.location}
+                          onChange={(e) => setVenueForm((p) => ({ ...p, location: e.target.value }))}
+                          placeholder="e.g. Building A, Floor 2"
+                          className="aa-form-input aa-form-input-icon"
+                        />
+                      </div>
                     </div>
                     <div className="aa-form-row">
                       <div className="aa-form-group">

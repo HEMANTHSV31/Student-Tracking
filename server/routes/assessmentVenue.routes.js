@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import {
-  getAllVenues, createVenue, updateVenue, deleteVenue,
+  getAllVenues, createVenue, updateVenue, deleteVenue, toggleVenueStatus,
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
   saveAllocation, getAllocation, deleteAllocation,
@@ -12,10 +12,11 @@ import {
 const router = Router();
 
 // Venue CRUD
-router.get('/',        authenticate, getAllVenues);
-router.post('/',       authenticate, createVenue);
-router.put('/:id',     authenticate, updateVenue);
-router.delete('/:id',  authenticate, deleteVenue);
+router.get('/',              authenticate, getAllVenues);
+router.post('/',             authenticate, createVenue);
+router.put('/:id',           authenticate, updateVenue);
+router.put('/:id/status',    authenticate, toggleVenueStatus);
+router.delete('/:id',        authenticate, deleteVenue);
 
 // Slot management
 router.get('/slots',            authenticate, getSlots);

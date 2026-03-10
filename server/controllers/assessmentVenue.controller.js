@@ -30,13 +30,24 @@ async function columnExists(tableName, columnName) {
 /** GET /api/assessment-venues/ */
 export const getAllVenues = async (req, res) => {
   try {
+    // Check if location column exists
+    const hasLocation = await columnExists('assessment_venues', 'location');
+    
+    const selectCols = hasLocation 
+      ? 'id, venue_name, location, rows_count, columns_count, total_capacity, status, created_at'
+      : 'id, venue_name, rows_count, columns_count, total_capacity, status, created_at';
+    
     const [venues] = await db.query(`
-      SELECT id, venue_name, rows_count, columns_count, total_capacity, status, created_at
+      SELECT ${selectCols}
       FROM assessment_venues
       WHERE deleted_at IS NULL
-      ORDER BY created_at DESC
+      ORDER BY venue_name ASC
     `);
-    res.json({ success: true, data: venues });
+    
+    // Add empty location if column doesn't exist
+    const venuesWithLocation = hasLocation ? venues : venues.map(v => ({ ...v, location: '' }));
+    
+    res.json({ success: true, data: venuesWithLocation });
   } catch (error) {
     console.error('Error fetching assessment venues:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch venues' });
@@ -46,7 +57,7 @@ export const getAllVenues = async (req, res) => {
 /** POST /api/assessment-venues/ */
 export const createVenue = async (req, res) => {
   try {
-    const { venue_name, rows_count, columns_count } = req.body;
+    const { venue_name, location, rows_count, columns_count } = req.body;
 
     if (!venue_name || !rows_count || !columns_count) {
       return res.status(400).json({ success: false, message: 'Venue name, rows and columns are required' });
@@ -67,10 +78,21 @@ export const createVenue = async (req, res) => {
       return res.status(409).json({ success: false, message: `Venue "${venue_name}" already exists` });
     }
 
-    const [result] = await db.query(
-      'INSERT INTO assessment_venues (venue_name, rows_count, columns_count) VALUES (?, ?, ?)',
-      [venue_name.trim(), parseInt(rows_count), parseInt(columns_count)]
-    );
+    // Check if location column exists
+    const hasLocation = await columnExists('assessment_venues', 'location');
+    
+    let result;
+    if (hasLocation) {
+      [result] = await db.query(
+        'INSERT INTO assessment_venues (venue_name, location, rows_count, columns_count) VALUES (?, ?, ?, ?)',
+        [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count)]
+      );
+    } else {
+      [result] = await db.query(
+        'INSERT INTO assessment_venues (venue_name, rows_count, columns_count) VALUES (?, ?, ?)',
+        [venue_name.trim(), parseInt(rows_count), parseInt(columns_count)]
+      );
+    }
 
     res.status(201).json({
       success: true,
@@ -78,6 +100,7 @@ export const createVenue = async (req, res) => {
       data: {
         id: result.insertId,
         venue_name: venue_name.trim(),
+        location: (location || '').trim(),
         rows_count: parseInt(rows_count),
         columns_count: parseInt(columns_count),
         total_capacity: parseInt(rows_count) * parseInt(columns_count),
@@ -94,7 +117,7 @@ export const createVenue = async (req, res) => {
 export const updateVenue = async (req, res) => {
   try {
     const { id } = req.params;
-    const { venue_name, rows_count, columns_count } = req.body;
+    const { venue_name, location, rows_count, columns_count } = req.body;
 
     if (!venue_name || !rows_count || !columns_count) {
       return res.status(400).json({ success: false, message: 'Venue name, rows and columns are required' });
@@ -109,10 +132,20 @@ export const updateVenue = async (req, res) => {
       return res.status(409).json({ success: false, message: `Venue "${venue_name}" already exists` });
     }
 
-    await db.query(
-      'UPDATE assessment_venues SET venue_name = ?, rows_count = ?, columns_count = ? WHERE id = ?',
-      [venue_name.trim(), parseInt(rows_count), parseInt(columns_count), id]
-    );
+    // Check if location column exists
+    const hasLocation = await columnExists('assessment_venues', 'location');
+    
+    if (hasLocation) {
+      await db.query(
+        'UPDATE assessment_venues SET venue_name = ?, location = ?, rows_count = ?, columns_count = ? WHERE id = ?',
+        [venue_name.trim(), (location || '').trim(), parseInt(rows_count), parseInt(columns_count), id]
+      );
+    } else {
+      await db.query(
+        'UPDATE assessment_venues SET venue_name = ?, rows_count = ?, columns_count = ? WHERE id = ?',
+        [venue_name.trim(), parseInt(rows_count), parseInt(columns_count), id]
+      );
+    }
 
     res.json({ success: true, message: 'Venue updated successfully' });
   } catch (error) {
@@ -133,6 +166,28 @@ export const deleteVenue = async (req, res) => {
   } catch (error) {
     console.error('Error deleting assessment venue:', error);
     res.status(500).json({ success: false, message: 'Failed to delete venue' });
+  }
+};
+
+/** PUT /api/assessment-venues/:id/status - Toggle venue status */
+export const toggleVenueStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['Active', 'Inactive'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be Active or Inactive' });
+    }
+
+    await db.query(
+      'UPDATE assessment_venues SET status = ? WHERE id = ? AND deleted_at IS NULL',
+      [status, id]
+    );
+
+    res.json({ success: true, message: `Venue status updated to ${status}` });
+  } catch (error) {
+    console.error('Error toggling venue status:', error);
+    res.status(500).json({ success: false, message: 'Failed to update venue status' });
   }
 };
 
