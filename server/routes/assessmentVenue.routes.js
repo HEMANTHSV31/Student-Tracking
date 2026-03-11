@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import {
   getAllVenues, createVenue, updateVenue, deleteVenue, toggleVenueStatus,
+  getVenueLayout, saveVenueLayout,
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
   saveAllocation, getAllocation, deleteAllocation,
@@ -17,6 +18,10 @@ router.post('/',             authenticate, createVenue);
 router.put('/:id',           authenticate, updateVenue);
 router.put('/:id/status',    authenticate, toggleVenueStatus);
 router.delete('/:id',        authenticate, deleteVenue);
+
+// Venue layout designer
+router.get('/:id/layout',   authenticate, getVenueLayout);
+router.put('/:id/layout',   authenticate, saveVenueLayout);
 
 // Slot management
 router.get('/slots',            authenticate, getSlots);

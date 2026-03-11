@@ -28,6 +28,17 @@ export const toggleVenueStatus = async (id, status) => {
   return res.json();
 };
 
+// ── Venue Layout Designer ────────────────────────────────────────────────
+export const fetchVenueLayout = async (id) => {
+  const res = await apiGet(`${BASE}/${id}/layout`);
+  return res.json();
+};
+
+export const saveVenueLayout = async (id, layoutData) => {
+  const res = await apiPut(`${BASE}/${id}/layout`, { layout_data: layoutData });
+  return res.json();
+};
+
 // ── Slots ────────────────────────────────────────────────────────────────
 export const fetchSlots = async (params = {}) => {
   const qs = new URLSearchParams(params).toString();

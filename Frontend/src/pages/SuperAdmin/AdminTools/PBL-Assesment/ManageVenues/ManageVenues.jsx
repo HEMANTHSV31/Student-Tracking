@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Plus, RefreshCw, AlertTriangle, Building2, MapPin,
   Users, MoreVertical, Edit3, Trash2, X, Save,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, LayoutGrid
 } from 'lucide-react';
 import {
   fetchVenues, createVenue, updateVenue,
   deleteVenue as deleteVenueApi, toggleVenueStatus
 } from '../../../../../services/assessmentVenueApi';
+import VenueLayoutDesigner from './VenueLayoutDesigner';
 import './ManageVenues.css';
 
 const PAGE_SIZE = 5;
@@ -22,6 +23,7 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
   const [venueSearch, setVenueSearch] = useState('');
   const [venueActionMenu, setVenueActionMenu] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [layoutVenue, setLayoutVenue] = useState(null);
 
   // Use a ref for the callback so loadVenues doesn't re-create on parent re-renders
   const onVenuesLoadedRef = useRef(onVenuesLoaded);
@@ -242,19 +244,6 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
                         >
                           <MoreVertical size={18} />
                         </button>
-                        {venueActionMenu?.id === v.id && (
-                          <>
-                            <div className="mv-menu-overlay" onClick={() => setVenueActionMenu(null)} />
-                            <div className="mv-action-menu" style={{ top: venueActionMenu.y, left: venueActionMenu.x }}>
-                              <button className="mv-menu-item" onClick={() => { openEditVenue(v); setVenueActionMenu(null); }}>
-                                <Edit3 size={14} /> Edit Venue
-                              </button>
-                              <button className="mv-menu-item mv-menu-danger" onClick={() => { handleDeleteVenue(v.id); setVenueActionMenu(null); }}>
-                                <Trash2 size={14} /> Delete Venue
-                              </button>
-                            </div>
-                          </>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -389,6 +378,36 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
             </div>
           </div>
         </div>
+      )}
+      {/* Action Menu (rendered outside table to avoid opacity inheritance) */}
+      {venueActionMenu && (() => {
+        const v = venues.find(ve => ve.id === venueActionMenu.id);
+        if (!v) return null;
+        return (
+          <>
+            <div className="mv-menu-overlay" onClick={() => setVenueActionMenu(null)} />
+            <div className="mv-action-menu" style={{ top: venueActionMenu.y, left: venueActionMenu.x }}>
+              <button className="mv-menu-item" onClick={() => { openEditVenue(v); setVenueActionMenu(null); }}>
+                <Edit3 size={14} /> Edit Venue
+              </button>
+              <button className="mv-menu-item" onClick={() => { setLayoutVenue(v); setVenueActionMenu(null); }}>
+                <LayoutGrid size={14} /> Design Layout
+              </button>
+              <button className="mv-menu-item mv-menu-danger" onClick={() => { handleDeleteVenue(v.id); setVenueActionMenu(null); }}>
+                <Trash2 size={14} /> Delete Venue
+              </button>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Layout Designer Modal */}
+      {layoutVenue && (
+        <VenueLayoutDesigner
+          venue={layoutVenue}
+          onClose={() => setLayoutVenue(null)}
+          onSaved={() => setLayoutVenue(null)}
+        />
       )}
     </div>
   );

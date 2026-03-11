@@ -178,6 +178,71 @@ export const toggleVenueStatus = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+//  Venue Layout Designer (2D Seat Layout)
+// ─────────────────────────────────────────────────────────────────────
+
+async function ensureLayoutColumn() {
+  if (await columnExists('assessment_venues', 'layout_data')) return;
+  await db.query(
+    'ALTER TABLE assessment_venues ADD COLUMN layout_data JSON DEFAULT NULL'
+  );
+  columnExistsCache.set('assessment_venues.layout_data', true);
+}
+
+/** GET /api/assessment-venues/:id/layout */
+export const getVenueLayout = async (req, res) => {
+  try {
+    await ensureLayoutColumn();
+    const { id } = req.params;
+
+    const [rows] = await db.query(
+      'SELECT id, venue_name, rows_count, columns_count, layout_data FROM assessment_venues WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Venue not found' });
+    }
+
+    const venue = rows[0];
+    const layoutData = venue.layout_data
+      ? (typeof venue.layout_data === 'string' ? JSON.parse(venue.layout_data) : venue.layout_data)
+      : null;
+
+    res.json({
+      success: true,
+      data: { ...venue, layout_data: layoutData },
+    });
+  } catch (error) {
+    console.error('Error fetching venue layout:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch layout' });
+  }
+};
+
+/** PUT /api/assessment-venues/:id/layout */
+export const saveVenueLayout = async (req, res) => {
+  try {
+    await ensureLayoutColumn();
+    const { id } = req.params;
+    const { layout_data } = req.body;
+
+    if (!layout_data || (!Array.isArray(layout_data.grid) && !Array.isArray(layout_data.rows))) {
+      return res.status(400).json({ success: false, message: 'Layout data with rows or grid array is required' });
+    }
+
+    await db.query(
+      'UPDATE assessment_venues SET layout_data = ? WHERE id = ? AND deleted_at IS NULL',
+      [JSON.stringify(layout_data), id]
+    );
+
+    res.json({ success: true, message: 'Layout saved successfully' });
+  } catch (error) {
+    console.error('Error saving venue layout:', error);
+    res.status(500).json({ success: false, message: 'Failed to save layout' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────
 //  Assessment Slot Timings
 // ─────────────────────────────────────────────────────────────────────
 
