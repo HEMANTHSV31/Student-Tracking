@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, Layers, Plus, Trash2, Edit3, Save, X, 
-  ChevronUp, ChevronDown, CheckCircle, AlertTriangle, ArrowRight,
-  Link, Unlink
+  CheckCircle, AlertTriangle, Link, Unlink
 } from 'lucide-react';
 import { 
   fetchYearCourses, addYearCourse, updateYearCourse, deleteYearCourse 
 } from '../../../../../services/assessmentVenueApi.js';
+import './ManageCourses.css';
 
 const ManageCourses = () => {
   const [activeYear, setActiveYear] = useState(1);
@@ -39,6 +39,7 @@ const ManageCourses = () => {
   };
 
   const generateSubCode = (genericCode, dept) => {
+    if (!genericCode) return '';
     const code = DEPT_CODE_MAP[dept] || 'XX';
     return genericCode.replace(/XX/i, code);
   };
@@ -83,11 +84,14 @@ const ManageCourses = () => {
       course_code: course.course_code,
       departments: [...(course.departments || [])]
     });
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancel = () => {
     setEditId(null);
     setFormData({ course_code: '', departments: [] });
+    setSelectedDepts([]);
   };
 
   // Handle Save (Create/Update)
@@ -199,6 +203,7 @@ const ManageCourses = () => {
 
   const clearDepartments = () => {
     setFormData(prev => ({ ...prev, departments: [] }));
+    setSelectedDepts([]);
   };
 
   const toggleSelection = (dept) => {
@@ -246,14 +251,9 @@ const ManageCourses = () => {
     const seenGIds = new Set();
     const sortedDepts = [...formData.departments].sort((a,b) => a.dept.localeCompare(b.dept));
     
-    // Sort logic needs careful application or we lose user order?
-    // User order isn't guaranteed anyway.
-    
     sortedDepts.forEach(d => {
        if (d.gId) {
          if (!seenGIds.has(d.gId)) {
-           // Find all members in the SORTED list to keep them together if needed
-           // But actually filter from original list is safer
            const members = formData.departments.filter(m => m.gId === d.gId);
            groups.push({ type: 'group', id: d.gId, members, name: d.name });
            seenGIds.add(d.gId);
@@ -270,24 +270,16 @@ const ManageCourses = () => {
   return (
     <div className="aa-courses-container">
       {/* Header & Year Selector */}
-      <div className="aa-header-row" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '20px' }}>
-        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="aa-header-row">
+        <h3>
             <Layers size={20} /> Course Allocation Setup
         </h3>
-        <div className="aa-year-tabs" style={{ display: 'flex', gap: '5px' }}>
+        <div className="aa-year-tabs">
           {[1, 2, 3, 4].map(y => (
             <button
               key={y}
               className={`aa-tab-btn ${activeYear === y ? 'active' : ''}`}
               onClick={() => { setActiveYear(y); handleCancel(); }}
-              style={{
-                padding: '6px 12px',
-                border: '1px solid #ddd',
-                background: activeYear === y ? '#2563eb' : '#fff',
-                color: activeYear === y ? '#fff' : '#444',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
             >
               Year {y}
             </button>
@@ -297,375 +289,219 @@ const ManageCourses = () => {
 
       {/* Feedback Message */}
       {msg.text && (
-        <div style={{
-          padding: '10px 15px',
-          marginBottom: '20px',
-          borderRadius: '6px',
-          backgroundColor: msg.type === 'error' ? '#fee2e2' : '#dcfce7',
-          color: msg.type === 'error' ? '#991b1b' : '#166534',
-          border: `1px solid ${msg.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
-          display: 'flex', alignItems: 'center', gap: '10px'
-        }}>
+        <div className={`aa-msg-box ${msg.type === 'error' ? 'aa-msg-error' : 'aa-msg-success'}`}>
           {msg.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
           <span>{msg.text}</span>
         </div>
       )}
 
       {/* Add/Edit Form */}
-      <div style={{ 
-        backgroundColor: '#fff', 
-        padding: '24px', 
-        borderRadius: '12px', 
-        border: '1px solid #e2e8f0',
-        marginBottom: '25px',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
-          <h4 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#1e293b', fontWeight: 600 }}>
-            {editId ? <Edit3 size={18} color="#2563eb"/> : <Plus size={18} color="#2563eb"/>}
-            {editId ? 'Edit Course Configuration' : 'Create New Course'}
-          </h4>
+      <div className="aa-course-form-card">
+        <div className="aa-form-header">
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+             {editId ? <Edit3 size={18} /> : <Plus size={18} />}
+             {editId ? `Edit Course (Year ${activeYear})` : `Add New Course (Year ${activeYear})`}
+          </span>
           {editId && (
-            <button 
-              onClick={handleCancel}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '4px',
-                padding: '6px 12px',
-                background: '#f1f5f9',
-                color: '#64748b',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: 500
-              }}
-            >
-              <X size={14} /> Cancel
+            <button className="aa-icon-btn aa-icon-danger" onClick={handleCancel} title="Cancel Edit">
+              <X size={18} />
             </button>
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 1.5fr', gap: '30px' }}>
-          
-
-          {/* Left Column: Course Details */}
-          <div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-                Course Code Pattern <span style={{color:'#ef4444'}}>*</span>
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 21XX402"
-                  value={formData.course_code}
-                  onChange={e => setFormData({ ...formData, course_code: e.target.value.toUpperCase() })}
-                  style={{ 
-                    width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '1rem', 
-                    fontFamily: 'monospace', letterSpacing: '0.5px', outline: 'none', transition: 'border 0.2s', fontWeight: 600
-                  }}
-                  onFocus={e => e.target.style.borderColor = '#3b82f6'}
-                  onBlur={e => e.target.style.borderColor = '#cbd5e1'}
-                />
-                <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
-                   {formData.course_code.includes('XX') ? 
-                     <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bbf7d0' }}>Dynamic</span> : 
-                     <span style={{ fontSize: '0.7rem', background: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, border: '1px solid #e2e8f0' }}>Static</span>
-                   }
-                </div>
-              </div>
-              <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.5 }}>
-                Use <strong>XX</strong> as a placeholder (e.g., 22XX402) to automatically generate department-specific codes (22CS402, 22IT402).
-              </p>
-            </div>
-
-            <div style={{ marginBottom: '20px', padding: '16px', borderRadius: '8px', background: '#eef2ff', border: '1px solid #c7d2fe' }}>
-               <h5 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#3730a3', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Users size={14} /> Total Targeted Depts: {formData.departments.length}
-               </h5>
-               {formData.departments.length > 0 ? (
-                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {formData.departments.map(d => (
-                       <span key={d.dept} style={{ background: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#4338ca', border: '1px solid #e0e7ff', fontWeight: 500 }}>
-                          {d.dept}
-                       </span>
-                    ))}
-                 </div>
-               ) : (
-                 <span style={{ fontSize: '0.8rem', color: '#818cf8', fontStyle: 'italic' }}>No departments selected yet.</span>
-               )}
-            </div>
+        <div className="aa-code-input-row">
+          <div className="aa-form-group-inline" style={{ flex: 1 }}>
+            <label>Course Code (Generic)</label>
+            <input
+              type="text"
+              className="aa-course-input"
+              value={formData.course_code}
+              onChange={e => setFormData({ ...formData, course_code: e.target.value.toUpperCase() })}
+              placeholder="e.g. 22XX402"
+            />
           </div>
+          <button className="aa-btn aa-btn-secondary" onClick={handleCancel}>
+            Reset
+          </button>
+        </div>
 
-          {/* Right Column: Departments & Preview */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '20px' }}>
-             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '16px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>Select Departments & Assign Subjects</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                     <button type="button" onClick={() => selectCluster('CS')} 
-                        style={{ fontSize:'0.75rem', padding:'4px 10px', borderRadius:'6px', background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe', cursor:'pointer', fontWeight: 600 }}>
-                        + CS Cluster
-                     </button>
-                     <button type="button" onClick={() => selectCluster('Core')} 
-                        style={{ fontSize:'0.75rem', padding:'4px 10px', borderRadius:'6px', background:'#f0fdf4', color:'#166534', border:'1px solid #bbf7d0', cursor:'pointer', fontWeight: 600 }}>
-                        + Core Cluster
-                     </button>
-                     <button type="button" onClick={clearDepartments} 
-                        style={{ fontSize:'0.75rem', padding:'4px 10px', borderRadius:'6px', background:'#fff', color:'#ef4444', border:'1px solid #ef4444', cursor:'pointer', fontWeight: 600 }}>
-                        Clear
-                     </button>
+        {/* Dept Selector */}
+        <div style={{ marginBottom: '24px' }}>
+          <label className="aa-dept-s-label">Map Departments:</label>
+          <div className="aa-group-toolbar">
+            <button className="aa-btn aa-btn-secondary aa-btn-sm" onClick={() => selectCluster('CS')}>Select CS Cluster</button>
+            <button className="aa-btn aa-btn-secondary aa-btn-sm" onClick={() => selectCluster('CORE')}>Select Core Cluster</button>
+            <button className="aa-btn aa-btn-secondary aa-btn-sm" onClick={clearDepartments}>Clear All</button>
+          </div>
+          
+          <div className="aa-dept-grid-selector">
+            {ALL_DEPARTMENTS.map(dept => {
+              const isMapped = formData.departments.some(d => d.dept === dept);
+              return (
+                <div
+                  key={dept}
+                  className={`aa-dept-s-chip ${isMapped ? 'selected' : ''}`}
+                  onClick={() => toggleDept(dept)}
+                >
+                  {dept}
+                  {isMapped && <CheckCircle size={12} style={{marginLeft:4}} />}
                 </div>
-             </div>
-
-             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
-                {ALL_DEPARTMENTS.map(dept => {
-                  const isSelected = formData.departments.some(d => d.dept === dept);
-                  return (
-                    <button
-                      key={dept}
-                      type="button"
-                      onClick={() => toggleDept(dept)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        border: isSelected ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                        background: isSelected ? '#2563eb' : '#fff',
-                        color: isSelected ? '#fff' : '#64748b',
-                        fontSize: '0.75rem',
-                        fontWeight: isSelected ? 600 : 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        boxShadow: isSelected ? '0 2px 4px rgba(37,99,235,0.2)' : '0 1px 2px rgba(0,0,0,0.05)'
-                      }}
-                    >
-                      {dept}
-                    </button>
-                  );
-                })}
-             </div>
-
-             {/* Preview & Name Input Table */}
-             {formData.course_code.includes('XX') && formData.departments.length > 0 ? (
-                 <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                    <div style={{ padding: '8px 16px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>CONFIGURE SUB-COURSES ({formData.departments.length})</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            {selectedDepts.length > 1 && (
-                                <button type="button" onClick={createGroup} style={{ display: 'flex', alignItems: 'center', gap: '4px', border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600 }}>
-                                    <Link size={14} /> Merge Selected
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                            <thead style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                                <tr>
-                                    <th style={{ textAlign:'center', padding:'8px', width:'40px' }}>
-                                       {/* Checkbox Col */}
-                                    </th>
-                                    <th style={{ textAlign:'left', padding:'8px 12px', color:'#64748b', fontWeight:500, width:'80px' }}>Dept</th>
-                                    <th style={{ textAlign:'left', padding:'8px 12px', color:'#64748b', fontWeight:500, width:'140px' }}>Code</th>
-                                    <th style={{ textAlign:'left', padding:'8px 12px', color:'#64748b', fontWeight:500 }}>Course Name / Subject</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {renderGroups.map((group, idx) => (
-                                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc', background: group.type === 'group' ? '#f0f9ff' : 'transparent' }}>
-                                        <td style={{ textAlign: 'center', padding: '8px' }}>
-                                            {group.type === 'single' ? (
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedDepts.includes(group.id)}
-                                                    onChange={() => toggleSelection(group.id)}
-                                                    style={{ cursor: 'pointer' }}
-                                                />
-                                            ) : (
-                                                <button type="button" onClick={() => ungroup(group.id)} title="Ungroup" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#ef4444' }}>
-                                                    <Unlink size={14} />
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '8px 12px', color: '#334155', fontWeight: 600 }}>
-                                            {group.members.map(m => m.dept).join(' / ')}
-                                        </td>
-                                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: '#2563eb', fontWeight: 600 }}>
-                                            {group.members.map(m => generateSubCode(formData.course_code, m.dept)).join(' / ')}
-                                        </td>
-                                        <td style={{ padding: '6px 12px' }}>
-                                            <input 
-                                              type="text" 
-                                              placeholder="Subject Name"
-                                              value={group.members[0].name} 
-                                              onChange={(e) => updateSubCourseName(group.id, e.target.value, group.type === 'group')}
-                                              style={{ 
-                                                width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.8rem',
-                                                background: group.members[0].name ? '#fff' : '#fff7ed',  borderColor: group.members[0].name ? '#cbd5e1' : '#fdba74'
-                                              }}
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                 </div>
-             ) : (
-                <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', border: '1px dashed #e2e8f0', borderRadius: '8px', background: '#fff' }}>
-                    {formData.departments.length === 0 ? 'Select departments to enable configuration' : 'Use "XX" in course code for dynamic generation'}
-                </div>
-             )}
+              );
+            })}
           </div>
         </div>
 
-        <div style={{ marginTop: '30px', borderTop: '1px solid #f1f5f9', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-             <button 
-                onClick={handleSave}
-                disabled={loading}
-                style={{
-                padding: '10px 24px',
-                background: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'wait' : 'pointer',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.3), 0 2px 4px -1px rgba(37, 99, 235, 0.1)',
-                transition: 'all 0.2s'
-                }}
-                onMouseEnter={e => !loading && (e.currentTarget.style.transform = 'translateY(-1px)')}
-                onMouseLeave={e => !loading && (e.currentTarget.style.transform = 'translateY(0)')}
-            >
-                {loading ? <div className="spinner-border spinner-border-sm"></div> : <Save size={18} />}
-                {editId ? 'Update & Save Changes' : 'Create Course'}
+        {formData.departments.length > 0 && (
+          <div className="aa-sub-courses-list">
+            <div className="aa-group-toolbar" style={{ justifyContent: 'space-between', marginBottom: '16px' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155' }}>
+                Course Names & Grouping
+              </span>
+              <div style={{ display:'flex', gap: '8px' }}>
+                <button 
+                  className="aa-btn aa-btn-secondary aa-btn-sm"
+                  disabled={selectedDepts.length < 2}
+                  onClick={createGroup}
+                  title="Group selected departments under a common course name"
+                >
+                  <Link size={14} /> Group
+                </button>
+              </div>
+            </div>
+
+            {renderGroups.map((group, idx) => {
+               if (group.type === 'group') {
+                 // Render Group Card
+                 return (
+                   <div key={group.id} className="aa-group-card">
+                     <div className="aa-group-header">
+                       <div className="aa-form-group-inline" style={{ flexDirection: 'row', alignItems: 'center' }}>
+                         <label>Common Name:</label>
+                         <input 
+                           type="text" 
+                           className="aa-sub-name-input"
+                           value={group.name} 
+                           onChange={(e) => updateSubCourseName(group.id, e.target.value, true)}
+                           placeholder="Course Name for this group"
+                         />
+                         <button className="aa-icon-btn aa-icon-danger" onClick={() => ungroup(group.id)} title="Ungroup">
+                           <Unlink size={14} />
+                         </button>
+                       </div>
+                     </div>
+                     <div className="aa-group-body">
+                       <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '6px' }}>
+                         Departments ({group.members.length}):
+                       </span>
+                       <div className="aa-group-members">
+                         {group.members.map(m => (
+                           <span key={m.dept} className="aa-grp-badge">
+                             {m.dept} ({generateSubCode(formData.course_code, m.dept)})
+                           </span>
+                         ))}
+                       </div>
+                     </div>
+                   </div>
+                 );
+               } else {
+                 // Render Single Row
+                 const item = group.members[0];
+                 const isSelected = selectedDepts.includes(item.dept);
+                 return (
+                   <div key={item.dept} className="aa-sub-row" style={{ background: isSelected ? '#eff6ff' : 'transparent' }}>
+                     <input 
+                       type="checkbox" 
+                       checked={isSelected}
+                       onChange={() => toggleSelection(item.dept)}
+                       style={{ marginRight: '8px' }}
+                     />
+                     <div className="aa-sub-dept-badge">{item.dept}</div>
+                     <span className="aa-sub-info">
+                       {generateSubCode(formData.course_code, item.dept)}
+                     </span>
+                     <input
+                       type="text"
+                       className="aa-sub-name-input"
+                       placeholder="Course Name"
+                       value={item.name}
+                       onChange={(e) => updateSubCourseName(item.dept, e.target.value)}
+                     />
+                   </div>
+                 );
+               }
+            })}
+          </div>
+        )}
+
+        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          {editId && (
+            <button className="aa-btn aa-btn-secondary" onClick={handleCancel}>
+              Cancel
             </button>
+          )}
+          <button className="aa-btn aa-btn-primary" onClick={handleSave} disabled={loading}>
+            {loading ? 'Saving...' : <><Save size={16} /> Save Course Configuration</>}
+          </button>
         </div>
       </div>
-
-      {/* Data Table */}
+      
+      {/* List */}
       <h4 style={{ fontSize: '1rem', color: '#334155', marginBottom: '15px' }}>
         Existing Courses (Year {activeYear})
       </h4>
       
-      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead style={{ background: '#f1f5f9' }}>
-            <tr>
-              <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569' }}>Generic Code</th>
-              <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569' }}>Main Course Name</th>
-              <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569' }}>Sub-Codes / Depts</th>
-              <th style={{ padding: '12px 15px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569', width: '100px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && courses.length === 0 ? (
-              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>Loading courses...</td></tr>
-            ) : courses.length === 0 ? (
-              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No courses found for Year {activeYear}. Add one to get started.</td></tr>
-            ) : (
-              courses.map(course => (
-                <tr key={course.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                  <td style={{ padding: '12px 15px', fontWeight: 500, color: '#334155' }}>
-                     {course.course_code}
-                     {course.course_code.includes('XX') && <span style={{display:'block', fontSize:'0.7rem', color:'#64748b'}}>Dynamic</span>}
+      <div className="aa-table-card">
+        {loading && !courses.length ? (
+           <div className="aa-loading-overlay">Loading courses...</div>
+        ) : courses.length === 0 ? (
+           <div className="aa-empty-state">
+             <p>No courses configured for Year {activeYear}</p>
+           </div>
+        ) : (
+          <table className="aa-course-table">
+            <thead>
+              <tr>
+                <th style={{width:'15%'}}>Code Pattern</th>
+                <th style={{width:'30%'}}>Course Name (Primary)</th>
+                <th>Departments & Mappings</th>
+                <th style={{width:'100px', textAlign:'right'}}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {courses.map(course => (
+                <tr key={course.id}>
+                  <td>
+                    <span className="aa-course-code-cell">{course.course_code}</span>
                   </td>
-                  <td style={{ padding: '12px 15px', color: '#334155' }}>{course.course_name}</td>
-                  <td style={{ padding: '12px 15px' }}>
-                    
-                    {course.course_code.includes('XX') ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {(() => {
-                           const depts = course.departments || [];
-                           const groups = [];
-                           const seen = new Set();
-                           
-                           // Grouping Logic for Display
-                           depts.forEach(d => {
-                             if (typeof d === 'object' && d.gId) {
-                               if (!seen.has(d.gId)) {
-                                 groups.push({
-                                   isGroup: true,
-                                   members: depts.filter(m => typeof m === 'object' && m.gId === d.gId)
-                                 });
-                                 seen.add(d.gId);
-                               }
-                             } else if (typeof d === 'object' && !d.gId) {
-                               groups.push({ isGroup: false, data: d });
-                             } else if (typeof d === 'string') {
-                               groups.push({ isGroup: false, data: d });
-                             }
-                           });
-
-                           return groups.map((g, idx) => {
-                             if (g.isGroup) {
-                               const deptStr = g.members.map(m => m.dept).join(' / ');
-                               const codeStr = g.members.map(m => generateSubCode(course.course_code, m.dept)).join(' / ');
-                               const name = g.members[0].name || course.course_name;
-                               return (
-                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
-                                     <span style={{ fontWeight: 600, color: '#475569' }}>{deptStr}</span>
-                                     <ArrowRight size={12} color="#94a3b8" />
-                                     <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{codeStr}</span>
-                                     <span style={{ color: '#64748b', fontSize:'0.75rem' }}>({name})</span>
-                                  </div>
-                               );
-                             } else {
-                               const d = g.data;
-                               const deptName = typeof d === 'string' ? d : d.dept;
-                               const cName = typeof d === 'string' ? course.course_name : d.name;
-                               return (
-                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
-                                     <span style={{ fontWeight: 600, minWidth: '30px', color: '#475569' }}>{deptName}</span>
-                                     <ArrowRight size={12} color="#94a3b8" />
-                                     <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{generateSubCode(course.course_code, deptName)}</span>
-                                     <span style={{ color: '#64748b', fontSize:'0.75rem' }}>({cName})</span>
-                                  </div>
-                               );
-                             }
-                           });
-                        })()}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {(course.departments || []).map((d, i) => {
-                          const val = typeof d === 'string' ? d : d.dept;
-                          return <span key={i} style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', color: '#475569', border: '1px solid #e2e8f0' }}>{val}</span>
-                        })}
-                      </div>
-                    )}
-
+                  <td style={{ fontWeight: 600 }}>{course.course_name}</td>
+                  <td>
+                    {course.departments && course.departments.map((d, i) => (
+                      <span key={i} className="aa-dept-mini-badge" title={d.name}>
+                        {d.dept}
+                        <span style={{ opacity: 0.6, fontSize:'0.7em', marginLeft: '4px' }}>
+                          {d.subCode || generateSubCode(course.course_code, d.dept)}
+                        </span>
+                      </span>
+                    ))}
                   </td>
-                  <td style={{ padding: '12px 15px', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                      <button 
-                        onClick={() => handleEdit(course)}
-                        title="Edit Course"
-                        style={{ padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#2563eb' }}
-                      >
-                        <Edit3 size={18} />
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                      <button className="aa-icon-btn" onClick={() => handleEdit(course)}>
+                        <Edit3 size={14} />
                       </button>
-                      <button 
-                        onClick={() => handleDelete(course.id)}
-                        title="Delete Course"
-                        style={{ padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444' }}
-                      >
-                        <Trash2 size={18} />
+                      <button className="aa-icon-btn aa-icon-danger" onClick={() => handleDelete(course.id)}>
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
 };
 
 export default ManageCourses;
-

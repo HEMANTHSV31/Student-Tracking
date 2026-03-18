@@ -1,0 +1,279 @@
+/* ═══════════════════════════════════════════════════════════════
+   DEPARTMENT CLUSTERS TAB
+════════════════════════════════════════════════════════════════ */
+.aa-clusters-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Year Pills (in topbar) ── */
+.aa-cl-year-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--aa-border);
+}
+
+.aa-cl-year-pill {
+  position: relative;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  color: #64748b;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aa-cl-year-pill:hover:not(.aa-cl-year-pill-active) {
+  color: var(--aa-text);
+  background: #e2e8f0;
+}
+
+.aa-cl-year-pill-active {
+  background: #ffffff;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.aa-cl-yr-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aa-green);
+  flex-shrink: 0;
+}
+
+/* ── Pattern Toggle (in topbar) ── */
+.aa-cl-pattern-toggle {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 6px;
+  border: 1px solid var(--aa-border);
+  overflow: hidden;
+}
+
+.aa-cl-pat-btn {
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.aa-cl-pat-btn:hover:not(.aa-cl-pat-active) {
+  color: var(--aa-text);
+  background: #e2e8f0;
+}
+
+.aa-cl-pat-active {
+  background: var(--aa-primary);
+  color: #fff;
+}
+
+/* ── Toast message ── */
+.aa-cl-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.aa-cl-toast-ok {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.aa-cl-toast-err {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* ── Two-column layout ── */
+.aa-cl-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .aa-cl-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Cluster Table Header ── */
+.aa-cl-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.aa-cl-table-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--aa-text);
+}
+
+.aa-cl-title-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aa-cl-dot-cs   { background: var(--aa-primary); }
+.aa-cl-dot-core { background: var(--aa-amber); }
+
+.aa-cl-title-count {
+  background: #f1f5f9;
+  color: var(--aa-muted);
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Inline add input ── */
+.aa-cl-add-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aa-cl-add-input {
+  width: 160px;
+  padding: 7px 12px;
+  font-size: 13px;
+  border: 1.5px solid var(--aa-border);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--aa-text);
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.aa-cl-add-input:focus {
+  outline: none;
+  border-color: var(--aa-primary);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+  background: #fff;
+}
+
+.aa-cl-add-input::placeholder {
+  color: #94a3b8;
+}
+
+/* ── Table row elements ── */
+.aa-cl-row-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--aa-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.aa-cl-dept-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aa-cl-dept-badge {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.aa-cl-badge-cs {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1.5px solid #93c5fd;
+}
+
+.aa-cl-badge-core {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1.5px solid #fcd34d;
+}
+
+.aa-cl-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Compact cluster tables ── */
+.aa-cl-two-col .aa-table {
+  min-width: 0;
+}
+
+.aa-cl-two-col .aa-table th,
+.aa-cl-two-col .aa-table td {
+  padding: 10px 14px;
+}
+
+/* ── Overview table header variant ── */
+.aa-cl-overview-header {
+  background: #f8fafc;
+}
+
+/* ── Dept chips in overview table ── */
+.aa-cl-dept-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.aa-cl-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.aa-cl-chip-cs {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.aa-cl-chip-core {
+  background: #fef3c7;
+  color: #92400e;
+}
