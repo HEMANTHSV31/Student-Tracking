@@ -477,6 +477,109 @@ export const deleteClusterYear = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+//  Year-wise Courses
+// ─────────────────────────────────────────────────────────────────────
+
+/** GET /api/assessment-venues/courses?year=3 */
+export const getYearCourses = async (req, res) => {
+  try {
+    const { year } = req.query;
+    let query = 'SELECT * FROM assessment_year_courses';
+    const params = [];
+    if (year) {
+      query += ' WHERE year = ?';
+      params.push(Number(year));
+    }
+    query += ' ORDER BY course_name';
+    
+    const [rows] = await db.query(query, params);
+    
+    const data = rows.map(r => {
+      let depts = [];
+      try {
+        if (typeof r.departments === 'string') {
+          depts = JSON.parse(r.departments);
+        } else if (Array.isArray(r.departments)) {
+          depts = r.departments;
+        } else {
+          depts = [];
+        }
+      } catch (e) {
+        console.warn('Failed to parse departments for course:', r.id, e);
+        depts = [];
+      }
+      return { ...r, departments: depts };
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching year courses:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch courses' });
+  }
+};
+
+/** POST /api/assessment-venues/courses */
+export const addYearCourse = async (req, res) => {
+  try {
+    const { year, course_name, course_code, departments } = req.body;
+    
+    if (!year || !course_name || !course_code) {
+      return res.status(400).json({ success: false, message: 'Year, course name, and code are required' });
+    }
+    
+    const deptJson = JSON.stringify(departments || []);
+
+    await db.query(
+      `INSERT INTO assessment_year_courses (year, course_name, course_code, departments)
+       VALUES (?, ?, ?, ?)`,
+      [year, course_name, course_code, deptJson]
+    );
+    
+    res.json({ success: true, message: 'Course added successfully' });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Course code already exists for this year' });
+    }
+    console.error('Error adding year course:', error);
+    res.status(500).json({ success: false, message: 'Failed to add course' });
+  }
+};
+
+/** PUT /api/assessment-venues/courses/:id */
+export const updateYearCourse = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { year, course_name, course_code, departments } = req.body;
+    
+    const deptJson = JSON.stringify(departments || []);
+    
+    await db.query(
+      `UPDATE assessment_year_courses 
+       SET year = ?, course_name = ?, course_code = ?, departments = ?
+       WHERE id = ?`,
+      [year, course_name, course_code, deptJson, id]
+    );
+    
+    res.json({ success: true, message: 'Course updated successfully' });
+  } catch (error) {
+    console.error('Error updating year course:', error);
+    res.status(500).json({ success: false, message: 'Failed to update course' });
+  }
+};
+
+/** DELETE /api/assessment-venues/courses/:id */
+export const deleteYearCourse = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await db.query('DELETE FROM assessment_year_courses WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Course deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting year course:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete course' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────
 //  Assessment Allocations
 // ─────────────────────────────────────────────────────────────────────
 

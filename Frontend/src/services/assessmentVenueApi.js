@@ -78,6 +78,28 @@ export const deleteClusterYear = async (year) => {
   return res.json();
 };
 
+// ── Year-wise Courses ──────────────────────────────────────────────────
+export const fetchYearCourses = async (year) => {
+  const qs = year ? `?year=${year}` : '';
+  const res = await apiGet(`${BASE}/courses${qs}`);
+  return res.json();
+};
+
+export const addYearCourse = async (data) => {
+  const res = await apiPost(`${BASE}/courses`, data);
+  return res.json();
+};
+
+export const updateYearCourse = async (id, data) => {
+  const res = await apiPut(`${BASE}/courses/${id}`, data);
+  return res.json();
+};
+
+export const deleteYearCourse = async (id) => {
+  const res = await apiDelete(`${BASE}/courses/${id}`);
+  return res.json();
+};
+
 // ── Allocations ──────────────────────────────────────────────────────────
 export const saveAllocation = async (slotId, allocationData, overallStats) => {
   const res = await apiPost(`${BASE}/allocations`, {

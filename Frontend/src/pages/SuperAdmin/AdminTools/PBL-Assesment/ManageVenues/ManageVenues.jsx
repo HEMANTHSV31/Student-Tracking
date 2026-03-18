@@ -2,13 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Plus, RefreshCw, AlertTriangle, Building2, MapPin,
   Users, MoreVertical, Edit3, Trash2, X, Save,
-  ChevronLeft, ChevronRight, LayoutGrid
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import {
   fetchVenues, createVenue, updateVenue,
   deleteVenue as deleteVenueApi, toggleVenueStatus
 } from '../../../../../services/assessmentVenueApi';
-import VenueLayoutDesigner from './VenueLayoutDesigner';
 import './ManageVenues.css';
 
 const PAGE_SIZE = 5;
@@ -23,7 +22,6 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
   const [venueSearch, setVenueSearch] = useState('');
   const [venueActionMenu, setVenueActionMenu] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [layoutVenue, setLayoutVenue] = useState(null);
 
   // Use a ref for the callback so loadVenues doesn't re-create on parent re-renders
   const onVenuesLoadedRef = useRef(onVenuesLoaded);
@@ -390,9 +388,6 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
               <button className="mv-menu-item" onClick={() => { openEditVenue(v); setVenueActionMenu(null); }}>
                 <Edit3 size={14} /> Edit Venue
               </button>
-              <button className="mv-menu-item" onClick={() => { setLayoutVenue(v); setVenueActionMenu(null); }}>
-                <LayoutGrid size={14} /> Design Layout
-              </button>
               <button className="mv-menu-item mv-menu-danger" onClick={() => { handleDeleteVenue(v.id); setVenueActionMenu(null); }}>
                 <Trash2 size={14} /> Delete Venue
               </button>
@@ -400,15 +395,6 @@ const ManageVenues = ({ columnPattern = 'CS_FIRST', onVenuesLoaded }) => {
           </>
         );
       })()}
-
-      {/* Layout Designer Modal */}
-      {layoutVenue && (
-        <VenueLayoutDesigner
-          venue={layoutVenue}
-          onClose={() => setLayoutVenue(null)}
-          onSaved={() => setLayoutVenue(null)}
-        />
-      )}
     </div>
   );
 };

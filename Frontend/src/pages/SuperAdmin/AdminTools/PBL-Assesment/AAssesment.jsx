@@ -19,12 +19,13 @@ import {
   fetchAttendance, saveAttendance as saveAttendanceApi
 } from '../../../../services/assessmentVenueApi';
 import ManageVenues from './ManageVenues/ManageVenues';
+import ManageCourses from './ManageCourses/ManageCourses';
 import './AAssesment.css';
 
 const AAssesment = () => {
   const navigate = useNavigate();
   // ── Navigation State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'clusters' | 'venues' | 'allocate' | 'results'
+  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'courses' | 'clusters' | 'venues' | 'allocate' | 'results'
 
   // ── Venue State (loaded via ManageVenues callback) ───────────────────────
   const [venues, setVenues] = useState([]);
@@ -259,6 +260,7 @@ const AAssesment = () => {
       'MECHATRONICS': 'MECTRONIC', 'MECHATRONICS ENGINEERING': 'MECTRONIC', 'MECTRONIC': 'MECTRONIC',
       'AGRICULTURE': 'AGRI', 'AGRICULTURAL ENGINEERING': 'AGRI', 'AGRI': 'AGRI',
       'BIOTECHNOLOGY': 'BIOTECH', 'BIO TECHNOLOGY': 'BIOTECH', 'BIOTECH': 'BIOTECH',
+      'CIVIL': 'CIVIL', 'BME': 'BME', 'FT': 'FT'
     };
     if (mapping[n]) return mapping[n];
     if (/ARTIFI.*INTELLIGENCE.*DATA\s*SCIENCE/i.test(n)) return 'AIDS';
@@ -273,14 +275,19 @@ const AAssesment = () => {
     const colors = {
       'CSE': '#3B82F6', 'IT': '#60A5FA', 'AIDS': '#93C5FD', 'AIML': '#BFDBFE', 'CSBS': '#818CF8',
       'ECE': '#FCD34D', 'EEE': '#FDE68A', 'E&I': '#FEF3C7', 'MECH': '#34D399',
-      'MECTRONIC': '#6EE7B7', 'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'UNKNOWN': '#E5E7EB',
+      'MECTRONIC': '#6EE7B7', 
+      'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'CIVIL': '#F472B6', 'BME': '#FBCFE8', 'FT': '#FDA4AF',
+      'UNKNOWN': '#E5E7EB',
     };
     return colors[dept] || '#C4B5FD';
   };
 
   // Helper to get contrasting text color based on background brightness
   const getDepartmentTextColor = (dept) => {
-    const darkTextDepts = ['AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 'UNKNOWN', 'MECTRONIC'];
+    const darkTextDepts = [
+      'AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 
+      'UNKNOWN', 'MECTRONIC', 'BME', 'FT' // Added new Depts
+    ];
     return darkTextDepts.includes(dept) ? '#1e293b' : '#ffffff';
   };
 
@@ -858,7 +865,9 @@ const AAssesment = () => {
       setSelectedSlot(null);
       setSelectedVenueIds([]);
       setVenueAllocations({});
-      setActiveTab('slots');
+      if (activeTab === 'results' || activeTab === 'allocate') {
+        setActiveTab('slots');
+      }
       setActiveVenue('');
       setOverallStats(null);
       setAttendanceMode(false);
@@ -968,12 +977,23 @@ const AAssesment = () => {
   const clusterYears = [1, 2, 3, 4];
   const getClusterForYear = (yr, type) => clusterData.find(c => c.year === yr && c.cluster_type === type);
 
+  // --- Effect: Load clusters into editor state when year changes ---
   useEffect(() => {
-    const csRow = getClusterForYear(clusterActiveYear, 'CS');
-    const coreRow = getClusterForYear(clusterActiveYear, 'Core');
-    setClusterEditCS(csRow ? csRow.departments : []);
-    setClusterEditCore(coreRow ? coreRow.departments : []);
-    setClusterEditPattern(csRow?.column_pattern || 'CS_FIRST');
+    const csRow = clusterData.find(c => c.year === clusterActiveYear && c.cluster_type === 'CS');
+    const coreRow = clusterData.find(c => c.year === clusterActiveYear && c.cluster_type === 'Core');
+    if (csRow) {
+      setClusterEditCS(csRow.departments);
+      setClusterEditPattern(csRow.column_pattern || 'CS_FIRST');
+    } else {
+      setClusterEditCS(['CSE', 'IT', 'AIDS', 'AIML', 'CSBS']);
+      setClusterEditPattern('CS_FIRST');
+    }
+    
+    if (coreRow) {
+      setClusterEditCore(coreRow.departments);
+    } else {
+      setClusterEditCore(['ECE', 'EEE', 'E&I', 'MECH', 'MECTRONIC', 'AGRI', 'BIOTECH']);
+    }
     setClusterSaveMsg('');
   }, [clusterActiveYear, clusterData]);
 
@@ -1044,6 +1064,7 @@ const AAssesment = () => {
 
   const tabItems = [
     { key: 'slots', icon: Clock, label: 'Manage Slots' },
+    { key: 'courses', icon: BookOpen, label: 'Manage Courses' }, // New Tab
     { key: 'clusters', icon: Layers, label: 'Dept Clusters' },
     { key: 'venues', icon: Building2, label: 'Manage Venues' },
     { key: 'allocate', icon: Zap, label: 'Slot Allocation' },
@@ -1077,6 +1098,13 @@ const AAssesment = () => {
       </div>
 
       <div className="aa-content-area">
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB: MANAGE COURSES
+        ═══════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'courses' && (
+           <ManageCourses />
+        )}
+
         {/* ══════════════════════════════════════════════════════════════════
             TAB: MANAGE VENUES
         ═══════════════════════════════════════════════════════════════════ */}

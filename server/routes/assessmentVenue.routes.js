@@ -5,6 +5,7 @@ import {
   getVenueLayout, saveVenueLayout,
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
+  getYearCourses, addYearCourse, updateYearCourse, deleteYearCourse,
   saveAllocation, getAllocation, deleteAllocation,
   getMyAllocation,
   getAttendance, saveAttendance, getAttendanceStats,
@@ -33,6 +34,12 @@ router.put('/slots/:id/status', authenticate, updateSlotStatus);
 router.get('/clusters',            authenticate, getClusters);
 router.put('/clusters/:year',      authenticate, updateCluster);
 router.delete('/clusters/:year',   authenticate, deleteClusterYear);
+
+// Year-wise Courses
+router.get('/courses',             authenticate, getYearCourses);
+router.post('/courses',            authenticate, addYearCourse);
+router.put('/courses/:id',         authenticate, updateYearCourse);
+router.delete('/courses/:id',      authenticate, deleteYearCourse);
 
 // Student self-lookup
 router.get('/my-allocation', authenticate, getMyAllocation);
