@@ -8,8 +8,8 @@ import {
 } from 'lucide-react';
 import {
   fetchSlots, fetchAllocation, fetchAttendance, saveAttendance as saveAttendanceApi
-} from '../../../../../services/assessmentVenueApi';
-import emptyAnimation from '../../../../../animation/empty-file.json';
+} from '../../../../services/assessmentVenueApi';
+import emptyAnimation from '../../../../animation/empty-file.json';
 import './AssessmentAttendance.css';
 
 const AssessmentAttendance = () => {

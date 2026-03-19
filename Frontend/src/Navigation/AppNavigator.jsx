@@ -59,7 +59,7 @@ import CodeEvaluation from "../pages/Faculty/CodeEvaluation/CodeReviewer/CodeEva
 //Faculty -> Assessment Attendance
 import FacultyAssessmentAttendance from "../pages/Faculty/AssessmentAttendance/AssessmentAttendance";
 //SuperAdmin -> Assessment Attendance (PBL Assessment)
-import AssessmentAttendance from "../pages/SuperAdmin/AdminTools/PBL-Assesment/AssessmentAttendance/AssessmentAttendance";
+import AssessmentAttendance from "../pages/SuperAdmin/AdminTools/Assessment-Attendance/AssessmentAttendance";
 
 // Student Pages
 // import StudentDashboard from "../pages/Student/Dashboard/StudentDashboard";
