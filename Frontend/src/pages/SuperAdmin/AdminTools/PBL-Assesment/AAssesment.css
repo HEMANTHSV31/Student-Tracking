@@ -3,6 +3,8 @@
    (Component-specific styles moved to their folders)
 ════════════════════════════════════════════════════════════════ */
 
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap');
+
 :root {
   --aa-primary: #3b82f6;
   --aa-primary-d: #2563eb;
