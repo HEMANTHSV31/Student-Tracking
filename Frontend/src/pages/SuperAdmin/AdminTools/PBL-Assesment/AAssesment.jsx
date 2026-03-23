@@ -2591,7 +2591,7 @@ const AAssesment = () => {
               </div>
             )}
 
-            {/* Attendance Stats Section */}
+
             {attendanceMode && activeVenue && (() => {
               const stats = getAttendanceStats(activeVenue);
               return (
