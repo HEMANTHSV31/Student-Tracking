@@ -358,8 +358,9 @@
 /* Configuration Table (Sub-courses) */
 .aa-courses-config {
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
+  background: #ffffff;
 }
 
 .aa-courses-config-head {
@@ -370,8 +371,8 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
+  font-weight: 700;
+  color: #475569;
 }
 
 .aa-courses-link {
@@ -387,8 +388,99 @@
 }
 
 .aa-courses-config-body {
-  max-height: 250px;
+  max-height: 260px;
   overflow-y: auto;
+}
+
+.aa-courses-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+}
+
+.aa-courses-table thead th {
+  position: sticky;
+  top: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: #1f2937;
+  z-index: 1;
+}
+
+.aa-courses-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.aa-courses-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.aa-courses-table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+  color: #334155;
+}
+
+.aa-courses-row-group {
+  background: #f8fafc;
+}
+
+.aa-courses-col-check {
+  width: 42px;
+  text-align: center;
+}
+
+.aa-courses-col-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.aa-courses-strong {
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+
+.aa-courses-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.aa-courses-input.aa-courses-input-sm {
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.aa-courses-input.aa-courses-input-sm:focus {
+  background: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+}
+
+.aa-courses-link {
+  color: #2563eb;
+}
+
+.aa-courses-icon {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.aa-courses-icon:hover {
+  color: #ef4444;
 }
 
 /* Footer Actions */

@@ -10,7 +10,7 @@ import {
   GraduationCap,
   BarChart3,
   Settings,
-  Bell,
+  User,
   Layers,
   LogOut,
   CalendarCheck,
@@ -282,10 +282,6 @@ const SideTab = () => {
             </div>
 
             <div style={styles.headerRight}>
-              <button style={styles.bellButton}>
-                <Bell size={24} />
-              </button>
-
               <div style={styles.userInfo}>
                 <div style={styles.userText} className="user-text-mobile">
                   <div style={styles.userName}>{user?.name || "User"}</div>
@@ -295,7 +291,9 @@ const SideTab = () => {
                     {user?.role === 3 && "Student"}
                   </div>
                 </div>
-                <div style={styles.userAvatar} />
+                <div style={styles.userAvatar}>
+                  <User size={18} />
+                </div>
               </div>
             </div>
           </div>
@@ -503,13 +501,6 @@ const styles = {
     alignItems: "center",
     gap: "16px",
   },
-  bellButton: {
-    padding: "8px",
-    color: "#9ca3af",
-    cursor: "pointer",
-    border: "none",
-    backgroundColor: "transparent",
-  },
 
   userInfo: {
     display: "flex",
@@ -531,8 +522,13 @@ const styles = {
   userAvatar: {
     width: "40px",
     height: "40px",
-    background: "linear-gradient(135deg, #fb923c 0%, #ec4899 100%)",
+    backgroundColor: "#f3f4f6",
+    border: "1px solid #e5e7eb",
     borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#6b7280",
   },
 
   /* ================= CONTENT ================= */
