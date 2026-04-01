@@ -28,6 +28,7 @@ import venueAllocationRoutes from "./routes/venueAllocation.routes.js";
 import venueBulkUploadRoutes from "./routes/venueBulkUpload.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import assessmentVenueRoutes from "./routes/assessmentVenue.routes.js";
+import { syncAssessmentDailyReportToLegacy } from "./controllers/skillReportController.js";
 // import facultyDashboardRoutes from './routes/facultyDashboardRoutes.js';
 dotenv.config();
 
@@ -132,6 +133,25 @@ cron.schedule('0 20 * * *', () => {
     timezone: "Asia/Kolkata" // Adjust timezone as needed
 });
 
+// Sync daily assessment rows into legacy student_skills table at 10:01 PM
+cron.schedule('1 22 * * *', async () => {
+  try {
+    const syncDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    const summary = await syncAssessmentDailyReportToLegacy(syncDate);
+    console.log('[DAILY SKILL SYNC] Completed:', summary);
+  } catch (error) {
+    console.error('[DAILY SKILL SYNC] Failed:', error.message);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
 // Function to update daily schedule
 async function updateDailySchedule() {
     try {
@@ -188,4 +208,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
      console.log(`Server running on ${PORT}`);
      console.log('Daily schedule update cron job scheduled for 8 PM');
+  console.log('Daily skill sync cron job scheduled for 10:01 PM');
 });

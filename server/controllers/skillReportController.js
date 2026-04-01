@@ -1,6 +1,374 @@
 import db from '../config/db.js';
 import xlsx from 'xlsx';
 
+const DAILY_REPORT_SOURCE_TABLE = 'assessment_daily_report';
+
+async function hasAssessmentDailyReportData() {
+  try {
+    const [result] = await db.execute(
+      `SELECT COUNT(*) as total FROM ${DAILY_REPORT_SOURCE_TABLE}`
+    );
+    return (result?.[0]?.total || 0) > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function resolveSkillReportSource() {
+  const configuredSource = (process.env.SKILL_REPORT_SOURCE || 'auto').toLowerCase();
+
+  if (configuredSource === 'legacy') {
+    return { source: 'student_skills', mode: 'legacy' };
+  }
+
+  const dailyHasData = await hasAssessmentDailyReportData();
+
+  if (configuredSource === 'daily') {
+    return dailyHasData
+      ? { source: DAILY_REPORT_SOURCE_TABLE, mode: 'daily' }
+      : { source: 'student_skills', mode: 'legacy-fallback' };
+  }
+
+  return dailyHasData
+    ? { source: DAILY_REPORT_SOURCE_TABLE, mode: 'daily' }
+    : { source: 'student_skills', mode: 'legacy' };
+}
+
+function getSkillReportBaseSourceQuery(useDailySource) {
+  if (useDailySource) {
+    return `
+      (
+        SELECT
+          adr.id as report_id,
+          NULL as slot_id,
+          st.student_id,
+          u.ID as roll_number,
+          COALESCE(NULLIF(TRIM(adr.name), ''), u.name) as student_name,
+          COALESCE(NULLIF(TRIM(adr.email), ''), u.email) as student_email,
+          u.department,
+          st.year,
+          adr.course_name,
+          NULL as excel_venue_name,
+          (
+            SELECT g.venue_id
+            FROM group_students gs
+            INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+            WHERE gs.student_id = st.student_id
+              AND gs.status = 'Active'
+              AND g.status = 'Active'
+            LIMIT 1
+          ) as student_venue_id,
+          1 as total_attempts,
+          CASE
+            WHEN LOWER(TRIM(adr.result_status)) = 'cleared' THEN 100
+            WHEN LOWER(TRIM(adr.result_status)) = 'not cleared' THEN 0
+            ELSE 0
+          END as best_score,
+          CASE
+            WHEN LOWER(TRIM(adr.result_status)) = 'cleared' THEN 100
+            WHEN LOWER(TRIM(adr.result_status)) = 'not cleared' THEN 0
+            ELSE 0
+          END as latest_score,
+          CASE
+            WHEN LOWER(TRIM(adr.result_status)) = 'cleared' THEN 'Cleared'
+            WHEN LOWER(TRIM(adr.result_status)) = 'not cleared' THEN 'Not Cleared'
+            ELSE 'Ongoing'
+          END as status,
+          NULL as last_attendance,
+          adr.slot_date as last_slot_date,
+          NULL as last_start_time,
+          NULL as last_end_time,
+          adr.created_at as updated_at
+        FROM assessment_daily_report adr
+        INNER JOIN users u ON LOWER(TRIM(u.ID)) = LOWER(TRIM(adr.user_id))
+        INNER JOIN students st ON st.user_id = u.user_id
+      )
+    `;
+  }
+
+  return `
+    (
+      SELECT
+        ss.id as report_id,
+        ss.slot_id,
+        ss.student_id,
+        u.ID as roll_number,
+        COALESCE(ss.student_name, u.name) as student_name,
+        COALESCE(ss.student_email, u.email) as student_email,
+        u.department,
+        COALESCE(ss.year, s.year) as year,
+        ss.course_name,
+        ss.excel_venue_name,
+        ss.student_venue_id,
+        ss.total_attempts,
+        ss.best_score,
+        ss.latest_score,
+        ss.status,
+        ss.last_attendance,
+        ss.last_slot_date,
+        ss.last_start_time,
+        ss.last_end_time,
+        ss.updated_at
+      FROM student_skills ss
+      INNER JOIN students s ON ss.student_id = s.student_id
+      INNER JOIN users u ON s.user_id = u.user_id
+    )
+  `;
+}
+
+function getLatestSkillReportSourceQuery(useDailySource) {
+  const baseSourceQuery = getSkillReportBaseSourceQuery(useDailySource);
+  return `
+    (
+      SELECT ranked.*
+      FROM (
+        SELECT
+          source_rows.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY source_rows.student_id, source_rows.course_name
+            ORDER BY source_rows.last_slot_date DESC, source_rows.updated_at DESC, source_rows.report_id DESC
+          ) as row_num
+        FROM ${baseSourceQuery} source_rows
+      ) ranked
+      WHERE ranked.row_num = 1
+    )
+  `;
+}
+
+function deriveFinalStatus(existingStatus, incomingStatus) {
+  if (incomingStatus === 'Cleared') return 'Cleared';
+  if (incomingStatus === 'Ongoing' && existingStatus === 'Not Cleared') return 'Ongoing';
+  if (incomingStatus === 'Not Cleared' && (existingStatus === 'Cleared' || existingStatus === 'Ongoing')) {
+    return existingStatus;
+  }
+  return incomingStatus;
+}
+
+export const syncAssessmentDailyReportToLegacy = async (syncDate = null) => {
+  const connection = await db.getConnection();
+
+  try {
+    let sourceQuery = `
+      SELECT
+        adr.id as slot_id,
+        st.student_id,
+        COALESCE(NULLIF(TRIM(adr.name), ''), u.name) as student_name,
+        COALESCE(NULLIF(TRIM(adr.email), ''), u.email) as student_email,
+        st.year,
+        TRIM(adr.course_name) as course_name,
+        CASE
+          WHEN LOWER(TRIM(adr.result_status)) = 'cleared' THEN 'Cleared'
+          WHEN LOWER(TRIM(adr.result_status)) = 'not cleared' THEN 'Not Cleared'
+          ELSE 'Ongoing'
+        END as status,
+        CASE
+          WHEN LOWER(TRIM(adr.result_status)) = 'cleared' THEN 100
+          WHEN LOWER(TRIM(adr.result_status)) = 'not cleared' THEN 0
+          ELSE 0
+        END as score,
+        adr.slot_date as slot_date,
+        adr.created_at,
+        (
+          SELECT g.venue_id
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.student_id = st.student_id
+            AND gs.status = 'Active'
+            AND g.status = 'Active'
+          LIMIT 1
+        ) as student_venue_id,
+        (
+          SELECT v.venue_name
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          INNER JOIN venue v ON g.venue_id = v.venue_id
+          WHERE gs.student_id = st.student_id
+            AND gs.status = 'Active'
+            AND g.status = 'Active'
+          LIMIT 1
+        ) as student_venue_name,
+        (
+          SELECT g.faculty_id
+          FROM group_students gs
+          INNER JOIN \`groups\` g ON gs.group_id = g.group_id
+          WHERE gs.student_id = st.student_id
+            AND gs.status = 'Active'
+            AND g.status = 'Active'
+          LIMIT 1
+        ) as faculty_id
+      FROM assessment_daily_report adr
+      INNER JOIN users u ON LOWER(TRIM(u.ID)) = LOWER(TRIM(adr.user_id))
+      INNER JOIN students st ON st.user_id = u.user_id
+      WHERE TRIM(COALESCE(adr.course_name, '')) <> ''
+    `;
+    const sourceParams = [];
+
+    if (syncDate) {
+      sourceQuery += ' AND DATE(adr.slot_date) = ?';
+      sourceParams.push(syncDate);
+    }
+
+    sourceQuery += ' ORDER BY adr.slot_date ASC, adr.created_at ASC, adr.id ASC';
+
+    const [incomingRows] = await connection.execute(sourceQuery, sourceParams);
+
+    if (!incomingRows.length) {
+      return { sourceRows: 0, inserted: 0, updated: 0, skipped: 0 };
+    }
+
+    await connection.beginTransaction();
+
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const row of incomingRows) {
+      if (!row.student_id || !row.course_name) {
+        skipped += 1;
+        continue;
+      }
+
+      const normalizedCourseName = String(row.course_name || '').trim();
+      const normalizedStudentName = String(row.student_name || '').trim();
+      const normalizedStudentEmail = String(row.student_email || '').trim();
+      const normalizedYear = Number(row.year) || 1;
+      const normalizedVenueName = String(row.student_venue_name || '').trim();
+      const normalizedStatus = deriveFinalStatus('Not Cleared', row.status);
+      const normalizedSlotDate = row.slot_date || syncDate || new Date().toISOString().split('T')[0];
+      const normalizedScore = Number(row.score || 0);
+      const normalizedSkillLevel = extractSkillLevel(normalizedCourseName);
+
+      // Sync only complete mapped rows to avoid writing placeholder/fake legacy values.
+      if (!normalizedCourseName || !normalizedStudentName || !normalizedStudentEmail || !normalizedVenueName || !normalizedSlotDate) {
+        skipped += 1;
+        continue;
+      }
+
+      const [existingRows] = await connection.execute(
+        `SELECT id, status, best_score, total_attempts
+         FROM student_skills
+         WHERE student_id = ? AND course_name = ?
+         LIMIT 1`,
+        [row.student_id, normalizedCourseName]
+      );
+
+      if (existingRows.length) {
+        const existing = existingRows[0];
+        const finalStatus = deriveFinalStatus(existing.status, normalizedStatus);
+        const newBestScore = Math.max(Number(existing.best_score || 0), normalizedScore);
+
+        await connection.execute(
+          `UPDATE student_skills
+           SET student_name = ?,
+               student_email = ?,
+               year = ?,
+               slot_id = ?,
+               skill_level = ?,
+               excel_venue_name = ?,
+               student_venue_id = ?,
+               faculty_id = ?,
+               total_attempts = GREATEST(COALESCE(total_attempts, 1), 1),
+               best_score = ?,
+               latest_score = ?,
+               status = ?,
+               last_slot_date = ?,
+               updated_at = NOW()
+           WHERE id = ?`,
+          [
+            normalizedStudentName,
+            normalizedStudentEmail,
+            normalizedYear,
+            row.slot_id,
+            normalizedSkillLevel,
+            normalizedVenueName,
+            row.student_venue_id,
+            row.faculty_id,
+            newBestScore,
+            normalizedScore,
+            finalStatus,
+            normalizedSlotDate,
+            existing.id,
+          ]
+        );
+
+        updated += 1;
+      } else {
+        await connection.execute(
+          `INSERT INTO student_skills
+            (slot_id, student_id, year, student_name, student_email, course_name, skill_level,
+             excel_venue_name, student_venue_id, faculty_id, total_attempts, best_score,
+             latest_score, status, last_attendance, last_slot_date, last_start_time,
+             last_end_time, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [
+            null,
+            row.student_id,
+            normalizedYear,
+            normalizedStudentName,
+            normalizedStudentEmail,
+            normalizedCourseName,
+            normalizedSkillLevel,
+            normalizedVenueName,
+            row.student_venue_id,
+            row.faculty_id,
+            1,
+            normalizedScore,
+            normalizedScore,
+            normalizedStatus,
+            null,
+            normalizedSlotDate,
+            null,
+            null,
+          ]
+        );
+
+        inserted += 1;
+      }
+    }
+
+    await connection.commit();
+
+    return {
+      sourceRows: incomingRows.length,
+      inserted,
+      updated,
+      skipped,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+export const syncAssessmentDailyReportNow = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can trigger daily report sync',
+      });
+    }
+
+    const syncDate = req.body?.syncDate || null;
+    const result = await syncAssessmentDailyReportToLegacy(syncDate);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Assessment daily report synced to legacy student_skills',
+      summary: result,
+    });
+  } catch (error) {
+    console.error('Error syncing assessment_daily_report to student_skills:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync assessment daily report',
+      error: error.message,
+    });
+  }
+};
+
 /**
  * Convert Roman numeral to number
  */
@@ -638,6 +1006,9 @@ export const getFacultyVenues = async (req, res) => {
 export const getSkillReportsForFaculty = async (req, res) => {
   try {
     const { venueId, page = 1, limit = 50, status, date, search, skill, sortBy = 'last_slot_date', sortOrder = 'DESC', filterByVenue = false, year } = req.body;
+    const sourceConfig = await resolveSkillReportSource();
+    const useDailySource = sourceConfig.source === DAILY_REPORT_SOURCE_TABLE;
+    const latestSourceQuery = getLatestSkillReportSourceQuery(useDailySource);
     
     // console.log('[SKILL REPORTS] Request params:', { venueId, page, limit, status, skill, filterByVenue, year, userRole: req.user.role });
     
@@ -690,12 +1061,12 @@ export const getSkillReportsForFaculty = async (req, res) => {
     // This ensures we show the record with the most recent slot_date
     let query = `
       SELECT 
-        ss.id,
+        ss.report_id as id,
         ss.slot_id,
-        u.ID as roll_number,
-        COALESCE(ss.student_name, u.name) as student_name,
-        COALESCE(ss.student_email, u.email) as email,
-        u.department,
+        ss.roll_number,
+        ss.student_name,
+        ss.student_email as email,
+        ss.department,
         ss.year,
         ss.course_name,
         ss.excel_venue_name,
@@ -709,16 +1080,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
         ss.last_start_time,
         ss.last_end_time,
         ss.updated_at
-      FROM student_skills ss
-      INNER JOIN (
-        SELECT student_id, course_name, MAX(last_slot_date) as max_date
-        FROM student_skills
-        GROUP BY student_id, course_name
-      ) latest ON ss.student_id = latest.student_id 
-                AND ss.course_name = latest.course_name 
-                AND ss.last_slot_date = latest.max_date
-      JOIN students s ON ss.student_id = s.student_id
-      JOIN users u ON s.user_id = u.user_id
+      FROM ${latestSourceQuery} ss
       LEFT JOIN venue sv ON ss.student_venue_id = sv.venue_id
       WHERE 1=1`;
 
@@ -776,7 +1138,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
 
     // Search filter
     if (search && search.trim().length > 0) {
-      query += ' AND (u.name LIKE ? OR u.ID LIKE ? OR ss.course_name LIKE ? OR ss.student_name LIKE ?)';
+      query += ' AND (ss.student_name LIKE ? OR ss.roll_number LIKE ? OR ss.course_name LIKE ? OR ss.student_name LIKE ?)';
       const searchPattern = `%${search.trim()}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
@@ -809,16 +1171,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
     // Get total count (only counting latest records per student/course)
     let countQuery = `
       SELECT COUNT(*) as total 
-      FROM student_skills ss
-      INNER JOIN (
-        SELECT student_id, course_name, MAX(last_slot_date) as max_date
-        FROM student_skills
-        GROUP BY student_id, course_name
-      ) latest ON ss.student_id = latest.student_id 
-                AND ss.course_name = latest.course_name 
-                AND ss.last_slot_date = latest.max_date
-      JOIN students s ON ss.student_id = s.student_id
-      JOIN users u ON s.user_id = u.user_id
+      FROM ${latestSourceQuery} ss
       WHERE 1=1`;
     const countParams = [];
     
@@ -867,7 +1220,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
     }
 
     if (search && search.trim().length > 0) {
-      countQuery += ' AND (u.name LIKE ? OR u.ID LIKE ? OR ss.course_name LIKE ? OR ss.student_name LIKE ?)';
+      countQuery += ' AND (ss.student_name LIKE ? OR ss.roll_number LIKE ? OR ss.course_name LIKE ? OR ss.student_name LIKE ?)';
       const searchPattern = `%${search.trim()}%`;
       countParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
@@ -905,16 +1258,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
          INNER JOIN \`groups\` g ON gs.group_id = g.group_id 
          INNER JOIN students st ON gs.student_id = st.student_id
          WHERE gs.status = 'Active' AND g.status = 'Active' ${yearConditionSt} ${venueConditionForAssigned}) as total_assigned_students
-      FROM student_skills ss
-      INNER JOIN (
-        SELECT student_id, course_name, MAX(last_slot_date) as max_date
-        FROM student_skills
-        GROUP BY student_id, course_name
-      ) latest ON ss.student_id = latest.student_id 
-                AND ss.course_name = latest.course_name 
-                AND ss.last_slot_date = latest.max_date
-      JOIN students s ON ss.student_id = s.student_id
-      JOIN users u ON s.user_id = u.user_id
+      FROM ${latestSourceQuery} ss
       WHERE 1=1`;
     const statsParams = [];
     
@@ -955,7 +1299,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
     
     // Year filter - apply to stats if provided
     if (year && year !== 'All Years') {
-      statsQuery += ' AND s.year = ?';
+      statsQuery += ' AND ss.year = ?';
       statsParams.push(parseInt(year));
     }
     // DO NOT apply status/date/search filters to statistics
@@ -1096,14 +1440,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
     // Get available skills for this venue (distinct course names)
     let availableSkillsQuery = `
       SELECT DISTINCT ss.course_name 
-      FROM student_skills ss
-      INNER JOIN (
-        SELECT student_id, course_name, MAX(last_slot_date) as max_date
-        FROM student_skills
-        GROUP BY student_id, course_name
-      ) latest ON ss.student_id = latest.student_id 
-                AND ss.course_name = latest.course_name 
-                AND ss.last_slot_date = latest.max_date
+      FROM ${latestSourceQuery} ss
       WHERE 1=1`;
     const skillParams = [];
     
@@ -1127,15 +1464,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
     if (skill && skill.trim().length > 0) {
       let attemptedQuery = `
         SELECT DISTINCT ss.student_id
-        FROM student_skills ss
-        INNER JOIN (
-          SELECT student_id, course_name, MAX(last_slot_date) as max_date
-          FROM student_skills
-          GROUP BY student_id, course_name
-        ) latest ON ss.student_id = latest.student_id 
-                  AND ss.course_name = latest.course_name 
-                  AND ss.last_slot_date = latest.max_date
-        JOIN students s ON ss.student_id = s.student_id
+        FROM ${latestSourceQuery} ss
         WHERE ss.course_name = ?`;
       const attemptedParams = [skill.trim()];
       
@@ -1183,6 +1512,7 @@ export const getSkillReportsForFaculty = async (req, res) => {
       assignedVenueStudents: assignedVenueStudents, // Students assigned to venue(s) - for year filtering on second card
       attemptedStudentIds: attemptedStudentIds, // All student IDs who have attempted the selected skill
       availableSkills: availableSkills, // List of skill names for dropdown
+      source: sourceConfig,
       statistics: stats[0] || {
         total: 0,
         cleared: 0,

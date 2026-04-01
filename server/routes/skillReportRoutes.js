@@ -5,7 +5,8 @@ import {
   getSkillReportsForFaculty,
   getSkillReportsForStudent,
   searchStudentSkillReports,
-  getFacultyVenues
+  getFacultyVenues,
+  syncAssessmentDailyReportNow
 } from '../controllers/skillReportController.js';
 import multer from 'multer';
 
@@ -37,6 +38,7 @@ router.post('/upload', authenticate, (req, res, next) => {
   // console.log(`[SKILL REPORT ROUTE] Content-Length: ${req.headers['content-length']}`);
   next();
 }, upload.single('file'), uploadSkillReport);
+router.post('/admin/sync-daily-report', authenticate, syncAssessmentDailyReportNow);
 
 // Faculty routes
 router.get('/faculty/venues', authenticate, getFacultyVenues);
