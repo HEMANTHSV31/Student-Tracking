@@ -1,0 +1,182 @@
+/* ═══════════════════════════════════════════════════════════════
+   SLOTS TOPBAR (Unified)
+════════════════════════════════════════════════════════════════ */
+.aa-topbar-slots {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.aa-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MANAGE SLOTS TAB
+════════════════════════════════════════════════════════════════ */
+.aa-slots-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Slot Card Grid ── */
+.aa-sl-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.aa-sl-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+}
+.aa-sl-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
+  border-color: #cbd5e1;
+}
+
+/* Clickable slot card */
+.aa-sl-card-clickable {
+  cursor: pointer;
+}
+.aa-sl-card-clickable:hover {
+  border-color: var(--aa-primary, #3b82f6);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.15);
+}
+.aa-sl-card-clickable:active {
+  transform: translateY(0);
+}
+
+.aa-sl-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.aa-sl-card-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+.aa-sl-card-date svg {
+  color: var(--aa-primary, #3b82f6);
+}
+
+.aa-sl-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aa-sl-card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aa-sl-card-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
+}
+.aa-sl-card-time-icon {
+  color: #64748b;
+}
+
+.aa-sl-card-subject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+.aa-sl-card-subject svg {
+  flex-shrink: 0;
+  color: #3b82f6;
+}
+
+.aa-sl-card-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: #64748b;
+}
+.aa-sl-card-label svg {
+  color: #94a3b8;
+}
+.aa-sl-card-label-text {
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-style: italic;
+}
+
+.aa-sl-card-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #059669;
+  font-weight: 500;
+}
+.aa-sl-card-year svg {
+  color: #10b981;
+}
+
+.aa-sl-card-venues {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 4px;
+}
+.aa-sl-card-venues svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.aa-sl-date-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aa-sl-date-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}

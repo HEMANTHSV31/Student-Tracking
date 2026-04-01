@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+<<<<<<< HEAD
 import {
   Upload, FileSpreadsheet, MapPin, Users, Building2, Download,
   Printer, RotateCcw, Clock, Hash, CheckCircle,
@@ -13,20 +14,364 @@ import {
 } from 'lucide-react';
 import {
   fetchVenues, createVenue, updateVenue, deleteVenue as deleteVenueApi, toggleVenueStatus,
+=======
+import { 
+  BarChart3, Layers, BookOpen, MapPin, Grid3X3, Zap, CheckCircle 
+} from 'lucide-react';
+import {
+  fetchVenues,
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
   fetchSlots, createSlot, deleteSlot as deleteSlotApi,
+  fetchYearCourses,
   fetchClusters, updateCluster as updateClusterApi, deleteClusterYear as deleteClusterYearApi,
   saveAllocation as saveAllocationApi, fetchAllocation, deleteAllocation as deleteAllocationApi,
   fetchAttendance, saveAttendance as saveAttendanceApi
 } from '../../../../services/assessmentVenueApi';
+
+import ManageSlots from './ManageSlots/ManageSlots';
+import ManageVenues from './ManageVenues/ManageVenues';
+import DeptClusters from './DeptClusters/DeptClusters';
+import ManageCourses from './ManageCourses/ManageCourses';
+import SlotAllocation from './SlotAllocation/SlotAllocation';
+import Results from './Results/Results';
+
 import './AAssesment.css';
+
+// ══════════════════════════════════════════════════════════════════════════
+//  UTILITIES (Moved from assessmentUtils.js)
+// ══════════════════════════════════════════════════════════════════════════
+
+export const normalizeCellValue = (v) => (v === null || v === undefined ? '' : String(v).trim());
+
+export const normalizeHeaderKey = (h) => normalizeCellValue(h).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+export const padNumber = (n) => String(n).padStart(2, '0');
+
+export const formatExcelDateValue = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    const p = XLSX.SSF.parse_date_code(value);
+    if (p?.y && p?.m && p?.d) return `${p.y}-${padNumber(p.m)}-${padNumber(p.d)}`;
+  }
+  const normalized = normalizeCellValue(value).replace(/\./g, '/');
+  if (!normalized) return '';
+  const iso = normalized.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (iso) return `${iso[1]}-${padNumber(iso[2])}-${padNumber(iso[3])}`;
+  const dmy = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (dmy) return `${dmy[3].length === 2 ? '20' + dmy[3] : dmy[3]}-${padNumber(dmy[2])}-${padNumber(dmy[1])}`;
+  return normalized;
+};
+
+export const formatExcelTimeValue = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return XLSX.SSF.format('h:mm AM/PM', value).replace(/\s+/g, ' ').trim();
+  return normalizeCellValue(value).replace(/\s+/g, ' ');
+};
+
+export const getFirstAvailableRawValue = (rowLookup, aliases) => {
+  for (const alias of aliases) {
+    const v = rowLookup[normalizeHeaderKey(alias)];
+    if (v !== undefined && v !== null && normalizeCellValue(v) !== '') return v;
+  }
+  return '';
+};
+
+export const getFirstAvailableValue = (rowLookup, aliases) => normalizeCellValue(getFirstAvailableRawValue(rowLookup, aliases));
+
+export const isMeaningfulStudent = (s) => Boolean(s.rollNumber || s.name || s.department || s.email);
+
+export const getSlotTimeFromRow = (rowLookup) => {
+  const direct = formatExcelTimeValue(
+    getFirstAvailableRawValue(rowLookup, ['Timing', 'Slot', 'Time Slot', 'Slot Time', 'Exam Slot', 'Exam Time'])
+  );
+  if (direct) return direct;
+  const start = formatExcelTimeValue(getFirstAvailableRawValue(rowLookup, ['Start Time', 'start_time', 'From Time', 'from_time']));
+  const end = formatExcelTimeValue(getFirstAvailableRawValue(rowLookup, ['End Time', 'end_time', 'To Time', 'to_time']));
+  if (start && end) return `${start} - ${end}`;
+  return start || end || '';
+};
+
+export const getSlotDateFromRow = (rowLookup) => formatExcelDateValue(getFirstAvailableRawValue(rowLookup, [
+  'Date', 'Exam Date', 'Assessment Date', 'Slot Date', 'Exam Day', 'date', 'slot_date', 'exam_date'
+]));
+
+export const getAvailableSlotDates = (list) => [...new Set(list.map((s) => normalizeCellValue(s.slotDate)).filter(Boolean))];
+
+export const getAvailableSlotTimes = (list, date = '') => [...new Set(
+  list
+    .filter((s) => !date || normalizeCellValue(s.slotDate) === date)
+    .map((s) => normalizeCellValue(s.timing))
+    .filter(Boolean)
+)];
+
+export const valuesMatch = (a, b) => normalizeCellValue(a).toLowerCase() === normalizeCellValue(b).toLowerCase();
+
+export const getColumnLabel = (index) => {
+  let value = index + 1;
+  let label = '';
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+
+  return label;
+};
+
+export const getSeatLabel = (rowIndex, columnIndex) => `${getColumnLabel(columnIndex)}${rowIndex + 1}`;
+
+export const formatDateLabel = (dateValue) => {
+  if (!dateValue) return '—';
+  const str = String(dateValue);
+  let dateOnly = str;
+  if (str.includes('T')) dateOnly = str.split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    const [year, month, day] = dateOnly.split('-').map(Number);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${String(day).padStart(2, '0')} ${months[month - 1]} ${year}`;
+  }
+  return dateValue;
+};
+
+export const normalizeDateForFilter = (dateValue) => {
+  if (!dateValue) return '';
+  const str = String(dateValue);
+  if (str.includes('T')) return str.split('T')[0];
+  return str;
+};
+
+export const formatTime12 = (timeStr) => {
+  if (!timeStr) return '—';
+  const parts = String(timeStr).split(':');
+  let h = parseInt(parts[0], 10);
+  const m = parts[1] || '00';
+  if (Number.isNaN(h)) return timeStr;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+  };
+
+export const buildSlotLabel = (date, time) => [date ? formatDateLabel(date) : '', normalizeCellValue(time)].filter(Boolean).join(' · ');
+
+export const normalizeDepartment = (dept) => {
+  if (!dept) return 'UNKNOWN';
+  const n = dept.toUpperCase().trim();
+  const mapping = {
+    'COMPUTER SCIENCE': 'CSE', 'CS': 'CSE', 'CSE': 'CSE',
+    'COMPUTER SCIENCE AND ENGINEERING': 'CSE',
+    'INFORMATION TECHNOLOGY': 'IT', 'IT': 'IT',
+    'COMPUTER SCIENCE AND BUSINESS SYSTEMS': 'CSBS', 'CSBS': 'CSBS',
+    'ARTIFICIAL INTELLIGENCE AND DATA SCIENCE': 'AIDS', 'AIDS': 'AIDS', 'AD': 'AIDS',
+    'AIML': 'AIML', 'AL': 'AIML',
+    'ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING': 'AIML',
+    'ELECTRICAL': 'EEE', 'EEE': 'EEE',
+    'ELECTRICAL AND ELECTRONICS': 'EEE', 'ELECTRICAL AND ELECTRONICS ENGINEERING': 'EEE',
+    'ELECTRONICS AND COMMUNICATION': 'ECE', 'EC': 'ECE', 'ECE': 'ECE',
+    'ELECTRONICS AND COMMUNICATION ENGINEERING': 'ECE',
+    'ELECTRONICS AND INSTRUMENTATION': 'E&I', 'E&I': 'E&I', 'ENDI': 'E&I', 'INDUSTRIAL': 'E&I', 'EI': 'E&I',
+    'ELECTRONICS AND INSTRUMENTATION ENGINEERING': 'E&I', 'EIE': 'E&I',
+    'MECHANICAL': 'MECH', 'MECHANICAL ENGINEERING': 'MECH', 'MECH': 'MECH',
+    'MECHATRONICS': 'MECTRONIC', 'MECHATRONICS ENGINEERING': 'MECTRONIC', 'MECTRONIC': 'MECTRONIC',
+    'AGRICULTURE': 'AGRI', 'AGRICULTURAL ENGINEERING': 'AGRI', 'AGRI': 'AGRI',
+    'BIOTECHNOLOGY': 'BIOTECH', 'BIO TECHNOLOGY': 'BIOTECH', 'BIOTECH': 'BIOTECH',
+    'CIVIL': 'CIVIL', 'BME': 'BME', 'FT': 'FT'
+  };
+  if (mapping[n]) return mapping[n];
+  if (/ARTIFI.*INTELLIGENCE.*DATA\s*SCIENCE/i.test(n)) return 'AIDS';
+  if (/ARTIFI.*INTELLIGENCE.*MACHINE\s*LEARN/i.test(n)) return 'AIML';
+  if (/ARTIFI.*INTELLIGENCE/i.test(n) && /DATA/i.test(n)) return 'AIDS';
+  if (/ARTIFI.*INTELLIGENCE/i.test(n) && /MACHINE/i.test(n)) return 'AIML';
+  if (/ARTIFI.*INTELLIGENCE/i.test(n)) return 'AIDS';
+  return n;
+};
+
+export const getDepartmentColor = (dept) => {
+  const colors = {
+    'CSE': '#3B82F6', 'IT': '#60A5FA', 'AIDS': '#93C5FD', 'AIML': '#BFDBFE', 'CSBS': '#818CF8',
+    'ECE': '#FCD34D', 'EEE': '#FDE68A', 'E&I': '#FEF3C7', 'MECH': '#34D399',
+    'MECTRONIC': '#6EE7B7', 
+    'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'CIVIL': '#F472B6', 'BME': '#FBCFE8', 'FT': '#FDA4AF',
+    'UNKNOWN': '#E5E7EB',
+  };
+  return colors[dept] || '#C4B5FD';
+};
+
+export const getDepartmentTextColor = (dept) => {
+  const darkTextDepts = [
+    'AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 
+    'UNKNOWN', 'MECTRONIC', 'BME', 'FT'
+  ];
+  return darkTextDepts.includes(dept) ? '#1e293b' : '#ffffff';
+};
+
+export const getDeptSummary = (seatMap) => {
+  const counts = {};
+  if (!seatMap) return [];
+  seatMap.forEach(row => {
+    row.forEach(seat => {
+      if (seat && (seat.normalizedDept || seat.department)) {
+        const dept = normalizeDepartment(seat.normalizedDept || seat.department);
+        counts[dept] = (counts[dept] || 0) + 1;
+      }
+    });
+  });
+  return Object.entries(counts)
+    .map(([dept, count]) => ({ dept, count }))
+    .sort((a, b) => b.count - a.count);
+};
+
+export const shuffle = (arr) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+export const getColumnCluster = (colIdx, pattern) => pattern === 'CS_FIRST'
+  ? (colIdx % 2 === 0 ? 'CS' : 'CORE')
+  : (colIdx % 2 === 0 ? 'CORE' : 'CS');
+
+export const allocateSeats = (studentList, venuesToUse, csCluster, coreCluster, columnPattern) => {
+  if (!studentList?.length) {
+    alert('No students to allocate!');
+    return null;
+  }
+  if (!venuesToUse.length) {
+    alert('No venues available! Please add venues in the Venues tab first.');
+    return null;
+  }
+  const totalCapacity = venuesToUse.reduce((sum, v) => sum + v.total_capacity, 0);
+  if (studentList.length > totalCapacity) {
+    alert(`Capacity exceeded!\nMax: ${totalCapacity}  |  Students: ${studentList.length}`);
+    return null;
+  }
+
+  const tagged = studentList.map((s) => ({
+    ...s,
+    normalizedDept: normalizeDepartment(s.department),
+  }));
+
+  const byDept = {};
+  tagged.forEach((s) => {
+    if (!byDept[s.normalizedDept]) byDept[s.normalizedDept] = [];
+    byDept[s.normalizedDept].push(s);
+  });
+  Object.keys(byDept).forEach((d) => {
+    byDept[d] = shuffle(byDept[d]);
+  });
+
+  const csQueue = [];
+  csCluster.forEach((d) => {
+    if (byDept[d]) csQueue.push(...byDept[d]);
+  });
+
+  const coreQueue = [];
+  coreCluster.forEach((d) => {
+    if (byDept[d]) coreQueue.push(...byDept[d]);
+  });
+
+  Object.keys(byDept).forEach((d) => {
+    if (!csCluster.includes(d) && !coreCluster.includes(d)) {
+      (csQueue.length <= coreQueue.length ? csQueue : coreQueue).push(...byDept[d]);
+    }
+  });
+
+  let csIdx = 0, coreIdx = 0;
+  const newAllocations = {};
+
+  for (const venue of venuesToUse) {
+    const ROWS = venue.rows_count;
+    const COLS = venue.columns_count;
+    const map = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+
+    for (let col = 0; col < COLS; col++) {
+      const cluster = getColumnCluster(col, columnPattern);
+      for (let row = 0; row < ROWS; row++) {
+        let student = null;
+        if (cluster === 'CS' && csIdx < csQueue.length) student = csQueue[csIdx++];
+        if (cluster === 'CORE' && coreIdx < coreQueue.length) student = coreQueue[coreIdx++];
+        if (student) {
+          map[row][col] = {
+            ...student,
+            seatNumber: getSeatLabel(row, col),
+            row: row + 1,
+            col: col + 1,
+            venue: venue.venue_name,
+            columnCluster: cluster,
+          };
+        }
+      }
+    }
+
+    const vs = map.flat().filter(Boolean);
+    const deptCounts = {};
+    vs.forEach((s) => {
+      deptCounts[s.normalizedDept] = (deptCounts[s.normalizedDept] || 0) + 1;
+    });
+
+    newAllocations[venue.venue_name] = {
+      seatMap: map,
+      rows: ROWS,
+      columns: COLS,
+      students: vs,
+      stats: {
+        totalStudents: vs.length,
+        csClusterCount: vs.filter((s) => csCluster.includes(s.normalizedDept)).length,
+        coreClusterCount: vs.filter((s) => coreCluster.includes(s.normalizedDept)).length,
+        otherCount: vs.filter((s) => !csCluster.includes(s.normalizedDept) && !coreCluster.includes(s.normalizedDept)).length,
+        departmentBreakdown: deptCounts,
+        seatsOccupied: vs.length,
+        seatsEmpty: venue.total_capacity - vs.length,
+      },
+    };
+  }
+
+  const allStudents = Object.values(newAllocations).flatMap((a) => a.students);
+  const overallDeptCounts = {};
+  allStudents.forEach((s) => {
+    overallDeptCounts[s.normalizedDept] = (overallDeptCounts[s.normalizedDept] || 0) + 1;
+  });
+
+  return {
+    venueAllocations: newAllocations,
+    overallStats: {
+      totalStudents: allStudents.length,
+      venuesUsed: venuesToUse.length,
+      venues: venuesToUse.map((v) => v.venue_name),
+      csClusterCount: allStudents.filter((s) => csCluster.includes(s.normalizedDept)).length,
+      coreClusterCount: allStudents.filter((s) => coreCluster.includes(s.normalizedDept)).length,
+      otherCount: allStudents.filter((s) => !csCluster.includes(s.normalizedDept) && !coreCluster.includes(s.normalizedDept)).length,
+      departmentBreakdown: overallDeptCounts,
+    },
+  };
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+//  END UTILITIES
+// ══════════════════════════════════════════════════════════════════════════
+
+const utils = {
+  normalizeCellValue, normalizeHeaderKey, padNumber, formatExcelDateValue,
+  formatExcelTimeValue, getFirstAvailableRawValue, getFirstAvailableValue,
+  isMeaningfulStudent, getSlotTimeFromRow, getSlotDateFromRow, getAvailableSlotDates,
+  getAvailableSlotTimes, valuesMatch, getColumnLabel, getSeatLabel, formatDateLabel,
+  normalizeDateForFilter, formatTime12, buildSlotLabel, normalizeDepartment,
+  getDepartmentColor, getDepartmentTextColor, getDeptSummary, shuffle,
+  getColumnCluster, allocateSeats
+};
 
 const AAssesment = () => {
   const navigate = useNavigate();
-  // ── Navigation State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'clusters' | 'venues' | 'allocate' | 'results'
 
-  // ── Venue State (from backend) ───────────────────────────────────────────
+  // ── Tab State ────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('slots');
+
+  // ── Shared Data State ────────────────────────────────────────────────────
   const [venues, setVenues] = useState([]);
+<<<<<<< HEAD
   const [venueLoading, setVenueLoading] = useState(true);
   const [venueError, setVenueError] = useState('');
   const [showVenueForm, setShowVenueForm] = useState(false);
@@ -36,6 +381,8 @@ const AAssesment = () => {
   const [venueActionMenu, setVenueActionMenu] = useState(null);
 
   // ── Slot State (from backend) ────────────────────────────────────────────
+=======
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
   const [slots, setSlots] = useState([]);
   const [slotLoading, setSlotLoading] = useState(false);
   const [showSlotForm, setShowSlotForm] = useState(false);
@@ -60,6 +407,9 @@ const AAssesment = () => {
   const [overallStats, setOverallStats] = useState(null);
   const [previewPage, setPreviewPage] = useState(1);
   const PREVIEW_PAGE_SIZE = 10;
+  const [allocationMode, setAllocationMode] = useState('DEPT_CLUSTER');
+  const [yearCourses, setYearCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
 
   // ── Cluster Config ───────────────────────────────────────────────────────
   const [columnPattern, setColumnPattern] = useState('CS_FIRST');
@@ -73,22 +423,20 @@ const AAssesment = () => {
 
   // ── Cluster Management (year-wise) ───────────────────────────────────────
   const [clusterData, setClusterData] = useState([]);
+  
+  // Loading states
   const [clusterLoading, setClusterLoading] = useState(false);
-  const [clusterActiveYear, setClusterActiveYear] = useState(1);
-  const [clusterEditCS, setClusterEditCS] = useState([]);
-  const [clusterEditCore, setClusterEditCore] = useState([]);
-  const [clusterEditPattern, setClusterEditPattern] = useState('CS_FIRST');
-  const [clusterNewCsDept, setClusterNewCsDept] = useState('');
-  const [clusterNewCoreDept, setClusterNewCoreDept] = useState('');
-  const [clusterSaving, setClusterSaving] = useState(false);
-  const [clusterSaveMsg, setClusterSaveMsg] = useState('');
-  const [allocYear, setAllocYear] = useState(2);
+  const [venueLoading, setVenueLoading] = useState(false);
 
+<<<<<<< HEAD
   // ── Attendance State ─────────────────────────────────────────────────────
+=======
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
   const [attendanceMode, setAttendanceMode] = useState(false);
   const [attendanceData, setAttendanceData] = useState({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [attendanceModified, setAttendanceModified] = useState(false);
+<<<<<<< HEAD
 
   // ── Load venues + slots from backend ─────────────────────────────────────
   const loadVenues = useCallback(async () => {
@@ -103,17 +451,16 @@ const AAssesment = () => {
       setVenueLoading(false);
     }
   }, []);
+=======
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
 
   const loadSlots = useCallback(async () => {
     setSlotLoading(true);
     try {
       const res = await fetchSlots();
       if (res.success) setSlots(res.data || []);
-    } catch (error) {
-      console.error('Failed to load slots:', error);
-    } finally {
-      setSlotLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setSlotLoading(false); }
   }, []);
 
   const loadClusters = useCallback(async () => {
@@ -121,24 +468,40 @@ const AAssesment = () => {
     try {
       const res = await fetchClusters();
       if (res.success) setClusterData(res.data || []);
+    } catch (err) { console.error(err); }
+    finally { setClusterLoading(false); }
+  }, []);
+
+  const loadYearCourses = useCallback(async (year) => {
+    try {
+      const res = await fetchYearCourses(year);
+      if (res.success) {
+        const formatted = (res.data || []).map((c) => ({
+          ...c,
+          departments: Array.isArray(c.departments)
+            ? c.departments.map((d) => (typeof d === 'string' ? { dept: d, name: c.course_name } : d))
+            : [],
+        }));
+        setYearCourses(formatted);
+      } else {
+        setYearCourses([]);
+      }
     } catch (error) {
-      console.error('Failed to load clusters:', error);
-    } finally {
-      setClusterLoading(false);
+      console.error('Failed to load courses:', error);
+      setYearCourses([]);
     }
   }, []);
 
   useEffect(() => {
-    loadVenues();
     loadSlots();
+    loadVenues();
     loadClusters();
-  }, [loadVenues, loadSlots, loadClusters]);
+    fetchVenues().then(res => { if (res.success) setVenues(res.data || []); }).catch(() => {});
+  }, [loadSlots, loadClusters]);
 
-  // ── Derived from selected venues ─────────────────────────────────────────
   const selectedVenues = venues.filter((v) => selectedVenueIds.includes(v.id));
   const TOTAL_CAPACITY = selectedVenues.reduce((s, v) => s + v.total_capacity, 0);
 
-  // ── Utility Helpers ──────────────────────────────────────────────────────
   const normalizeCellValue = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
   const normalizeHeaderKey = (h) => normalizeCellValue(h).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -275,6 +638,7 @@ const AAssesment = () => {
       'MECHATRONICS': 'MECTRONIC', 'MECHATRONICS ENGINEERING': 'MECTRONIC', 'MECTRONIC': 'MECTRONIC',
       'AGRICULTURE': 'AGRI', 'AGRICULTURAL ENGINEERING': 'AGRI', 'AGRI': 'AGRI',
       'BIOTECHNOLOGY': 'BIOTECH', 'BIO TECHNOLOGY': 'BIOTECH', 'BIOTECH': 'BIOTECH',
+      'CIVIL': 'CIVIL', 'BME': 'BME', 'FT': 'FT'
     };
     if (mapping[n]) return mapping[n];
     if (/ARTIFI.*INTELLIGENCE.*DATA\s*SCIENCE/i.test(n)) return 'AIDS';
@@ -285,31 +649,51 @@ const AAssesment = () => {
     return n;
   };
 
+  const DEPT_CODE_MAP = {
+    'CSE': 'CS', 'IT': 'IT', 'AIDS': 'AI', 'AIML': 'AM', 'CSBS': 'CB',
+    'ECE': 'EC', 'EEE': 'EE', 'E&I': 'EI', 'MECH': 'ME', 'MECTRONIC': 'MC',
+    'AGRI': 'AG', 'BIOTECH': 'BT', 'CIVIL': 'CE', 'BME': 'BM', 'FT': 'FT',
+  };
+
+  const generateSubCode = (genericCode, dept) => {
+    if (!genericCode) return '';
+    const code = DEPT_CODE_MAP[dept] || 'XX';
+    return String(genericCode).replace(/XX/i, code);
+  };
+
   const getDepartmentColor = (dept) => {
     const colors = {
       'CSE': '#3B82F6', 'IT': '#60A5FA', 'AIDS': '#93C5FD', 'AIML': '#BFDBFE', 'CSBS': '#818CF8',
       'ECE': '#FCD34D', 'EEE': '#FDE68A', 'E&I': '#FEF3C7', 'MECH': '#34D399',
-      'MECTRONIC': '#6EE7B7', 'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'UNKNOWN': '#E5E7EB',
+      'MECTRONIC': '#6EE7B7', 
+      'AGRI': '#A7F3D0', 'BIOTECH': '#D1FAE5', 'CIVIL': '#F472B6', 'BME': '#FBCFE8', 'FT': '#FDA4AF',
+      'UNKNOWN': '#E5E7EB',
     };
     return colors[dept] || '#C4B5FD';
   };
 
+<<<<<<< HEAD
   // Helper to get contrasting text color based on background brightness
   const getDepartmentTextColor = (dept) => {
     const darkTextDepts = ['AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 'UNKNOWN', 'MECTRONIC'];
+=======
+  const getDepartmentTextColor = (dept) => {
+    const darkTextDepts = [
+      'AIDS', 'AIML', 'ECE', 'EEE', 'E&I', 'AGRI', 'BIOTECH', 
+      'UNKNOWN', 'MECTRONIC', 'BME', 'FT' // Added new Depts
+    ];
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
     return darkTextDepts.includes(dept) ? '#1e293b' : '#ffffff';
   };
 
   const byDeptCount = (dept) => students.filter((s) => normalizeDepartment(s.department) === dept).length;
 
-  // Helper to compute department summary from a seatMap
   const getDeptSummary = (seatMap) => {
     const counts = {};
     if (!seatMap) return [];
     seatMap.forEach(row => {
       row.forEach(seat => {
         if (seat && (seat.normalizedDept || seat.department)) {
-          // Re-normalize in case data was saved with old names
           const dept = normalizeDepartment(seat.normalizedDept || seat.department);
           counts[dept] = (counts[dept] || 0) + 1;
         }
@@ -320,6 +704,7 @@ const AAssesment = () => {
       .sort((a, b) => b.count - a.count);
   };
 
+<<<<<<< HEAD
   // ── Venue CRUD Handlers ──────────────────────────────────────────────────
   const handleSaveVenue = async () => {
     const { venue_name, rows_count, columns_count } = venueForm;
@@ -363,6 +748,9 @@ const AAssesment = () => {
     setVenueForm({ venue_name: v.venue_name, location: v.location || '', rows_count: v.rows_count, columns_count: v.columns_count });
     setShowVenueForm(true);
   };
+=======
+
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
 
   const handleToggleVenueStatus = async (venue) => {
     const newStatus = venue.status === 'Active' ? 'Inactive' : 'Active';
@@ -452,7 +840,23 @@ const AAssesment = () => {
     return a;
   };
 
-  const allocateSeats = (studentList) => {
+  const buildCourseMap = (course) => {
+    if (!course) return {};
+    const map = {};
+    (course.departments || []).forEach((d) => {
+      const rawDept = d.dept || d.department || d;
+      const dept = normalizeDepartment(rawDept);
+      if (!dept) return;
+      map[dept] = {
+        name: d.name || course.course_name || dept,
+        subCode: generateSubCode(course.course_code, dept),
+      };
+    });
+    return map;
+  };
+
+  const allocateSeats = (studentList, options = {}) => {
+    const { allocationMode: mode = 'DEPT_CLUSTER', selectedCourse = null } = options;
     if (!studentList?.length) {
       alert('No students to allocate!');
       return null;
@@ -474,8 +878,31 @@ const AAssesment = () => {
       normalizedDept: normalizeDepartment(s.department),
     }));
 
+    let courseMap = {};
+    if (mode === 'COURSE_WISE') {
+      courseMap = buildCourseMap(selectedCourse);
+      const missingDepts = Array.from(
+        new Set(tagged.filter((s) => !courseMap[s.normalizedDept]).map((s) => s.normalizedDept))
+      );
+      if (missingDepts.length) {
+        alert(`Missing course mapping for: ${missingDepts.join(', ')}`);
+        return null;
+      }
+    }
+
+    const taggedWithCourse = tagged.map((s) => {
+      if (mode !== 'COURSE_WISE') return s;
+      const info = courseMap[s.normalizedDept];
+      return {
+        ...s,
+        courseKey: info?.name || info?.subCode || s.normalizedDept,
+        courseName: info?.name || '',
+        courseCode: info?.subCode || selectedCourse?.course_code || '',
+      };
+    });
+
     const byDept = {};
-    tagged.forEach((s) => {
+    taggedWithCourse.forEach((s) => {
       if (!byDept[s.normalizedDept]) byDept[s.normalizedDept] = [];
       byDept[s.normalizedDept].push(s);
     });
@@ -499,20 +926,47 @@ const AAssesment = () => {
       }
     });
 
-    let csIdx = 0, coreIdx = 0;
     const newAllocations = {};
+    let csIdx = 0, coreIdx = 0;
+
+    let courseQueues = [];
+    if (mode === 'COURSE_WISE') {
+      const byCourse = {};
+      taggedWithCourse.forEach((s) => {
+        const key = s.courseKey || 'UNKNOWN';
+        if (!byCourse[key]) byCourse[key] = [];
+        byCourse[key].push(s);
+      });
+      courseQueues = Object.keys(byCourse).map((key) => ({ key, list: shuffle(byCourse[key]) }));
+    }
+
+    const pickCourseQueue = (leftKey, upKey) => {
+      const available = courseQueues.filter((q) => q.list.length > 0);
+      if (!available.length) return null;
+      const sorted = [...available].sort((a, b) => b.list.length - a.list.length);
+      const next = sorted.find((q) => q.key !== leftKey && q.key !== upKey);
+      return next || sorted[0];
+    };
 
     for (const venue of venuesToUse) {
       const ROWS = venue.rows_count;
       const COLS = venue.columns_count;
       const map = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
 
-      for (let col = 0; col < COLS; col++) {
-        const cluster = getColumnCluster(col);
-        for (let row = 0; row < ROWS; row++) {
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
           let student = null;
-          if (cluster === 'CS' && csIdx < csQueue.length) student = csQueue[csIdx++];
-          if (cluster === 'CORE' && coreIdx < coreQueue.length) student = coreQueue[coreIdx++];
+          let cluster = 'COURSE';
+          if (mode === 'COURSE_WISE') {
+            const leftKey = map[row][col - 1]?.courseKey;
+            const upKey = map[row - 1]?.[col]?.courseKey;
+            const queue = pickCourseQueue(leftKey, upKey);
+            if (queue) student = queue.list.shift();
+          } else {
+            cluster = getColumnCluster(col);
+            if (cluster === 'CS' && csIdx < csQueue.length) student = csQueue[csIdx++];
+            if (cluster === 'CORE' && coreIdx < coreQueue.length) student = coreQueue[coreIdx++];
+          }
           if (student) {
             map[row][col] = {
               ...student,
@@ -549,11 +1003,31 @@ const AAssesment = () => {
       };
     }
 
+    const countCourseConflicts = (allocations) => {
+      let conflicts = 0;
+      Object.values(allocations).forEach((alloc) => {
+        const map = alloc.seatMap || [];
+        for (let r = 0; r < map.length; r++) {
+          for (let c = 0; c < (map[r] || []).length; c++) {
+            const seat = map[r][c];
+            if (!seat?.courseKey) continue;
+            const left = map[r][c - 1];
+            const up = map[r - 1]?.[c];
+            if (left?.courseKey && left.courseKey === seat.courseKey) conflicts++;
+            if (up?.courseKey && up.courseKey === seat.courseKey) conflicts++;
+          }
+        }
+      });
+      return conflicts;
+    };
+
     const allStudents = Object.values(newAllocations).flatMap((a) => a.students);
     const overallDeptCounts = {};
     allStudents.forEach((s) => {
       overallDeptCounts[s.normalizedDept] = (overallDeptCounts[s.normalizedDept] || 0) + 1;
     });
+
+    const courseConflicts = mode === 'COURSE_WISE' ? countCourseConflicts(newAllocations) : null;
 
     return {
       venueAllocations: newAllocations,
@@ -565,6 +1039,8 @@ const AAssesment = () => {
         coreClusterCount: allStudents.filter((s) => CORE_CLUSTER.includes(s.normalizedDept)).length,
         otherCount: allStudents.filter((s) => !CS_CLUSTER.includes(s.normalizedDept) && !CORE_CLUSTER.includes(s.normalizedDept)).length,
         departmentBreakdown: overallDeptCounts,
+        allocationMode: mode,
+        courseConflicts,
       },
     };
   };
@@ -666,7 +1142,19 @@ const AAssesment = () => {
       return;
     }
 
-    const result = allocateSeats(filtered);
+    const selectedCourse = allocationMode === 'COURSE_WISE'
+      ? yearCourses.find((c) => c.id === Number(selectedCourseId))
+      : null;
+
+    if (allocationMode === 'COURSE_WISE' && !selectedCourse) {
+      alert('Please select a course for course-wise allocation.');
+      return;
+    }
+
+    const result = allocateSeats(filtered, {
+      allocationMode,
+      selectedCourse,
+    });
     if (result) {
       setSelectedSlotDate(effDate);
       setSlotTime(effTime);
@@ -678,24 +1166,108 @@ const AAssesment = () => {
       );
       setActiveVenue(usedVenues[0] || Object.keys(result.venueAllocations)[0]);
       
-      // Save allocation to backend if slot is selected
-      if (selectedSlot?.id) {
-        try {
-          await saveAllocationApi(selectedSlot.id, result.venueAllocations, result.overallStats);
-          // Refresh slots to update status
-          loadSlots();
-        } catch (err) {
-          console.error('Failed to save allocation:', err);
-        }
-      }
+      const vAlloc = allocationData.allocation_data || allocationData.venueAllocations || {};
+      const oStats = allocationData.overall_stats || allocationData.overallStats || {};
       
+<<<<<<< HEAD
       // Reset attendance state for new allocation
       setAttendanceMode(false);
       setAttendanceData({});
       setAttendanceModified(false);
       setActiveTab('results');
+=======
+      setVenueAllocations(vAlloc);
+      setOverallStats(oStats);
+
+      // Use the slot details for display if we have them
+      setResultSlotDate(slot.slot_date); 
+      setResultSlotTime(`${slot.start_time} - ${slot.end_time}`);
+    }
+    setActiveTab('results');
+  };
+
+  const handleAllocationComplete = (result) => {
+    setVenueAllocations(result.venueAllocations);
+    setOverallStats(result.overallStats);
+    setResultSlotDate(result.slotDate);
+    setResultSlotTime(result.slotTime);
+    setActiveTab('results');
+    // Refresh slots to start showing 'Allocated' status if backend updated it
+    loadSlots();
+  };
+
+  const handleMenuClick = (tabId) => {
+    setActiveTab(tabId);
+    // If navigating away from process tabs, we might want to reset selectedSlot?
+    // For now, keep state to allow switching back unless explicit reset.
+  };
+
+  // ── Render Helpers ───────────────────────────────────────────────────────
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'slots':
+        return (
+          <ManageSlots 
+            slots={slots} 
+            loading={slotLoading} 
+            onRefresh={loadSlots}
+            onNavigateToAllocate={handleNavigateToAllocate}
+            onNavigateToResults={handleNavigateToResults}
+            venues={venues}
+            utils={utils}
+          />
+        );
+      case 'courses':
+        return <ManageCourses />;
+      case 'clusters':
+        return (
+          <DeptClusters 
+            clusterData={clusterData} 
+            loading={clusterLoading} 
+            onRefresh={loadClusters} 
+            utils={utils}
+          />
+        );
+      case 'venues':
+        return (
+          <ManageVenues 
+            onVenuesLoaded={setVenues} // Keep parent venue state in sync if managed internally
+            utils={utils}
+          />
+        );
+      case 'allocate':
+        return (
+          <SlotAllocation 
+            selectedSlot={selectedSlot} 
+            venues={venues} 
+            clusterData={clusterData}
+            onBackToSlots={() => setActiveTab('slots')}
+            onAllocationComplete={handleAllocationComplete}
+            utils={utils}
+          />
+        );
+      case 'results':
+        return (
+          <Results 
+            venueAllocations={venueAllocations}
+            overallStats={overallStats}
+            selectedSlot={selectedSlot}
+            venues={venues}
+            selectedSlotDate={resultSlotDate}
+            slotTime={resultSlotTime}
+            utils={utils}
+          />
+        );
+      default:
+        return <div>Select a tab</div>;
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
     }
   };
+
+  const canGenerateAllocation =
+    students.length > 0 &&
+    venues.length > 0 &&
+    (allocationMode !== 'COURSE_WISE' || selectedCourseId);
 
   // ── Export ───────────────────────────────────────────────────────────────
   const exportToExcel = () => {
@@ -932,12 +1504,19 @@ const AAssesment = () => {
       setSelectedSlot(null);
       setSelectedVenueIds([]);
       setVenueAllocations({});
-      setActiveTab('slots');
+      if (activeTab === 'results' || activeTab === 'allocate') {
+        setActiveTab('slots');
+      }
       setActiveVenue('');
       setOverallStats(null);
       setAttendanceMode(false);
       setAttendanceData({});
       setAttendanceModified(false);
+<<<<<<< HEAD
+=======
+      setAllocationMode('DEPT_CLUSTER');
+      setSelectedCourseId('');
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
     }
   };
 
@@ -1042,12 +1621,23 @@ const AAssesment = () => {
   const clusterYears = [1, 2, 3, 4];
   const getClusterForYear = (yr, type) => clusterData.find(c => c.year === yr && c.cluster_type === type);
 
+  // --- Effect: Load clusters into editor state when year changes ---
   useEffect(() => {
-    const csRow = getClusterForYear(clusterActiveYear, 'CS');
-    const coreRow = getClusterForYear(clusterActiveYear, 'Core');
-    setClusterEditCS(csRow ? csRow.departments : []);
-    setClusterEditCore(coreRow ? coreRow.departments : []);
-    setClusterEditPattern(csRow?.column_pattern || 'CS_FIRST');
+    const csRow = clusterData.find(c => c.year === clusterActiveYear && c.cluster_type === 'CS');
+    const coreRow = clusterData.find(c => c.year === clusterActiveYear && c.cluster_type === 'Core');
+    if (csRow) {
+      setClusterEditCS(csRow.departments);
+      setClusterEditPattern(csRow.column_pattern || 'CS_FIRST');
+    } else {
+      setClusterEditCS(['CSE', 'IT', 'AIDS', 'AIML', 'CSBS']);
+      setClusterEditPattern('CS_FIRST');
+    }
+    
+    if (coreRow) {
+      setClusterEditCore(coreRow.departments);
+    } else {
+      setClusterEditCore(['ECE', 'EEE', 'E&I', 'MECH', 'MECTRONIC', 'AGRI', 'BIOTECH']);
+    }
     setClusterSaveMsg('');
   }, [clusterActiveYear, clusterData]);
 
@@ -1062,6 +1652,14 @@ const AAssesment = () => {
   useEffect(() => {
     if (clusterData.length) loadClustersForAllocation(allocYear);
   }, [allocYear, clusterData, loadClustersForAllocation]);
+
+  useEffect(() => {
+    if (allocYear) loadYearCourses(allocYear);
+  }, [allocYear, loadYearCourses]);
+
+  useEffect(() => {
+    setSelectedCourseId('');
+  }, [allocYear]);
 
   const handleClusterSave = async () => {
     setClusterSaving(true);
@@ -1118,48 +1716,70 @@ const AAssesment = () => {
 
   const tabItems = [
     { key: 'slots', icon: Clock, label: 'Manage Slots' },
+    { key: 'courses', icon: BookOpen, label: 'Manage Courses' }, // New Tab
     { key: 'clusters', icon: Layers, label: 'Dept Clusters' },
     { key: 'venues', icon: Building2, label: 'Manage Venues' },
     { key: 'allocate', icon: Zap, label: 'Slot Allocation' },
     { key: 'results', icon: Eye, label: 'Results', disabled: !Object.keys(venueAllocations).length },
   ];
 
+<<<<<<< HEAD
   // Render filtered venues for table (sorted ascending by name)
   const filteredVenues = venues
     .filter(v => v.venue_name?.toLowerCase().includes(venueSearch.toLowerCase()))
     .sort((a, b) => (a.venue_name || '').localeCompare(b.venue_name || ''));
 
+=======
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
   return (
-    <div className="aa-root">
-      {/* ══ STICKY HEADER ═════════════════════════════════════════════════ */}
-      <div className="aa-sticky-header">
-        <div className="aa-header-container">
-          <div className="aa-header-left-section">
-            <button className="aa-back-btn" onClick={() => navigate('/admin-tools')}>
-              <ArrowLeft size={18} />
-              <span>Back</span>
-            </button>
-            <div className="aa-toggle-container">
-              {tabItems.map((t) => (
-                <button
-                  key={t.key}
-                  className={`aa-toggle-tab ${activeTab === t.key ? 'aa-toggle-active' : ''} ${t.disabled ? 'aa-toggle-disabled' : ''}`}
-                  onClick={() => !t.disabled && setActiveTab(t.key)}
-                  disabled={t.disabled}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
+    <div className="aa-layout">
+      {/* Sidebar */}
+      <aside className="aa-sidebar">
+        <div className="aa-sidebar-header">
+          <BarChart3 className="aa-brand-icon" />
+          <h2>Assessment</h2>
         </div>
-      </div>
+        <nav className="aa-nav-menu">
+          {menuItems.map(item => (
+            <button
+              key={item.id}
+              className={`aa-nav-item ${activeTab === item.id ? 'active' : ''}`}
+              onClick={() => handleMenuClick(item.id)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+          
+          {/* Dynamic Process Tabs */}
+          {activeTab === 'allocate' && (
+            <button className="aa-nav-item active process-tab">
+              <Zap size={18} />
+              <span>Allocate Seats</span>
+            </button>
+          )}
+          {activeTab === 'results' && (
+            <button className="aa-nav-item active process-tab">
+              <CheckCircle size={18} />
+              <span>Results</span>
+            </button>
+          )}
+        </nav>
+      </aside>
 
       <div className="aa-content-area">
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB: MANAGE COURSES
+        ═══════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'courses' && (
+           <ManageCourses />
+        )}
+
         {/* ══════════════════════════════════════════════════════════════════
             TAB: MANAGE VENUES
         ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'venues' && (
+<<<<<<< HEAD
           <div className="aa-venues-tab">
             <div className="aa-topbar">
               <div className="aa-search-wrap">
@@ -1390,6 +2010,9 @@ const AAssesment = () => {
               </div>
             )}
           </div>
+=======
+          <ManageVenues columnPattern={columnPattern} onVenuesLoaded={setVenues} />
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -2081,6 +2704,54 @@ const AAssesment = () => {
               </div>
             )}
 
+            <div className="aa-alloc-options">
+              <div className="aa-alloc-option-card">
+                <div className="aa-alloc-option-title">Allocation Strategy</div>
+                <div className="aa-alloc-toggle">
+                  <button
+                    className={`aa-alloc-toggle-btn ${allocationMode === 'DEPT_CLUSTER' ? 'active' : ''}`}
+                    onClick={() => setAllocationMode('DEPT_CLUSTER')}
+                  >
+                    Department Cluster
+                  </button>
+                  <button
+                    className={`aa-alloc-toggle-btn ${allocationMode === 'COURSE_WISE' ? 'active' : ''}`}
+                    onClick={() => setAllocationMode('COURSE_WISE')}
+                  >
+                    Course Wise
+                  </button>
+                </div>
+                <p className="aa-alloc-option-hint">
+                  {allocationMode === 'COURSE_WISE'
+                    ? 'Students are seated to avoid the same course sitting adjacent.'
+                    : 'Students are seated by CS/Core department clusters, alternating columns.'}
+                </p>
+              </div>
+
+              {allocationMode === 'COURSE_WISE' && (
+                <div className="aa-alloc-option-card">
+                  <div className="aa-alloc-option-title">Course Selection (Year {allocYear})</div>
+                  <select
+                    className="aa-alloc-select"
+                    value={selectedCourseId}
+                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                  >
+                    <option value="">Select course...</option>
+                    {yearCourses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.course_code} — {c.course_name}
+                      </option>
+                    ))}
+                  </select>
+                  {yearCourses.length === 0 && (
+                    <div className="aa-alloc-option-warn">
+                      No courses found for this year. Add courses in Manage Courses.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className={`aa-alloc-content ${students.length > 0 ? 'aa-alloc-has-data' : ''}`}>
               <div className="aa-upload-section">
                 <div className="aa-card aa-upload-card">
@@ -2125,7 +2796,7 @@ const AAssesment = () => {
                   <button
                     className="aa-btn aa-btn-primary aa-btn-lg"
                     onClick={handleGenerateAllocation}
-                    disabled={!students.length || !venues.length}
+                    disabled={!canGenerateAllocation}
                   >
                     <Zap size={18} /> Generate Allocation
                   </button>
@@ -2267,6 +2938,15 @@ const AAssesment = () => {
                     <div className="aa-stat-label">Core Cluster</div>
                   </div>
                 </div>
+                {overallStats.allocationMode === 'COURSE_WISE' && overallStats.courseConflicts !== null && (
+                  <div className={`aa-stat-card ${overallStats.courseConflicts === 0 ? 'aa-stat-green' : 'aa-stat-red'}`}>
+                    <div className="aa-stat-icon"><AlertTriangle size={22} /></div>
+                    <div>
+                      <div className="aa-stat-num">{overallStats.courseConflicts}</div>
+                      <div className="aa-stat-label">Course Conflicts</div>
+                    </div>
+                  </div>
+                )}
                 {overallStats.otherCount > 0 && (
                   <div className="aa-stat-card aa-stat-gray">
                     <div className="aa-stat-icon"><AlertTriangle size={22} /></div>
@@ -2279,7 +2959,11 @@ const AAssesment = () => {
               </div>
             )}
 
+<<<<<<< HEAD
             {/* Attendance Stats Section */}
+=======
+
+>>>>>>> 44e14476df31c836a4f0571df451c61122c0d952
             {attendanceMode && activeVenue && (() => {
               const stats = getAttendanceStats(activeVenue);
               return (

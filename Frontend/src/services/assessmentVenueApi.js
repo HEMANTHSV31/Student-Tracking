@@ -28,6 +28,17 @@ export const toggleVenueStatus = async (id, status) => {
   return res.json();
 };
 
+// ── Venue Layout Designer ────────────────────────────────────────────────
+export const fetchVenueLayout = async (id) => {
+  const res = await apiGet(`${BASE}/${id}/layout`);
+  return res.json();
+};
+
+export const saveVenueLayout = async (id, layoutData) => {
+  const res = await apiPut(`${BASE}/${id}/layout`, { layout_data: layoutData });
+  return res.json();
+};
+
 // ── Slots ────────────────────────────────────────────────────────────────
 export const fetchSlots = async (params = {}) => {
   const qs = new URLSearchParams(params).toString();
@@ -64,6 +75,28 @@ export const updateCluster = async (year, data) => {
 
 export const deleteClusterYear = async (year) => {
   const res = await apiDelete(`${BASE}/clusters/${year}`);
+  return res.json();
+};
+
+// ── Year-wise Courses ──────────────────────────────────────────────────
+export const fetchYearCourses = async (year) => {
+  const qs = year ? `?year=${year}` : '';
+  const res = await apiGet(`${BASE}/courses${qs}`);
+  return res.json();
+};
+
+export const addYearCourse = async (data) => {
+  const res = await apiPost(`${BASE}/courses`, data);
+  return res.json();
+};
+
+export const updateYearCourse = async (id, data) => {
+  const res = await apiPut(`${BASE}/courses/${id}`, data);
+  return res.json();
+};
+
+export const deleteYearCourse = async (id) => {
+  const res = await apiDelete(`${BASE}/courses/${id}`);
   return res.json();
 };
 

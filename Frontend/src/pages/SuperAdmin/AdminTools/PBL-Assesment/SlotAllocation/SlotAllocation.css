@@ -1,0 +1,523 @@
+/* ═══════════════════════════════════════════════════════════════
+   ALLOCATE TAB LAYOUT & COMPONENTS
+════════════════════════════════════════════════════════════════ */
+
+.aa-alloc-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.aa-alloc-content.aa-alloc-has-data {
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  align-items: start;
+}
+
+@media (max-width: 1060px) {
+  .aa-alloc-content.aa-alloc-has-data {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aa-upload-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.aa-upload-card {
+  width: 100%;
+}
+
+.aa-preview-section {
+  width: 100%;
+}
+
+.aa-capacity-inline {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--aa-border);
+}
+
+.aa-action-row-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Checkboxes in venue cards ── */
+.aa-checkbox {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #cbd5e1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  color: transparent;
+  background: #fff;
+}
+
+.aa-checked {
+  border-color: var(--aa-primary);
+  background: var(--aa-primary);
+  color: #fff;
+}
+
+/* ── Selected Venues List (Sidebar) ── */
+.aa-selected-venues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aa-sv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.aa-sv-name {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--aa-text);
+  flex: 1;
+}
+
+.aa-sv-detail {
+  font-size: 0.78rem;
+  color: var(--aa-muted);
+}
+
+.aa-sv-total {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--aa-primary-lt);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--aa-primary);
+  margin-top: 4px;
+}
+
+/* ── Venue Selection Grid ── */
+.aa-venue-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.aa-venue-select-grid.aa-venue-select-compact {
+  grid-template-columns: 1fr;
+  max-height: 200px;
+  overflow-y: auto;
+  gap: 6px;
+}
+.aa-venue-select-compact .aa-venue-select-item {
+  padding: 8px 12px;
+}
+
+.aa-venue-select-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.aa-venue-select-item:hover {
+  border-color: var(--aa-primary);
+  background: var(--aa-primary-lt);
+}
+
+.aa-venue-sel-active {
+  border-color: var(--aa-primary);
+  background: var(--aa-primary-lt);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.aa-vsi-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.aa-vsi-name {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--aa-text);
+}
+
+.aa-vsi-detail {
+  font-size: 0.75rem;
+  color: var(--aa-muted);
+}
+
+/* ── Slot Info Header (Shared with Results?) ── */
+.aa-slot-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.aa-slot-info-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.aa-slot-info-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+.aa-slot-info-item svg {
+  color: var(--aa-primary, #3b82f6);
+}
+.aa-slot-info-label {
+  color: #64748b;
+}
+.aa-slot-info-value {
+  font-weight: 600;
+}
+
+.aa-no-slot-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: #92400e;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+/* ── Venue Readonly Grid ── */
+.aa-venue-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.aa-venue-readonly-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+}
+
+/* ── Configuration Summary ── */
+.aa-config-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.aa-config-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.aa-config-label {
+  font-size: 0.82rem;
+  color: #64748b;
+  min-width: 80px;
+}
+.aa-config-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.aa-mini-chip {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.aa-mini-chip.aa-mini-core {
+  background: #fce7f3;
+  color: #9d174d;
+}
+.aa-mini-chip.aa-mini-more {
+  background: #e2e8f0;
+  color: #475569;
+}
+.aa-link-edit {
+  font-size: 0.8rem;
+  color: var(--aa-primary);
+  text-decoration: underline;
+}
+
+/* ── Pattern Buttons ── */
+.aa-pattern-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.aa-pat-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px 16px;
+  border: 2px solid var(--aa-border);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--aa-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.aa-pat-btn:hover {
+  border-color: #c7d2fe;
+  background: var(--aa-primary-lt);
+}
+
+.aa-pat-active {
+  border-color: var(--aa-primary) !important;
+  background: var(--aa-primary-lt) !important;
+  color: var(--aa-primary) !important;
+}
+
+/* ── Year Selector ── */
+.aa-year-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--aa-surface);
+  border: 1px solid var(--aa-border);
+  border-radius: 10px;
+  box-shadow: var(--aa-shadow-sm);
+}
+
+.aa-year-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--aa-muted);
+  margin-right: 4px;
+}
+
+.aa-year-btn {
+  padding: 7px 16px;
+  border: 1.5px solid var(--aa-border);
+  border-radius: 8px;
+  background: var(--aa-bg);
+  color: var(--aa-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.aa-year-btn:hover {
+  background: #e2e8f0;
+  color: var(--aa-text);
+}
+
+.aa-year-active {
+  background: var(--aa-primary);
+  color: #fff;
+  border-color: var(--aa-primary);
+  box-shadow: 0 2px 8px rgba(59,130,246,.25);
+}
+
+.aa-year-active:hover {
+  background: var(--aa-primary-d);
+  color: #fff;
+}
+
+/* ── Dept Order (in Allocation) ── */
+.aa-dept-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.aa-dept-order-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aa-doi-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--aa-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.aa-doi-chip {
+  flex: 1;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.aa-doi-cnt {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.aa-doi-btns {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.aa-dept-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.aa-dept-add-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  outline: none;
+  text-transform: uppercase;
+}
+
+.aa-dept-add-input:focus {
+  border-color: var(--aa-primary);
+  box-shadow: 0 0 0 2px rgba(59,130,246,.1);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FLUID SEATMAP
+════════════════════════════════════════════════════════════════ */
+.aa-seatmap {
+  --aa-seat-columns: 1;
+  --aa-seat-gap: 4px;
+  --aa-seat-min-size: 72px;
+  --aa-row-header-size: 38px;
+  width: 100%;
+  min-width: calc(
+    var(--aa-row-header-size) +
+    (var(--aa-seat-columns) * var(--aa-seat-min-size)) +
+    (var(--aa-seat-columns) * var(--aa-seat-gap))
+  );
+  box-sizing: border-box;
+}
+
+.aa-cluster-header-row,
+.aa-col-headers,
+.aa-seat-row {
+  display: grid;
+  grid-template-columns: var(--aa-row-header-size) repeat(var(--aa-seat-columns), minmax(var(--aa-seat-min-size), 1fr));
+  gap: var(--aa-seat-gap);
+  align-items: stretch;
+}
+
+.aa-cluster-header-row,
+.aa-col-headers {
+  margin-bottom: 4px;
+}
+
+.aa-rh-spacer,
+.aa-row-header,
+.aa-cluster-header,
+.aa-col-header,
+.aa-seat {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.aa-rh-spacer {
+  min-height: 1px;
+}
+
+.aa-row-header {
+  height: auto;
+  min-height: var(--aa-seat-min-size);
+}
+
+.aa-cluster-header {
+  height: 24px;
+}
+
+.aa-col-header {
+  height: 28px;
+}
+
+.aa-seat {
+  height: auto;
+  min-height: var(--aa-seat-min-size);
+  aspect-ratio: 1 / 1;
+}
+
+@media (max-width: 1024px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 64px;
+    --aa-row-header-size: 34px;
+  }
+}
+
+@media (max-width: 768px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 56px;
+    --aa-row-header-size: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .aa-seatmap {
+    --aa-seat-min-size: 48px;
+    --aa-row-header-size: 28px;
+    --aa-seat-gap: 3px;
+  }
+}
