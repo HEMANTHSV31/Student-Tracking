@@ -63,6 +63,45 @@
   gap: 14px;
 }
 
+.asa-autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.825rem;
+  font-weight: 600;
+}
+
+.asa-autosave-status svg {
+  flex-shrink: 0;
+}
+
+.asa-autosave-saving {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.asa-autosave-pending {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.asa-autosave-saved {
+  color: #166534;
+  background: #ecfdf5;
+  border-color: #86efac;
+}
+
+.asa-autosave-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
 .asa-back-btn {
   display: flex;
   align-items: center;
