@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Lottie from 'lottie-react';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Users, Building2,
-  UserCheck, UserX, ClipboardCheck, Save, Search, RefreshCw,
-  Grid3X3, BarChart3, CheckCircle, AlertCircle, Filter, X, Download, Lock, Unlock
+  UserCheck, UserX, ClipboardCheck, Search, RefreshCw,
+  Grid3X3, BarChart3, CheckCircle, Filter, X, Download, Lock, Unlock
 } from 'lucide-react';
 import {
   fetchSlots, fetchAllocation, fetchAttendance, saveAttendance as saveAttendanceApi
@@ -30,7 +30,6 @@ const AssessmentAttendance = () => {
   const [activeVenue, setActiveVenue] = useState('');
   const [overallStats, setOverallStats] = useState(null);
   const [attendanceData, setAttendanceData] = useState({});
-  const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [attendanceModified, setAttendanceModified] = useState(false);
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -291,6 +290,29 @@ const AssessmentAttendance = () => {
     setAttendanceModified(true);
   };
 
+  const persistAttendance = useCallback(async (dataToSave) => {
+    if (!selectedSlot?.id) return;
+
+    try {
+      const res = await saveAttendanceApi(selectedSlot.id, dataToSave);
+      if (res.success) {
+        setAttendanceModified(false);
+      }
+    } catch (err) {
+      console.error('Auto-save attendance error:', err);
+    }
+  }, [selectedSlot?.id]);
+
+  useEffect(() => {
+    if (!selectedSlot?.id || !attendanceModified || !timeAccess.allowed) return;
+
+    const timer = setTimeout(() => {
+      persistAttendance(attendanceData);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [attendanceData, attendanceModified, selectedSlot?.id, timeAccess.allowed, persistAttendance]);
+
   const exportAttendance = () => {
     if (!selectedSlot || !activeVenue || !venueAllocations[activeVenue]) return;
     
@@ -325,26 +347,6 @@ const AssessmentAttendance = () => {
     link.download = `attendance_${selectedSlot.slotName}_${activeVenue}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleSaveAttendance = async () => {
-    if (!selectedSlot?.id || !attendanceModified) return;
-    
-    setAttendanceSaving(true);
-    try {
-      const res = await saveAttendanceApi(selectedSlot.id, attendanceData);
-      if (res.success) {
-        setAttendanceModified(false);
-        alert('Attendance saved successfully!');
-      } else {
-        alert(res.message || 'Failed to save attendance');
-      }
-    } catch (err) {
-      console.error('Save attendance error:', err);
-      alert('Failed to save attendance');
-    } finally {
-      setAttendanceSaving(false);
-    }
   };
 
   const getAttendanceStats = (venueId) => {
@@ -409,18 +411,7 @@ const AssessmentAttendance = () => {
             <ClipboardCheck size={22} /> Assessment Attendance
           </h1>
         </div>
-        {selectedSlot && (
-          <div className="asa-header-right">
-            <button
-              className="asa-btn asa-btn-primary"
-              onClick={handleSaveAttendance}
-              disabled={attendanceSaving || !attendanceModified || !timeAccess.allowed}
-              title={!timeAccess.allowed ? timeAccess.message : 'Save attendance'}
-            >
-              <Save size={16} /> {attendanceSaving ? 'Saving...' : 'Save Attendance'}
-            </button>
-          </div>
-        )}
+        {selectedSlot && <div className="asa-header-right"></div>}
       </div>
 
       <div className="asa-content">
