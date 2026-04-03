@@ -617,17 +617,50 @@ export const deleteClusterYear = async (req, res) => {
 //  Year-wise Courses
 // ─────────────────────────────────────────────────────────────────────
 
+async function ensureCourseTypeColumn() {
+  if (await columnExists('assessment_year_courses', 'course_type')) return;
+  try {
+    await db.query(
+      `ALTER TABLE assessment_year_courses 
+       ADD COLUMN course_type VARCHAR(50) NOT NULL DEFAULT 'CORE' AFTER course_code`
+    );
+    columnExistsCache.set('assessment_year_courses.course_type', true);
+    // Update existing rows
+    await db.query(`UPDATE assessment_year_courses SET course_type = 'CORE' WHERE course_type IS NULL OR course_type = ''`);
+    // Add index (ignore error if it already exists)
+    try {
+      await db.query(`ALTER TABLE assessment_year_courses ADD KEY idx_year_course_type (year, course_type)`);
+    } catch (_) { /* index may already exist */ }
+  } catch (err) {
+    // Column may have been added by another request in parallel
+    if (!err.message?.includes('Duplicate column')) throw err;
+    columnExistsCache.set('assessment_year_courses.course_type', true);
+  }
+}
+
 /** GET /api/assessment-venues/courses?year=3 */
 export const getYearCourses = async (req, res) => {
   try {
-    const { year } = req.query;
+    await ensureCourseTypeColumn();
+
+    const { year, course_type } = req.query;
     let query = 'SELECT * FROM assessment_year_courses';
     const params = [];
+    const filters = [];
+    
     if (year) {
-      query += ' WHERE year = ?';
+      filters.push('year = ?');
       params.push(Number(year));
     }
-    query += ' ORDER BY course_name';
+    if (course_type) {
+      filters.push('course_type = ?');
+      params.push(String(course_type));
+    }
+    
+    if (filters.length > 0) {
+      query += ' WHERE ' + filters.join(' AND ');
+    }
+    query += ' ORDER BY course_type, course_name';
     
     const [rows] = await db.query(query, params);
     
@@ -658,18 +691,22 @@ export const getYearCourses = async (req, res) => {
 /** POST /api/assessment-venues/courses */
 export const addYearCourse = async (req, res) => {
   try {
-    const { year, course_name, course_code, departments } = req.body;
+    await ensureCourseTypeColumn();
+
+    const { year, course_name, course_code, course_type = 'CORE', departments } = req.body;
     
     if (!year || !course_name || !course_code) {
       return res.status(400).json({ success: false, message: 'Year, course name, and code are required' });
     }
     
+    const validTypes = ['CORE', 'ADD_ON', 'PROFESSIONAL_ELECTIVE', 'HONORS_MINOR'];
+    const courseType = validTypes.includes(course_type) ? course_type : 'CORE';
     const deptJson = JSON.stringify(departments || []);
 
     await db.query(
-      `INSERT INTO assessment_year_courses (year, course_name, course_code, departments)
-       VALUES (?, ?, ?, ?)`,
-      [year, course_name, course_code, deptJson]
+      `INSERT INTO assessment_year_courses (year, course_name, course_code, course_type, departments)
+       VALUES (?, ?, ?, ?, ?)`,
+      [year, course_name, course_code, courseType, deptJson]
     );
     
     res.json({ success: true, message: 'Course added successfully' });
@@ -685,16 +722,20 @@ export const addYearCourse = async (req, res) => {
 /** PUT /api/assessment-venues/courses/:id */
 export const updateYearCourse = async (req, res) => {
   try {
+    await ensureCourseTypeColumn();
+
     const id = Number(req.params.id);
-    const { year, course_name, course_code, departments } = req.body;
+    const { year, course_name, course_code, course_type = 'CORE', departments } = req.body;
     
+    const validTypes = ['CORE', 'ADD_ON', 'PROFESSIONAL_ELECTIVE', 'HONORS_MINOR'];
+    const courseType = validTypes.includes(course_type) ? course_type : 'CORE';
     const deptJson = JSON.stringify(departments || []);
     
     await db.query(
       `UPDATE assessment_year_courses 
-       SET year = ?, course_name = ?, course_code = ?, departments = ?
+       SET year = ?, course_name = ?, course_code = ?, course_type = ?, departments = ?
        WHERE id = ?`,
-      [year, course_name, course_code, deptJson, id]
+      [year, course_name, course_code, courseType, deptJson, id]
     );
     
     res.json({ success: true, message: 'Course updated successfully' });

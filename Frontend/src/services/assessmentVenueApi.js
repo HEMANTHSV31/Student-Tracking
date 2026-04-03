@@ -108,8 +108,11 @@ export const deleteClusterYear = async (year) => {
 };
 
 // ── Year-wise Courses ──────────────────────────────────────────────────
-export const fetchYearCourses = async (year) => {
-  const qs = year ? `?year=${year}` : '';
+export const fetchYearCourses = async (year, courseType = null) => {
+  const params = new URLSearchParams();
+  if (year) params.append('year', year);
+  if (courseType) params.append('course_type', courseType);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   const res = await apiGet(`${BASE}/courses${qs}`);
   return res.json();
 };
