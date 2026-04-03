@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import xlsx from 'xlsx';
 
 const columnExistsCache = new Map();
 
@@ -32,6 +33,142 @@ async function ensureLocationColumn() {
     'ALTER TABLE assessment_venues ADD COLUMN location VARCHAR(255) DEFAULT NULL AFTER venue_name'
   );
   columnExistsCache.set('assessment_venues.location', true);
+}
+
+const COURSE_SPEC_TABLE = 'assessment_student_course_specs';
+
+const COURSE_SPEC_HEADERS = {
+  reg_no: ['Reg. No.', 'Reg No.', 'Reg No', 'Registration Number', 'Register Number'],
+  enroll_no: ['Enroll No.', 'Enroll No', 'Enrollment No', 'Enrollment Number'],
+  student_name: ['Student Name', 'Name'],
+  email_id: ['Email ID', 'Email', 'Mail'],
+  dept: ['Dept', 'Department'],
+  course_22xx601: ['22XX601'],
+  course_22xx602: ['22XX602'],
+  course_22xx603: ['22XX603'],
+  course_22xx604: ['22XX604'],
+  professional_elective_iii: ['PROFESSIONAL ELECTIVE III'],
+  professional_elective_iv: ['PROFESSIONAL ELECTIVE IV'],
+  professional_elective_v_open: ['PROFESSIONAL ELECTIVE V / OPEN ELECTIVE', 'PROFESSIONAL ELECTIVE V OPEN ELECTIVE'],
+  add_on: ['ADD ON', 'ADD-ON'],
+  honours_or_minors_status: ['Honours or Minors Status', 'Honors or Minors Status'],
+  honours_minors_3: ['HONOURS / MINORS 3', 'HONORS / MINORS 3'],
+  honours_minors_4: ['HONOURS / MINORS 4', 'HONORS / MINORS 4'],
+};
+
+const normalizeHeader = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+const normalizeCell = (value) => (value === null || value === undefined ? '' : String(value).trim());
+
+const pickFromRow = (row, aliases) => {
+  const normalizedAliasSet = new Set(aliases.map(normalizeHeader));
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliasSet.has(normalizeHeader(key))) {
+      return normalizeCell(value);
+    }
+  }
+  return '';
+};
+
+async function ensureCourseSpecsTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ${COURSE_SPEC_TABLE} (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      year TINYINT UNSIGNED NOT NULL DEFAULT 1,
+      user_id INT NULL,
+      reg_no VARCHAR(50) NOT NULL,
+      enroll_no VARCHAR(50) NULL,
+      student_name VARCHAR(255) NULL,
+      email_id VARCHAR(255) NULL,
+      dept VARCHAR(100) NULL,
+      course_22xx601 VARCHAR(255) NULL,
+      course_22xx602 VARCHAR(255) NULL,
+      course_22xx603 VARCHAR(255) NULL,
+      course_22xx604 VARCHAR(255) NULL,
+      professional_elective_iii VARCHAR(255) NULL,
+      professional_elective_iv VARCHAR(255) NULL,
+      professional_elective_v_open VARCHAR(255) NULL,
+      add_on VARCHAR(255) NULL,
+      honours_or_minors_status VARCHAR(255) NULL,
+      honours_minors_3 VARCHAR(255) NULL,
+      honours_minors_4 VARCHAR(255) NULL,
+      raw_subject_data LONGTEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_assessment_student_course_specs_year_reg_no (year, reg_no),
+      KEY idx_assessment_student_course_specs_year (year),
+      KEY idx_assessment_student_course_specs_user_id (user_id),
+      KEY idx_assessment_student_course_specs_dept (dept)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  if (!(await columnExists(COURSE_SPEC_TABLE, 'year'))) {
+    await db.query(`ALTER TABLE ${COURSE_SPEC_TABLE} ADD COLUMN year TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER id`);
+    columnExistsCache.set(`${COURSE_SPEC_TABLE}.year`, true);
+  }
+
+  const [stats] = await db.query(
+    `SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+     GROUP BY INDEX_NAME`,
+    [COURSE_SPEC_TABLE]
+  );
+
+  const indexMap = new Map(stats.map((row) => [row.INDEX_NAME, row.cols]));
+  const hasLegacyUniqueRegNo = indexMap.get('uq_assessment_student_course_specs_reg_no') === 'reg_no';
+  const hasYearRegNoUnique = indexMap.get('uq_assessment_student_course_specs_year_reg_no') === 'year,reg_no';
+
+  if (hasLegacyUniqueRegNo) {
+    await db.query(`ALTER TABLE ${COURSE_SPEC_TABLE} DROP INDEX uq_assessment_student_course_specs_reg_no`);
+  }
+
+  if (!hasYearRegNoUnique) {
+    await db.query(
+      `ALTER TABLE ${COURSE_SPEC_TABLE}
+       ADD UNIQUE KEY uq_assessment_student_course_specs_year_reg_no (year, reg_no)`
+    );
+  }
+
+  if (!indexMap.has('idx_assessment_student_course_specs_year')) {
+    await db.query(
+      `ALTER TABLE ${COURSE_SPEC_TABLE}
+       ADD KEY idx_assessment_student_course_specs_year (year)`
+    );
+  }
+}
+
+async function ensureCourseColumnsMetaTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS assessment_course_columns_meta (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      year TINYINT UNSIGNED NOT NULL,
+      column_name VARCHAR(255) NOT NULL,
+      column_label VARCHAR(255) NOT NULL,
+      column_order INT UNSIGNED NOT NULL DEFAULT 999,
+      is_custom BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_year_column_name (year, column_name),
+      KEY idx_year (year),
+      KEY idx_column_order (year, column_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+const METADATA_COLUMNS = ['Year', 'Reg. No.', 'Reg No.', 'Reg No', 'Registration Number', 'Register Number', 'Enroll No.', 'Enroll No', 'Enrollment No', 'Enrollment Number', 'Student Name', 'Name', 'Email ID', 'Email', 'Mail', 'Dept', 'Department'];
+
+function detectDynamicColumns(rows) {
+  if (!rows || rows.length === 0) return [];
+  
+  const firstRow = rows[0];
+  const allColumns = Object.keys(firstRow);
+  
+  // Filter out metadata columns
+  const metadataSet = new Set(METADATA_COLUMNS.map(normalizeHeader));
+  const dynamicColumns = allColumns.filter(col => !metadataSet.has(normalizeHeader(col)));
+  
+  return dynamicColumns;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -576,6 +713,459 @@ export const deleteYearCourse = async (req, res) => {
   } catch (error) {
     console.error('Error deleting year course:', error);
     res.status(500).json({ success: false, message: 'Failed to delete course' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────
+//  Course-wise Student Specifications
+// ─────────────────────────────────────────────────────────────────────
+
+/** GET /api/assessment-venues/course-specs/template */
+export const downloadCourseSpecsTemplate = async (req, res) => {
+  try {
+    const sampleData = [
+      {
+        Year: 2,
+        'Reg. No.': '2022CS001',
+        'Enroll No.': 'ENR220001',
+        'Student Name': 'Student One',
+        'Email ID': 'student.one@example.com',
+        Dept: 'CSE',
+        '22XX601': 'CS601',
+        '22XX602': 'CS602',
+        '22XX603': 'CS603',
+        '22XX604': 'CS604',
+        'PROFESSIONAL ELECTIVE III': 'Distributed Systems',
+        'PROFESSIONAL ELECTIVE IV': 'Cloud Computing',
+        'PROFESSIONAL ELECTIVE V / OPEN ELECTIVE': 'Data Privacy',
+        'ADD ON': 'NPTEL - Python',
+        'Honours or Minors Status': 'Honours',
+        'HONOURS / MINORS 3': 'AI Foundations',
+        'HONOURS / MINORS 4': 'Applied ML',
+      },
+    ];
+
+    const worksheet = xlsx.utils.json_to_sheet(sampleData);
+    worksheet['!cols'] = [
+      { wch: 8 }, { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 30 }, { wch: 10 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 32 }, { wch: 32 }, { wch: 40 }, { wch: 24 }, { wch: 26 }, { wch: 24 }, { wch: 24 },
+    ];
+
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, worksheet, 'Course Specs');
+
+    const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Disposition', 'attachment; filename=course_wise_student_spec_template.xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error generating course specs template:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate template' });
+  }
+};
+
+/** POST /api/assessment-venues/course-specs/upload */
+export const uploadCourseWiseSpecifications = async (req, res) => {
+  const connection = await db.getConnection();
+  let txStarted = false;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No Excel file uploaded' });
+    }
+
+    await ensureCourseSpecsTable();
+    await ensureCourseColumnsMetaTable();
+
+    const bodyYear = Number(req.body?.year);
+    const defaultYear = Number.isFinite(bodyYear) && bodyYear >= 1 && bodyYear <= 4 ? bodyYear : 1;
+
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: 'Excel file is empty' });
+    }
+
+    // Detect dynamic columns from the Excel file
+    const dynamicColumns = detectDynamicColumns(rows);
+
+    // Prepare rows with dynamic subject data
+    const preparedRows = rows.map((row, index) => {
+      // ALWAYS use the year from the request body (the tab user selected)
+      // Do NOT allow Excel file to override the year selection
+      const resolvedYear = defaultYear;
+
+      // Extract all dynamic subject data
+      const subjectData = {};
+      dynamicColumns.forEach(col => {
+        subjectData[col] = normalizeCell(row[col] || '');
+      });
+
+      const mapped = {
+        year: resolvedYear,
+        reg_no: pickFromRow(row, COURSE_SPEC_HEADERS.reg_no),
+        enroll_no: pickFromRow(row, COURSE_SPEC_HEADERS.enroll_no),
+        student_name: pickFromRow(row, COURSE_SPEC_HEADERS.student_name),
+        email_id: pickFromRow(row, COURSE_SPEC_HEADERS.email_id),
+        dept: pickFromRow(row, COURSE_SPEC_HEADERS.dept),
+        // Keep old mappings for backward compatibility
+        course_22xx601: pickFromRow(row, COURSE_SPEC_HEADERS.course_22xx601),
+        course_22xx602: pickFromRow(row, COURSE_SPEC_HEADERS.course_22xx602),
+        course_22xx603: pickFromRow(row, COURSE_SPEC_HEADERS.course_22xx603),
+        course_22xx604: pickFromRow(row, COURSE_SPEC_HEADERS.course_22xx604),
+        professional_elective_iii: pickFromRow(row, COURSE_SPEC_HEADERS.professional_elective_iii),
+        professional_elective_iv: pickFromRow(row, COURSE_SPEC_HEADERS.professional_elective_iv),
+        professional_elective_v_open: pickFromRow(row, COURSE_SPEC_HEADERS.professional_elective_v_open),
+        add_on: pickFromRow(row, COURSE_SPEC_HEADERS.add_on),
+        honours_or_minors_status: pickFromRow(row, COURSE_SPEC_HEADERS.honours_or_minors_status),
+        honours_minors_3: pickFromRow(row, COURSE_SPEC_HEADERS.honours_minors_3),
+        honours_minors_4: pickFromRow(row, COURSE_SPEC_HEADERS.honours_minors_4),
+        raw_subject_data: JSON.stringify({ ...subjectData, original_row: row }),
+        row_number: index + 2,
+      };
+      return mapped;
+    });
+
+    const validRows = preparedRows.filter((r) => r.reg_no);
+    if (!validRows.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid rows found. Reg. No. (or equivalent header) is required.',
+      });
+    }
+
+    const regNos = validRows.map((r) => r.reg_no);
+    const [userRows] = await connection.query('SELECT user_id, ID FROM users WHERE ID IN (?)', [regNos]);
+    const userByRegNo = new Map(userRows.map((u) => [normalizeCell(u.ID), u.user_id]));
+
+    const values = validRows.map((row) => [
+      row.year,
+      userByRegNo.get(row.reg_no) || null,
+      row.reg_no,
+      row.enroll_no || null,
+      row.student_name || null,
+      row.email_id || null,
+      row.dept || null,
+      row.course_22xx601 || null,
+      row.course_22xx602 || null,
+      row.course_22xx603 || null,
+      row.course_22xx604 || null,
+      row.professional_elective_iii || null,
+      row.professional_elective_iv || null,
+      row.professional_elective_v_open || null,
+      row.add_on || null,
+      row.honours_or_minors_status || null,
+      row.honours_minors_3 || null,
+      row.honours_minors_4 || null,
+      row.raw_subject_data,
+    ]);
+
+    await connection.beginTransaction();
+    txStarted = true;
+
+    // Store detected columns metadata
+    if (dynamicColumns.length > 0) {
+      const columnMetadata = dynamicColumns.map((col, idx) => [
+        defaultYear,
+        col,
+        col, // Use original column name as label
+        idx,
+        true, // is_custom
+      ]);
+
+      // Delete old metadata for this year
+      await connection.query('DELETE FROM assessment_course_columns_meta WHERE year = ?', [defaultYear]);
+
+      // Insert new metadata
+      if (columnMetadata.length > 0) {
+        await connection.query(
+          'INSERT INTO assessment_course_columns_meta (year, column_name, column_label, column_order, is_custom) VALUES ?',
+          [columnMetadata]
+        );
+      }
+    }
+
+    await connection.query(
+      `INSERT INTO ${COURSE_SPEC_TABLE} (
+        year, user_id, reg_no, enroll_no, student_name, email_id, dept,
+        course_22xx601, course_22xx602, course_22xx603, course_22xx604,
+        professional_elective_iii, professional_elective_iv, professional_elective_v_open,
+        add_on, honours_or_minors_status, honours_minors_3, honours_minors_4, raw_subject_data
+      ) VALUES ?
+      ON DUPLICATE KEY UPDATE
+        year = VALUES(year),
+        user_id = VALUES(user_id),
+        enroll_no = VALUES(enroll_no),
+        student_name = VALUES(student_name),
+        email_id = VALUES(email_id),
+        dept = VALUES(dept),
+        course_22xx601 = VALUES(course_22xx601),
+        course_22xx602 = VALUES(course_22xx602),
+        course_22xx603 = VALUES(course_22xx603),
+        course_22xx604 = VALUES(course_22xx604),
+        professional_elective_iii = VALUES(professional_elective_iii),
+        professional_elective_iv = VALUES(professional_elective_iv),
+        professional_elective_v_open = VALUES(professional_elective_v_open),
+        add_on = VALUES(add_on),
+        honours_or_minors_status = VALUES(honours_or_minors_status),
+        honours_minors_3 = VALUES(honours_minors_3),
+        honours_minors_4 = VALUES(honours_minors_4),
+        raw_subject_data = VALUES(raw_subject_data),
+        updated_at = CURRENT_TIMESTAMP`,
+      [values]
+    );
+    await connection.commit();
+    txStarted = false;
+
+    const missingInUsers = validRows.filter((r) => !userByRegNo.has(r.reg_no)).map((r) => r.reg_no);
+
+    return res.json({
+      success: true,
+      message: 'Course-wise student specifications uploaded successfully',
+      data: {
+        totalRows: rows.length,
+        validRows: validRows.length,
+        skippedRows: rows.length - validRows.length,
+        matchedStudents: validRows.length - missingInUsers.length,
+        unmatchedStudents: missingInUsers.length,
+        unmatchedSample: missingInUsers.slice(0, 20),
+        detectedColumns: dynamicColumns,
+      },
+    });
+  } catch (error) {
+    if (txStarted) {
+      await connection.rollback();
+    }
+    console.error('Error uploading course-wise specifications:', error);
+    return res.status(500).json({ success: false, message: 'Failed to process uploaded file' });
+  } finally {
+    connection.release();
+  }
+};
+
+/** GET /api/assessment-venues/course-specs */
+export const getCourseWiseSpecifications = async (req, res) => {
+  try {
+    await ensureCourseSpecsTable();
+    await ensureCourseColumnsMetaTable();
+
+    const { search = '', dept = '', year = '', limit = 100, offset = 0 } = req.query;
+    const parsedLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+    const parsedOffset = Math.max(Number(offset) || 0, 0);
+
+    const where = [];
+    const params = [];
+
+    if (dept) {
+      where.push('dept = ?');
+      params.push(dept);
+    }
+
+    const parsedYear = Number(year);
+    if (Number.isFinite(parsedYear) && parsedYear >= 1 && parsedYear <= 4) {
+      where.push('year = ?');
+      params.push(parsedYear);
+    }
+
+    if (search) {
+      where.push('(reg_no LIKE ? OR enroll_no LIKE ? OR student_name LIKE ? OR email_id LIKE ?)');
+      const like = `%${search}%`;
+      params.push(like, like, like, like);
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) AS total FROM ${COURSE_SPEC_TABLE} ${whereClause}`,
+      params
+    );
+
+    const [rows] = await db.query(
+      `SELECT
+        id, year, user_id, reg_no, enroll_no, student_name, email_id, dept,
+        course_22xx601, course_22xx602, course_22xx603, course_22xx604,
+        professional_elective_iii, professional_elective_iv, professional_elective_v_open,
+        add_on, honours_or_minors_status, honours_minors_3, honours_minors_4,
+        raw_subject_data, updated_at, created_at
+       FROM ${COURSE_SPEC_TABLE}
+       ${whereClause}
+       ORDER BY updated_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parsedLimit, parsedOffset]
+    );
+
+    // Fetch detected columns metadata for the year
+    let detectedColumns = [];
+    if (Number.isFinite(parsedYear) && parsedYear >= 1 && parsedYear <= 4) {
+      const [columnsMeta] = await db.query(
+        'SELECT column_name, column_label, column_order FROM assessment_course_columns_meta WHERE year = ? ORDER BY column_order ASC',
+        [parsedYear]
+      );
+      detectedColumns = columnsMeta.map(col => ({
+        name: col.column_name,
+        label: col.column_label,
+        order: col.column_order,
+      }));
+    }
+
+    // Enrich rows with parsed subject data
+    const enrichedRows = rows.map(row => {
+      try {
+        const subjectData = row.raw_subject_data ? JSON.parse(row.raw_subject_data) : {};
+        return {
+          ...row,
+          subjectData: subjectData, // Make subject data easily accessible
+        };
+      } catch (e) {
+        return row;
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        total: countRows[0]?.total || 0,
+        limit: parsedLimit,
+        offset: parsedOffset,
+        rows: enrichedRows,
+        detectedColumns, // Return detected columns info
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching course-wise specifications:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch course-wise specifications' });
+  }
+};
+
+/** GET /api/assessment-venues/course-specs/departments */
+export const getCourseSpecsDepartments = async (req, res) => {
+  try {
+    await ensureCourseSpecsTable();
+
+    const { year } = req.query;
+    const parsedYear = Number(year);
+
+    let query = `SELECT DISTINCT dept FROM ${COURSE_SPEC_TABLE} WHERE dept IS NOT NULL AND dept != ''`;
+    const params = [];
+
+    if (Number.isFinite(parsedYear) && parsedYear >= 1 && parsedYear <= 4) {
+      query += ' AND year = ?';
+      params.push(parsedYear);
+    }
+
+    query += ' ORDER BY dept ASC';
+
+    const [rows] = await db.query(query, params);
+    const departments = rows.map(r => r.dept).filter(Boolean);
+
+    res.json({
+      success: true,
+      data: {
+        departments,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch departments' });
+  }
+};
+
+/** DELETE /api/assessment-venues/course-specs/:id */
+export const deleteCourseSpec = async (req, res) => {
+  try {
+    await ensureCourseSpecsTable();
+
+    const { id } = req.params;
+    const specId = Number(id);
+
+    if (!Number.isFinite(specId) || specId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid specification ID' });
+    }
+
+    const [result] = await db.query(`DELETE FROM ${COURSE_SPEC_TABLE} WHERE id = ?`, [specId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Course specification not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Course specification deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting course specification:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete course specification' });
+  }
+};
+
+/** PUT /api/assessment-venues/course-specs/:id */
+export const updateCourseSpec = async (req, res) => {
+  try {
+    await ensureCourseSpecsTable();
+
+    const { id } = req.params;
+    const { subjectData } = req.body;
+    const specId = Number(id);
+
+    if (!Number.isFinite(specId) || specId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid specification ID' });
+    }
+
+    if (!subjectData || typeof subjectData !== 'object') {
+      return res.status(400).json({ success: false, message: 'subjectData is required' });
+    }
+
+    // Update the raw_subject_data column with new course assignments
+    const [result] = await db.query(
+      `UPDATE ${COURSE_SPEC_TABLE} SET raw_subject_data = ?, updated_at = NOW() WHERE id = ?`,
+      [JSON.stringify(subjectData), specId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Course specification not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Course specification updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating course specification:', error);
+    res.status(500).json({ success: false, message: 'Failed to update course specification' });
+  }
+};
+
+/** DELETE /api/assessment-venues/course-specs/year/:year */
+export const deleteAllCourseSpecsForYear = async (req, res) => {
+  try {
+    await ensureCourseSpecsTable();
+
+    const { year } = req.params;
+    const parsedYear = Number(year);
+
+    if (!Number.isFinite(parsedYear) || parsedYear < 1 || parsedYear > 4) {
+      return res.status(400).json({ success: false, message: 'Invalid year. Must be between 1 and 4.' });
+    }
+
+    // Delete records for the year
+    const [result] = await db.query(`DELETE FROM ${COURSE_SPEC_TABLE} WHERE year = ?`, [parsedYear]);
+
+    // Also delete column metadata for this year
+    await db.query('DELETE FROM assessment_course_columns_meta WHERE year = ?', [parsedYear]);
+
+    res.json({
+      success: true,
+      message: `All course specifications for Year ${parsedYear} deleted successfully`,
+      data: {
+        deletedRecords: result.affectedRows,
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting course specifications for year:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete course specifications' });
   }
 };
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import {
   getAllVenues, createVenue, updateVenue, deleteVenue, toggleVenueStatus,
@@ -6,12 +7,35 @@ import {
   getSlots, createSlot, deleteSlot, updateSlotStatus,
   getClusters, updateCluster, deleteClusterYear,
   getYearCourses, addYearCourse, updateYearCourse, deleteYearCourse,
+  downloadCourseSpecsTemplate, uploadCourseWiseSpecifications, getCourseWiseSpecifications, getCourseSpecsDepartments, deleteCourseSpec, updateCourseSpec, deleteAllCourseSpecsForYear,
   saveAllocation, getAllocation, deleteAllocation,
   getMyAllocation,
   getAttendance, saveAttendance, getAttendanceStats,
 } from '../controllers/assessmentVenue.controller.js';
 
 const router = Router();
+
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 15 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'text/csv',
+    ];
+
+    if (allowedMimes.includes(file.mimetype) || /\.(xlsx|xls|ods|csv)$/i.test(file.originalname || '')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Please upload an Excel or CSV file.'));
+    }
+  },
+});
 
 // Venue CRUD
 router.get('/',              authenticate, getAllVenues);
@@ -40,6 +64,15 @@ router.get('/courses',             authenticate, getYearCourses);
 router.post('/courses',            authenticate, addYearCourse);
 router.put('/courses/:id',         authenticate, updateYearCourse);
 router.delete('/courses/:id',      authenticate, deleteYearCourse);
+
+// Course-wise student specifications - SPECIFIC ROUTES FIRST
+router.get('/course-specs/template', authenticate, downloadCourseSpecsTemplate);
+router.get('/course-specs/departments', authenticate, getCourseSpecsDepartments);
+router.post('/course-specs/upload', authenticate, upload.single('file'), uploadCourseWiseSpecifications);
+router.delete('/course-specs/year/:year', authenticate, deleteAllCourseSpecsForYear);
+router.put('/course-specs/:id', authenticate, updateCourseSpec);
+router.delete('/course-specs/:id', authenticate, deleteCourseSpec);
+router.get('/course-specs', authenticate, getCourseWiseSpecifications);
 
 // Student self-lookup
 router.get('/my-allocation', authenticate, getMyAllocation);

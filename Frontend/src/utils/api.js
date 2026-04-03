@@ -32,7 +32,21 @@ export const apiRequest = async (endpoint, options = {}) => {
     delete defaultOptions.headers['Content-Type'];
   }
 
-  return fetch(url, defaultOptions);
+  let response = await fetch(url, defaultOptions);
+
+  // If Authorization token from localStorage is stale, retry once using only cookie auth.
+  if ((response.status === 401 || response.status === 403) && token) {
+    const retryOptions = {
+      ...defaultOptions,
+      headers: {
+        ...defaultOptions.headers,
+      },
+    };
+    delete retryOptions.headers['Authorization'];
+    response = await fetch(url, retryOptions);
+  }
+
+  return response;
 };
 
 /**

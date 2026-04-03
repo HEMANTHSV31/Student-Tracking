@@ -21,12 +21,13 @@ import {
 } from '../../../../services/assessmentVenueApi';
 import ManageVenues from './ManageVenues/ManageVenues';
 import ManageCourses from './ManageCourses/ManageCourses';
+import CourseWiseSpecs from './CourseWiseSpecs/CourseWiseSpecs';
 import './AAssesment.css';
 
 const AAssesment = () => {
   const navigate = useNavigate();
   // ── Navigation State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'courses' | 'clusters' | 'venues' | 'allocate' | 'results'
+  const [activeTab, setActiveTab] = useState('slots'); // 'slots' | 'courses' | 'courseSpecs' | 'clusters' | 'venues' | 'allocate' | 'results'
 
   // ── Venue State (loaded via ManageVenues callback) ───────────────────────
   const [venues, setVenues] = useState([]);
@@ -1206,6 +1207,7 @@ const AAssesment = () => {
   const tabItems = [
     { key: 'slots', icon: Clock, label: 'Manage Slots' },
     { key: 'courses', icon: BookOpen, label: 'Manage Courses' }, // New Tab
+    { key: 'courseSpecs', icon: FileSpreadsheet, label: 'Course Wise Specs' },
     { key: 'clusters', icon: Layers, label: 'Dept Clusters' },
     { key: 'venues', icon: Building2, label: 'Manage Venues' },
     { key: 'allocate', icon: Zap, label: 'Slot Allocation' },
@@ -1244,6 +1246,10 @@ const AAssesment = () => {
         ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'courses' && (
            <ManageCourses />
+        )}
+
+        {activeTab === 'courseSpecs' && (
+          <CourseWiseSpecs />
         )}
 
         {/* ══════════════════════════════════════════════════════════════════

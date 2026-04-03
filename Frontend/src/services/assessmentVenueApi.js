@@ -2,6 +2,35 @@ import { apiGet, apiPost, apiPut, apiDelete } from '../utils/api';
 
 const BASE = '/assessment-venues';
 
+const parseApiResponse = async (response, fallbackMessage) => {
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      message: fallbackMessage || `Request failed with status ${response.status}`,
+      status: response.status,
+      data: null,
+    };
+  }
+
+  if (!response.ok || data?.success === false) {
+    return {
+      success: false,
+      message: data?.message || fallbackMessage || `Request failed with status ${response.status}`,
+      status: response.status,
+      data: data?.data ?? null,
+    };
+  }
+
+  return {
+    ...data,
+    status: response.status,
+  };
+};
+
 // ── Venues ───────────────────────────────────────────────────────────────
 export const fetchVenues = async () => {
   const res = await apiGet(BASE);
@@ -98,6 +127,43 @@ export const updateYearCourse = async (id, data) => {
 export const deleteYearCourse = async (id) => {
   const res = await apiDelete(`${BASE}/courses/${id}`);
   return res.json();
+};
+
+// ── Course-wise Student Specifications ─────────────────────────────────
+export const fetchCourseSpecs = async (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiGet(`${BASE}/course-specs${qs ? '?' + qs : ''}`);
+  return parseApiResponse(res, 'Failed to load course-wise specifications');
+};
+
+export const uploadCourseSpecs = async (formData) => {
+  const res = await apiPost(`${BASE}/course-specs/upload`, formData);
+  return parseApiResponse(res, 'Failed to upload course-wise specifications');
+};
+
+export const downloadCourseSpecsTemplate = async () => {
+  return apiGet(`${BASE}/course-specs/template`);
+};
+
+export const fetchCourseSpecsDepartments = async (year) => {
+  const qs = year ? `?year=${year}` : '';
+  const res = await apiGet(`${BASE}/course-specs/departments${qs}`);
+  return parseApiResponse(res, 'Failed to fetch departments');
+};
+
+export const deleteCourseSpec = async (id) => {
+  const res = await apiDelete(`${BASE}/course-specs/${id}`);
+  return parseApiResponse(res, 'Failed to delete course specification');
+};
+
+export const deleteAllCourseSpecs = async (year) => {
+  const res = await apiDelete(`${BASE}/course-specs/year/${year}`);
+  return parseApiResponse(res, 'Failed to delete all course specifications');
+};
+
+export const updateCourseSpec = async (id, courseData) => {
+  const res = await apiPut(`${BASE}/course-specs/${id}`, courseData);
+  return parseApiResponse(res, 'Failed to update course specification');
 };
 
 // ── Allocations ──────────────────────────────────────────────────────────
