@@ -4,7 +4,7 @@ import {
   Users, Layers, Plus, Trash2, Edit3, Save, X,
   CheckCircle, AlertTriangle, ArrowRight,
   Link, Unlink, BookOpen, Hash, Tag, 
-  ChevronRight, Package, Grid3X3, Zap, Eye
+  ChevronRight, Package, Grid3X3, Zap, Eye, Target, Medal, ScrollText
 } from 'lucide-react';
 import { 
   fetchYearCourses, addYearCourse, updateYearCourse, deleteYearCourse, fetchClusters
@@ -30,13 +30,14 @@ const ManageCourses = () => {
     elective_courses: [] // Array of { code, name }
   });
   const [selectedDepts, setSelectedDepts] = useState([]);
+  const [selectedElectiveIndexes, setSelectedElectiveIndexes] = useState([]);
 
   // Course type options
   const COURSE_TYPES = [
-    { id: 'CORE', label: 'Core', color: '#6366f1', icon: '📚' },
-    { id: 'PROFESSIONAL_ELECTIVE', label: 'Professional Elective', color: '#8b5cf6', icon: '🎯' },
-    { id: 'ADD_ON', label: 'Add-on', color: '#06b6d4', icon: '➕' },
-    { id: 'HONORS_MINOR', label: 'Honors & Minor', color: '#f59e0b', icon: '🏅' }
+    { id: 'CORE', label: 'Core', color: '#6366f1', icon: BookOpen },
+    { id: 'PROFESSIONAL_ELECTIVE', label: 'Professional Elective', color: '#8b5cf6', icon: Target },
+    { id: 'ADD_ON', label: 'Add-on', color: '#06b6d4', icon: Package },
+    { id: 'HONORS_MINOR', label: 'Honors & Minor', color: '#f59e0b', icon: Medal }
   ];
 
   // Elective number configs per type
@@ -44,7 +45,7 @@ const ManageCourses = () => {
     'PROFESSIONAL_ELECTIVE': {
       prefix: 'PE',
       label: 'Professional Elective',
-      numbers: [1, 2, 3, 4, 5, 6],
+      numbers: [3, 4, 5, 6],
       color: '#8b5cf6'
     },
     'ADD_ON': {
@@ -210,7 +211,9 @@ const ManageCourses = () => {
       // Parse elective_courses from departments array
       const electiveCourses = (course.departments || []).map(sc => ({
         code: sc.course_code || '',
-        name: sc.course_name || ''
+        name: sc.course_name || '',
+        group_id: sc.group_id || null,
+        group_name: sc.group_name || ''
       }));
 
       setFormData({
@@ -220,23 +223,24 @@ const ManageCourses = () => {
         departments: [],
         sub_courses: [],
         elective_number: electiveNumber,
-        elective_courses: electiveCourses.length > 0 ? electiveCourses : [{ code: '', name: '' }]
+        elective_courses: electiveCourses.length > 0 ? electiveCourses : [{ code: '', name: '', group_id: null, group_name: '' }]
       });
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = (nextCourseType = activeCourseType) => {
     setEditId(null);
     setFormData({
       course_name: '',
       course_code: '',
-      course_type: activeCourseType,
+      course_type: nextCourseType,
       departments: [],
       sub_courses: [],
       elective_number: null,
       elective_courses: []
     });
     setSelectedDepts([]);
+    setSelectedElectiveIndexes([]);
   };
 
   // ── Handle Save (Create/Update) ──
@@ -300,11 +304,16 @@ const ManageCourses = () => {
         year: activeYear,
         course_name: electiveId,
         course_type: formData.course_type,
-        course_code: `NC-${electiveId}-${Date.now()}`,
+        // The course_code for non-core is just an internal identifier.
+        // The actual course codes are stored in the departments JSON.
+        course_code: `NC-${electiveId}`, 
         departments: formData.elective_courses.map(ec => ({
+          // Storing the sub-course code and name in the departments JSON
+          // to match the structure used by CORE courses.
           course_code: ec.code,
           course_name: ec.name || '',
-          departments: [] // No per-course dept assignment needed
+          group_id: ec.group_id || null,
+          group_name: ec.group_name || ''
         }))
       };
     }
@@ -466,15 +475,17 @@ const ManageCourses = () => {
       ...prev,
       course_name: '',
       course_code: '',
+      course_type: activeCourseType,
       elective_number: num,
-      elective_courses: prev.elective_courses.length > 0 ? prev.elective_courses : [{ code: '', name: '' }]
+      elective_courses: prev.elective_courses.length > 0 ? prev.elective_courses : [{ code: '', name: '', group_id: null, group_name: '' }]
     }));
+    setSelectedElectiveIndexes([]);
   };
 
   const addElectiveCourse = () => {
     setFormData(prev => ({
       ...prev,
-      elective_courses: [...prev.elective_courses, { code: '', name: '' }]
+      elective_courses: [...prev.elective_courses, { code: '', name: '', group_id: null, group_name: '' }]
     }));
   };
 
@@ -483,6 +494,7 @@ const ManageCourses = () => {
       ...prev,
       elective_courses: prev.elective_courses.filter((_, i) => i !== index)
     }));
+    setSelectedElectiveIndexes([]);
   };
 
   const updateElectiveCourseCode = (index, code) => {
@@ -497,14 +509,106 @@ const ManageCourses = () => {
   const updateElectiveCourseName = (index, name) => {
     setFormData(prev => ({
       ...prev,
-      elective_courses: prev.elective_courses.map((ec, i) => 
-        i === index ? { ...ec, name } : ec
+      elective_courses: (() => {
+        const target = prev.elective_courses[index];
+        if (!target) return prev.elective_courses;
+        if (!target.group_id) {
+          return prev.elective_courses.map((ec, i) => (i === index ? { ...ec, name } : ec));
+        }
+        return prev.elective_courses.map(ec =>
+          ec.group_id === target.group_id ? { ...ec, name, group_name: name } : ec
+        );
+      })()
+    }));
+  };
+
+  const updateElectiveGroupName = (groupId, name) => {
+    setFormData(prev => ({
+      ...prev,
+      elective_courses: prev.elective_courses.map(ec =>
+        ec.group_id === groupId ? { ...ec, group_name: name, name } : ec
       )
     }));
   };
 
+  const toggleElectiveSelection = (index) => {
+    setSelectedElectiveIndexes(prev =>
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    );
+  };
+
+  const clearElectiveSelection = () => {
+    setSelectedElectiveIndexes([]);
+  };
+
+  const groupSelectedElectives = () => {
+    if (selectedElectiveIndexes.length < 2) return;
+    const firstSelected = formData.elective_courses.find((_, i) => selectedElectiveIndexes.includes(i));
+    const groupName = (firstSelected?.name || firstSelected?.code || 'Grouped').trim();
+    const newGroupId = `g-${Date.now()}`;
+    setFormData(prev => ({
+      ...prev,
+      elective_courses: prev.elective_courses.map((ec, i) =>
+        selectedElectiveIndexes.includes(i)
+          ? { ...ec, group_id: newGroupId, group_name: groupName }
+          : ec
+      )
+    }));
+    setSelectedElectiveIndexes([]);
+  };
+
+  const ungroupElectives = (groupId) => {
+    setFormData(prev => ({
+      ...prev,
+      elective_courses: prev.elective_courses.map(ec =>
+        ec.group_id === groupId ? { ...ec, group_id: null, group_name: '' } : ec
+      )
+    }));
+  };
+
+  const getElectiveRenderGroups = () => {
+    const groups = [];
+    const seenGIds = new Set();
+    formData.elective_courses.forEach((ec, index) => {
+      if (ec.group_id) {
+        if (!seenGIds.has(ec.group_id)) {
+          const members = formData.elective_courses
+            .map((item, idx) => ({ ...item, index: idx }))
+            .filter(m => m.group_id === ec.group_id);
+          groups.push({ type: 'group', id: ec.group_id, members, name: ec.group_name || '' });
+          seenGIds.add(ec.group_id);
+        }
+      } else {
+        groups.push({ type: 'single', id: `single-${index}`, members: [{ ...ec, index }], name: ec.name || '' });
+      }
+    });
+    return groups;
+  };
+
   // ── Get numbers for current non-core type dynamically ──
-  const [dynamicExtraSlots, setDynamicExtraSlots] = useState(0);
+  const [customSlots, setCustomSlots] = useState([]);
+
+  const handleAddSlot = () => {
+    const slotName = window.prompt("Enter the name for the new slot (e.g., PE-5):", "");
+    if (slotName && slotName.trim()) {
+      const newSlot = {
+        id: `custom-${Date.now()}`,
+        name: slotName.trim(),
+      };
+      setCustomSlots(prev => [...prev, newSlot]);
+    }
+  };
+
+  const handleDeleteSlot = (slotId) => {
+    if (window.confirm("Are you sure you want to delete this slot?")) {
+      setCustomSlots(prev => prev.filter(s => s.id !== slotId));
+      // If the deleted slot was selected, reset the form
+      if (formData.elective_number === slotId) {
+        setFormData(prev => ({ ...prev, elective_number: null, elective_courses: [] }));
+        setEditId(null);
+      }
+    }
+  };
 
   const getElectiveNumbers = () => {
     const registered = [];
@@ -518,18 +622,25 @@ const ManageCourses = () => {
       }
     });
     
-    const maxRegistered = registered.length > 0 ? Math.max(...registered) : 0;
-    // Always show at least 4 slots, or up to the next available slot after the max registered
-    let maxToShow = Math.max(4, maxRegistered + 1);
-    
-    maxToShow += dynamicExtraSlots;
+    const config = ELECTIVE_CONFIGS[activeCourseType];
+    const baseNumbers = activeCourseType === 'HONORS_MINOR'
+      ? (config?.subTypes.find(s => s.id === activeHMSubType)?.numbers || [])
+      : (config?.numbers || []);
 
-    // Ensure the currently selected number from formData is always visible
-    if (formData.elective_number && formData.elective_number > maxToShow) {
-      maxToShow = formData.elective_number;
+    const maxRegistered = registered.length > 0 ? Math.max(...registered) : 0;
+    const selectedNumber = typeof formData.elective_number === 'number' ? formData.elective_number : 0;
+    const maxBase = baseNumbers.length > 0 ? Math.max(...baseNumbers) : 0;
+    // Always show at least 4 slots, or up to the highest needed number
+    const maxToShow = Math.max(4, maxRegistered, selectedNumber, maxBase);
+
+    const numbers = Array.from({ length: maxToShow }, (_, i) => i + 1);
+
+    if (baseNumbers.length > 0) {
+      const allowed = new Set([...baseNumbers, ...registered, selectedNumber].filter(Boolean));
+      return numbers.filter(n => allowed.has(n));
     }
 
-    return Array.from({ length: maxToShow }, (_, i) => i + 1);
+    return numbers;
   };
 
   const getElectivePrefix = () => {
@@ -547,6 +658,9 @@ const ManageCourses = () => {
     courses.forEach(c => {
       const parsed = parseElectiveFromCourse(c);
       if (parsed) {
+        if (activeCourseType === 'HONORS_MINOR' && parsed.subType !== activeHMSubType) {
+          return;
+        }
         registered[parsed.electiveNumber] = {
           courseId: c.id,
           courseCodes: (c.departments || []).map(d => d.course_code).filter(Boolean),
@@ -564,11 +678,35 @@ const ManageCourses = () => {
     return courses.map(course => {
       const parsed = parseElectiveFromCourse(course);
       if (!parsed) return null;
-      
-      const codes = (course.departments || []).map(d => ({
-        code: d.course_code,
-        name: d.course_name || ''
-      })).filter(d => d.code);
+
+      const groupedMap = new Map();
+      const singles = [];
+      (course.departments || []).forEach(d => {
+        if (!d || !d.course_code) return;
+        if (d.group_id) {
+          if (!groupedMap.has(d.group_id)) {
+            groupedMap.set(d.group_id, {
+              id: d.group_id,
+              name: d.group_name || d.course_name || 'Grouped',
+              courses: []
+            });
+          }
+          groupedMap.get(d.group_id).courses.push({
+            code: d.course_code,
+            name: d.course_name || ''
+          });
+        } else {
+          singles.push({
+            code: d.course_code,
+            name: d.course_name || ''
+          });
+        }
+      });
+
+      const groupedCourses = [
+        ...Array.from(groupedMap.values()).map(g => ({ type: 'group', ...g })),
+        ...singles.map(s => ({ type: 'single', courses: [s] }))
+      ];
 
       return {
         id: course.id,
@@ -579,8 +717,8 @@ const ManageCourses = () => {
           parsed.subType
         ),
         shortLabel: course.course_name,
-        courses: codes,
-        courseCount: codes.length
+        groupedCourses,
+        courseCount: (course.departments || []).length
       };
     }).filter(Boolean);
   };
@@ -617,7 +755,7 @@ const ManageCourses = () => {
                 <button
                   key={ct.id}
                   className={`aa-courses-type-btn ${activeCourseType === ct.id ? 'active' : ''}`}
-                  onClick={() => { setActiveCourseType(ct.id); handleCancel(); }}
+                  onClick={() => { setActiveCourseType(ct.id); handleCancel(ct.id); }}
                   title={ct.label}
                 >
                   {ct.label}
@@ -769,12 +907,15 @@ const ManageCourses = () => {
                       setActiveHMSubType(st.id);
                       setFormData(prev => ({ ...prev, elective_number: null, elective_courses: [] }));
                       setEditId(null);
+                      setSelectedElectiveIndexes([]);
                     }}
                     style={{
                       '--hm-color': st.id === 'HONOR' ? '#f59e0b' : '#ec4899'
                     }}
                   >
-                    <span className="aa-nc-hm-icon">{st.id === 'HONOR' ? '🏅' : '📜'}</span>
+                    <span className="aa-nc-hm-icon">
+                      {st.id === 'HONOR' ? <Medal size={16} /> : <ScrollText size={16} />}
+                    </span>
                     {st.label}
                   </button>
                 ))}
@@ -791,9 +932,7 @@ const ManageCourses = () => {
                       ? (activeHMSubType === 'HONOR' ? 'Honor' : 'Minor') 
                       : ELECTIVE_CONFIGS[activeCourseType]?.label} Number
                   </h4>
-                  <p className="aa-nc-step-desc">
-                    Choose which elective slot this course group belongs to. All courses added under the same number will be treated as <strong>common courses</strong> for seating arrangement.
-                  </p>
+
                 </div>
               </div>
 
@@ -807,63 +946,88 @@ const ManageCourses = () => {
                   const isEditing = editId && isActive;
 
                   return (
-                    <button
-                      key={num}
-                      className={`aa-nc-number-card ${isActive ? 'active' : ''} ${isRegistered && !isEditing ? 'registered' : ''}`}
-                      onClick={() => selectElectiveNumber(num)}
-                      style={{
-                        '--card-color': ELECTIVE_CONFIGS[activeCourseType]?.color || '#8b5cf6'
-                      }}
-                    >
-                      <div className="aa-nc-number-value">{label}</div>
-                      <div className="aa-nc-number-status">
-                        {isRegistered && !isEditing ? (
-                          <>
-                            <CheckCircle size={12} />
-                            <span>{isRegistered.courseCount} course{isRegistered.courseCount !== 1 ? 's' : ''}</span>
-                          </>
-                        ) : isActive ? (
-                          <>
-                            <Zap size={12} />
-                            <span>Selected</span>
-                          </>
-                        ) : (
-                          <span>Available</span>
-                        )}
-                      </div>
-                    </button>
+                    <div key={num} className="aa-nc-custom-slot-wrapper">
+                      <button
+                        className={`aa-nc-number-card ${isActive ? 'active' : ''} ${isRegistered && !isEditing ? 'registered' : ''}`}
+                        onClick={() => selectElectiveNumber(num)}
+                        style={{
+                          '--card-color': ELECTIVE_CONFIGS[activeCourseType]?.color || '#8b5cf6'
+                        }}
+                      >
+                        <div className="aa-nc-number-value">{label}</div>
+                        <div className="aa-nc-number-status">
+                          {isRegistered && !isEditing ? (
+                            <>
+                              <CheckCircle size={12} />
+                              <span>{isRegistered.courseCount} course{isRegistered.courseCount !== 1 ? 's' : ''}</span>
+                            </>
+                          ) : isActive ? (
+                            <>
+                              <span>⚡</span>
+                              <span>Selected</span>
+                            </>
+                          ) : (
+                            <span>Available</span>
+                          )}
+                        </div>
+                      </button>
+                      {isRegistered && (
+                        <button
+                          className="aa-nc-delete-slot-btn"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent card click
+                            handleDelete(isRegistered.courseId);
+                          }}
+                          title={`Delete course group ${label}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {customSlots.map(slot => {
+                  const isActive = formData.elective_number === slot.id;
+                  return (
+                    <div key={slot.id} className="aa-nc-custom-slot-wrapper">
+                      <button
+                        className={`aa-nc-number-card ${isActive ? 'active' : ''}`}
+                        onClick={() => selectElectiveNumber(slot.id)}
+                        style={{ '--card-color': '#78716c' }}
+                      >
+                        <div className="aa-nc-number-value">{slot.name}</div>
+                        <div className="aa-nc-number-status">
+                          {isActive ? (
+                            <>
+                              <Zap size={12} />
+                              <span>Selected</span>
+                            </>
+                          ) : (
+                            <span>Available</span>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        className="aa-nc-delete-slot-btn"
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        title={`Delete slot ${slot.name}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   );
                 })}
                 
                 {/* Dynamically Add More Slots Button */}
                 <button
                   className="aa-nc-add-slot-btn"
-                  onClick={() => setDynamicExtraSlots(prev => prev + 1)}
+                  onClick={handleAddSlot}
                   title="Add new elective slot"
                 >
                   <Plus size={20} />
                   <span>New Slot</span>
                 </button>
-
-                {/* Dynamically Remove Slots Button */}
-                {dynamicExtraSlots > 0 && (
-                  <button
-                    className="aa-nc-add-slot-btn aa-nc-remove-slot-btn"
-                    onClick={() => {
-                      const numbers = getElectiveNumbers();
-                      const maxNumToRemove = numbers[numbers.length - 1];
-                      setDynamicExtraSlots(prev => Math.max(0, prev - 1));
-                      if (formData.elective_number === maxNumToRemove) {
-                        setFormData(prev => ({ ...prev, elective_number: null, elective_courses: [] }));
-                        setEditId(null);
-                      }
-                    }}
-                    title="Remove last dynamic elective slot"
-                  >
-                    <Trash2 size={20} />
-                    <span>Delete Slot</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -876,15 +1040,59 @@ const ManageCourses = () => {
                     <h4 className="aa-nc-step-title">
                       Add Course Codes for {getElectiveShortLabel(activeCourseType, formData.elective_number, activeHMSubType)}
                     </h4>
-                    <p className="aa-nc-step-desc">
-                      Add all course codes that belong to this elective group. Students with <strong>any</strong> of these codes will be treated as sitting the <strong>same exam</strong>.
-                    </p>
+                  </div>
+                </div>
+
+                <div className="aa-nc-chip-select">
+                  <div className="aa-nc-chip-head">
+                    <label className="aa-courses-label">Select Courses to Group</label>
+                    <div className="aa-nc-chip-actions">
+                      <button
+                        type="button"
+                        className="aa-nc-group-btn"
+                        onClick={groupSelectedElectives}
+                        disabled={selectedElectiveIndexes.length < 2}
+                      >
+                        <Link size={14} /> Group Selected ({selectedElectiveIndexes.length})
+                      </button>
+                      {selectedElectiveIndexes.length > 0 && (
+                        <button
+                          type="button"
+                          className="aa-nc-clear-selection"
+                          onClick={clearElectiveSelection}
+                        >
+                          Clear Selection
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="aa-nc-chip-grid">
+                    {formData.elective_courses.map((ec, index) => (
+                      <span
+                        key={`${ec.code || 'course'}-${index}`}
+                        className={`aa-courses-dept-tag ${selectedElectiveIndexes.includes(index) ? 'highlighted' : ''}`}
+                        onClick={() => toggleElectiveSelection(index)}
+                      >
+                        {ec.code || `Course ${index + 1}`}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
                 <div className="aa-nc-courses-list">
                   {formData.elective_courses.map((ec, index) => (
-                    <div key={index} className="aa-nc-course-row">
+                    <div
+                      key={index}
+                      className={`aa-nc-course-row ${selectedElectiveIndexes.includes(index) ? 'selected' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className={`aa-nc-course-select ${selectedElectiveIndexes.includes(index) ? 'active' : ''}`}
+                        onClick={() => toggleElectiveSelection(index)}
+                        title={selectedElectiveIndexes.includes(index) ? 'Unselect' : 'Select'}
+                      >
+                        <CheckCircle size={14} />
+                      </button>
                       <div className="aa-nc-course-number">
                         <Hash size={14} />
                         <span>{index + 1}</span>
@@ -910,6 +1118,15 @@ const ManageCourses = () => {
                             className="aa-courses-input"
                           />
                         </div>
+                        {ec.group_id && (
+                          <button
+                            type="button"
+                            className="aa-nc-ungroup-btn"
+                            onClick={() => ungroupElectives(ec.group_id)}
+                          >
+                            Ungroup
+                          </button>
+                        )}
                       </div>
                       <button 
                         onClick={() => removeElectiveCourse(index)} 
@@ -928,36 +1145,7 @@ const ManageCourses = () => {
                   </button>
                 </div>
 
-                {/* ── Common Course Preview ── */}
-                {formData.elective_courses.some(ec => ec.code.trim()) && (
-                  <div className="aa-nc-preview">
-                    <div className="aa-nc-preview-header">
-                      <Eye size={16} />
-                      <span>Common Course Preview</span>
-                    </div>
-                    <div className="aa-nc-preview-body">
-                      <div className="aa-nc-preview-badge">
-                        {getElectiveShortLabel(activeCourseType, formData.elective_number, activeHMSubType)}
-                      </div>
-                      <div className="aa-nc-preview-arrow">
-                        <ChevronRight size={16} />
-                      </div>
-                      <div className="aa-nc-preview-codes">
-                        {formData.elective_courses.filter(ec => ec.code.trim()).map((ec, i) => (
-                          <div key={i} className="aa-nc-preview-code-item">
-                            <span className="aa-nc-preview-code">{ec.code}</span>
-                            {ec.name && <span className="aa-nc-preview-name">{ec.name}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="aa-nc-preview-note">
-                      <Zap size={12} />
-                      These courses will be identified as the <strong>same exam</strong> during seating allocation. 
-                      Students with any of these codes will be placed in the same venue/slot.
-                    </p>
-                  </div>
-                )}
+
               </div>
             )}
           </div>
@@ -990,15 +1178,7 @@ const ManageCourses = () => {
         <span className="aa-courses-count">{activeCourseType === 'CORE' ? courses.length : getCommonCourseSummary().length} total</span>
       </div>
 
-      {isNonCore && courses.length > 0 && (
-        <div className="aa-nc-detection-header" style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <Grid3X3 size={18} style={{ color: '#3b82f6' }} />
-          <div>
-            <h4 style={{ margin: 0, fontSize: '14px', color: '#0f172a' }}>Common Course Detection Active</h4>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Courses mapped under the same group are treated as the <strong>same exam</strong> for seating allocation.</p>
-          </div>
-        </div>
-      )}
+
 
       <div className="aa-courses-table-wrap">
         <table className="aa-courses-table aa-courses-table-main">
@@ -1104,15 +1284,26 @@ const ManageCourses = () => {
                 <tr key={group.id} className="aa-courses-table-row">
                   <td>
                     <div className="aa-courses-code-cell">
-                      <span className="aa-courses-code-text" style={{ fontWeight: 700, color: '#0f172a' }}>{group.label}</span>
+                      <span className="aa-courses-code-text" style={{ fontWeight: 700, color: '#0f172a' }}>{group.shortLabel}</span>
                       <span className="aa-courses-mini">Common</span>
                     </div>
                   </td>
-                  <td style={{ textAlign: 'center' }}>{group.courseCount} Courses Grouped</td>
+                  <td style={{ textAlign: 'center' }}>{group.label}</td>
                   <td>
-                    <div className="aa-courses-chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {group.courses.map((c, i) => (
-                        <span key={i} className="aa-courses-chip-outline" title={c.name}>{c.code}</span>
+                    <div className="aa-courses-code-list">
+                      {group.groupedCourses.map((g, i) => (
+                        <div key={`${g.type}-${i}`} className="aa-courses-code-line">
+                          {g.type === 'group' && (
+                            <span className="aa-courses-strong">{g.name}</span>
+                          )}
+                          {g.courses.map((c, idx) => (
+                            <div key={`${c.code}-${idx}`} className="aa-courses-code-line">
+                              {g.type === 'group' && <ArrowRight size={12} style={{ color: '#94a3b8' }} />}
+                              <span className="aa-courses-code">{c.code}</span>
+                              {c.name && <span className="aa-courses-mini">({c.name})</span>}
+                            </div>
+                          ))}
+                        </div>
                       ))}
                     </div>
                   </td>
