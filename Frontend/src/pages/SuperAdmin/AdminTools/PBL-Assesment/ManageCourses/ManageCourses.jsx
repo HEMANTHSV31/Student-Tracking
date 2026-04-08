@@ -185,9 +185,7 @@ const ManageCourses = () => {
   // ── Handle Edit Action ──
   const handleEdit = (course) => {
     setEditId(course.id);
-    
     const isCore = !course.course_type || course.course_type === 'CORE';
-    
     if (isCore) {
       setFormData({
         course_name: '',
