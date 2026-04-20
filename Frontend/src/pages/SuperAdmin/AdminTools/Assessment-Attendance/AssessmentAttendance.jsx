@@ -33,6 +33,7 @@ const AssessmentAttendance = () => {
   const [attendanceModified, setAttendanceModified] = useState(false);
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState('');
+  const [timeRestrictionEnabled, setTimeRestrictionEnabled] = useState(true);
 
   // ── Helper Functions ─────────────────────────────────────────────────────
   const formatDate = (dateStr) => {
@@ -198,6 +199,7 @@ const AssessmentAttendance = () => {
   const handleSlotSelect = async (slot) => {
     setSelectedSlot(slot);
     setAttendanceModified(false);
+    setTimeRestrictionEnabled(true);
     
     try {
       // Fetch allocation data
@@ -225,7 +227,10 @@ const AssessmentAttendance = () => {
   };
 
   // ── Attendance Functions ─────────────────────────────────────────────────
-  const timeAccess = selectedSlot ? getTimeAccessStatus(selectedSlot) : { allowed: true, status: 'unknown', message: '' };
+  const slotTimeAccess = selectedSlot ? getTimeAccessStatus(selectedSlot) : { allowed: true, status: 'unknown', message: '' };
+  const timeAccess = timeRestrictionEnabled
+    ? slotTimeAccess
+    : { allowed: true, status: 'override', message: 'Time restriction disabled' };
 
   const toggleSeatAttendance = (venueId, rowIdx, colIdx) => {
     // Check time-based access
@@ -519,6 +524,7 @@ const AssessmentAttendance = () => {
                 setVenueAllocations({});
                 setAttendanceData({});
                 setAttendanceModified(false);
+                setTimeRestrictionEnabled(true);
               }}>
                 <ArrowLeft size={16} /> Back to Slots
               </button>
@@ -527,6 +533,20 @@ const AssessmentAttendance = () => {
                 <span><Clock size={14} /> {formatTime12(selectedSlot.start_time)} - {formatTime12(selectedSlot.end_time)}</span>
                 {selectedSlot.subject_code && <span>{selectedSlot.subject_code}</span>}
                 <span className="asa-year-badge">Year {selectedSlot.year}</span>
+              </div>
+              <div className="asa-time-toggle">
+                <span className="asa-time-toggle-label">Time Restriction</span>
+                <label className="asa-toggle" aria-label="Toggle time restriction">
+                  <input
+                    type="checkbox"
+                    className="asa-toggle-input"
+                    checked={timeRestrictionEnabled}
+                    onChange={(e) => setTimeRestrictionEnabled(e.target.checked)}
+                  />
+                  <span className="asa-toggle-track" aria-hidden="true">
+                    <span className="asa-toggle-thumb" />
+                  </span>
+                </label>
               </div>
             </div>
 
@@ -618,19 +638,28 @@ const AssessmentAttendance = () => {
               {/* Time Access Status Banner */}
               {selectedSlot && (
                 <div className={`asa-time-access ${timeAccess.allowed ? 'asa-time-allowed' : 'asa-time-locked'}`}>
-                  {timeAccess.allowed ? (
+                  {timeRestrictionEnabled ? (
+                    timeAccess.allowed ? (
+                      <>
+                        <Unlock size={16} />
+                        <span>
+                          <strong>Attendance Open</strong> — {timeAccess.message}
+                          {timeAccess.remaining && <span className="asa-time-remaining"> ({timeAccess.remaining} left)</span>}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={16} />
+                        <span>
+                          <strong>Attendance Locked</strong> — {timeAccess.message}
+                        </span>
+                      </>
+                    )
+                  ) : (
                     <>
                       <Unlock size={16} />
                       <span>
-                        <strong>Attendance Open</strong> — {timeAccess.message}
-                        {timeAccess.remaining && <span className="asa-time-remaining"> ({timeAccess.remaining} left)</span>}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock size={16} />
-                      <span>
-                        <strong>Attendance Locked</strong> — {timeAccess.message}
+                        <strong>Time Restriction Off</strong> — Attendance can be edited anytime
                       </span>
                     </>
                   )}
